@@ -142,15 +142,15 @@ function NouveauTransfert({ sites, onCreated, onCancel }: {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 16, alignItems: 'center' }}>
           <div>
             <label style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, display: 'block', marginBottom: 8 }}>Site source (expéditeur)</label>
-            <select value={sourceId} onChange={e => setSourceId(e.target.value)} style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#e8e0d5', fontSize: 14, padding: '10px 12px' }}>
-              {sites.map(s => <option key={s.id} value={s.id}>{s.nom} — {s.ville}</option>)}
+            <select value={sourceId} onChange={e => setSourceId(e.target.value)} style={{ width: '100%', background: '#1a1408', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 4, color: '#f0e8d8', fontSize: 14, padding: '10px 12px', cursor: 'pointer' }}>
+              {sites.map(s => <option key={s.id} value={s.id} style={{ background: '#1a1408', color: '#f0e8d8' }}>{s.nom} — {s.ville}</option>)}
             </select>
           </div>
           <div style={{ fontSize: 24, color: '#c9a96e', textAlign: 'center' as const }}>→</div>
           <div>
             <label style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, display: 'block', marginBottom: 8 }}>Site destination (récepteur)</label>
-            <select value={destId} onChange={e => setDestId(e.target.value)} style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#e8e0d5', fontSize: 14, padding: '10px 12px' }}>
-              {sites.map(s => <option key={s.id} value={s.id}>{s.nom} — {s.ville}</option>)}
+            <select value={destId} onChange={e => setDestId(e.target.value)} style={{ width: '100%', background: '#1a1408', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 4, color: '#f0e8d8', fontSize: 14, padding: '10px 12px', cursor: 'pointer' }}>
+              {sites.map(s => <option key={s.id} value={s.id} style={{ background: '#1a1408', color: '#f0e8d8' }}>{s.nom} — {s.ville}</option>)}
             </select>
           </div>
         </div>
