@@ -1,5 +1,4 @@
 // src/app/boutique/[slug]/page.tsx
-// Fiche produit client — style mixte : belle ET technique
 
 import { createClient } from '@supabase/supabase-js'
 import { notFound } from 'next/navigation'
@@ -12,7 +11,7 @@ const supabase = createClient(
 
 export async function generateMetadata({ params }: { params: { slug: string } }) {
   const { data } = await supabase
-    .from('v_catalogue_complet')
+    .from('v_catalogue')
     .select('nom, millesime, domaine, description_courte')
     .eq('slug', params.slug)
     .single()
@@ -25,8 +24,9 @@ export async function generateMetadata({ params }: { params: { slug: string } })
 }
 
 export default async function ProductPage({ params }: { params: { slug: string } }) {
+  // Récupérer le produit depuis v_catalogue (vue existante)
   const { data: product } = await supabase
-    .from('v_catalogue_complet')
+    .from('v_catalogue')
     .select('*')
     .eq('slug', params.slug)
     .eq('actif', true)
@@ -34,15 +34,24 @@ export default async function ProductPage({ params }: { params: { slug: string }
 
   if (!product) notFound()
 
-  // Produits similaires (même couleur, même région)
+  // Récupérer aussi les notes de dégustation séparément
+  const { data: tastingNote } = await supabase
+    .from('tasting_notes')
+    .select('*')
+    .eq('product_id', product.id)
+    .single()
+
+  // Produits similaires (même couleur)
   const { data: similaires } = await supabase
-    .from('v_catalogue_complet')
+    .from('v_catalogue')
     .select('id, nom, millesime, couleur, prix_vente_ttc, image_url, slug, domaine, stock_statut')
     .eq('couleur', product.couleur)
     .eq('actif', true)
     .neq('id', product.id)
-    .gt('stock_total', 0)
     .limit(4)
 
-  return <ProductPageClient product={product} similaires={similaires || []} />
+  // Fusionner produit + notes de dégustation
+  const productComplet = { ...product, ...tastingNote }
+
+  return <ProductPageClient product={productComplet} similaires={similaires || []} />
 }
