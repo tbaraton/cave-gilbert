@@ -878,7 +878,7 @@ export default function AdminPage() {
       </main>
 
       {/* Modals */}
-      {showModalProduit && sites.length > 0 && (
+      {showModalProduit && (
         <ModalAjoutProduit sites={sites} onClose={() => setShowModalProduit(false)} onSaved={loadData} />
       )}
       {showModalMouvement && (
