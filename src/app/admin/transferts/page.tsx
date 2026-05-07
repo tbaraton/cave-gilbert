@@ -62,13 +62,31 @@ function NouveauTransfert({ sites, onCreated, onCancel }: {
   const searchProduits = useCallback(async () => {
     if (!sourceId || search.length < 2) { setProduits([]); return }
     setLoading(true)
-    const { data } = await supabase
+
+    // 1. Chercher les produits par nom
+    const { data: prods } = await supabase
+      .from('products')
+      .select('id, nom, millesime, couleur')
+      .ilike('nom', `%${search}%`)
+      .eq('actif', true)
+      .limit(30)
+
+    if (!prods || prods.length === 0) { setProduits([]); setLoading(false); return }
+
+    // 2. Recuperer le stock sur le site source
+    const ids = prods.map(p => p.id)
+    const { data: stocks } = await supabase
       .from('stock')
-      .select('quantite, product:products(id, nom, millesime, couleur)')
+      .select('product_id, quantite')
       .eq('site_id', sourceId)
-      .ilike('products.nom', `%${search}%`)
-      .limit(20)
-    setProduits((data || []).filter(d => d.product))
+      .in('product_id', ids)
+
+    const stockMap = Object.fromEntries((stocks || []).map(s => [s.product_id, s.quantite]))
+
+    setProduits(prods.map(p => ({
+      product: p,
+      quantite: stockMap[p.id] ?? 0,
+    })))
     setLoading(false)
   }, [sourceId, search])
 
