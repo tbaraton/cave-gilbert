@@ -1,0 +1,387 @@
+'use client'
+
+import { useState } from 'react'
+
+// ============================================================
+// Fiche produit — Cave de Gilbert
+// Mixte : belle ET technique
+// ============================================================
+
+const COULEUR_LABEL: Record<string, string> = {
+  rouge: 'Vin Rouge', blanc: 'Vin Blanc', rosé: 'Vin Rosé',
+  champagne: 'Champagne', effervescent: 'Effervescent',
+  spiritueux: 'Spiritueux', autre: 'Autre',
+}
+
+const COULEUR_ACCENT: Record<string, string> = {
+  rouge: '#8b2020', blanc: '#b8a96a', rosé: '#c97b7b',
+  champagne: '#c9b06e', effervescent: '#c9b06e',
+  spiritueux: '#6e8b6e', autre: '#888',
+}
+
+function ProfilBar({ label, value }: { label: string; value: number | null }) {
+  if (!value) return null
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+      <span style={{ width: 80, fontSize: 11, color: 'rgba(232,224,213,0.4)', textAlign: 'right' as const }}>{label}</span>
+      <div style={{ flex: 1, height: 2, background: 'rgba(255,255,255,0.06)', borderRadius: 1 }}>
+        <div style={{ width: `${value}%`, height: '100%', background: 'linear-gradient(90deg, #c9a96e, #e8c98a)', borderRadius: 1, transition: 'width 1s ease' }} />
+      </div>
+      <span style={{ fontSize: 10, color: 'rgba(232,224,213,0.25)', width: 24 }}>{value}</span>
+    </div>
+  )
+}
+
+export default function ProductPageClient({ product, similaires }: { product: any; similaires: any[] }) {
+  const [qty, setQty] = useState(1)
+  const [activeTab, setActiveTab] = useState<'description' | 'degustation' | 'service'>('description')
+  const [addedToCart, setAddedToCart] = useState(false)
+
+  const accent = COULEUR_ACCENT[product.couleur] || '#c9a96e'
+  const disponible = product.stock_statut !== 'rupture'
+
+  const handleAddToCart = () => {
+    // Ici : intégration panier (localStorage ou API)
+    setAddedToCart(true)
+    setTimeout(() => setAddedToCart(false), 2500)
+  }
+
+  return (
+    <div style={{ background: '#0d0a08', minHeight: '100vh', fontFamily: "'DM Sans', system-ui, sans-serif", color: '#e8e0d5' }}>
+
+      {/* Navigation */}
+      <nav style={{ padding: '16px 40px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '0.5px solid rgba(255,255,255,0.06)' }}>
+        <a href="/" style={{ fontFamily: 'Georgia, serif', fontSize: 16, color: '#c9a96e', letterSpacing: 4, textTransform: 'uppercase' as const, textDecoration: 'none', fontWeight: 300 }}>Cave de Gilbert</a>
+        <div style={{ display: 'flex', gap: 28, fontSize: 11, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const }}>
+          <a href="/boutique" style={{ color: 'inherit', textDecoration: 'none' }}>Vins</a>
+          <a href="/boutique?couleur=champagne" style={{ color: 'inherit', textDecoration: 'none' }}>Champagnes</a>
+          <a href="/boutique?couleur=spiritueux" style={{ color: 'inherit', textDecoration: 'none' }}>Spiritueux</a>
+        </div>
+        <a href="/panier" style={{ fontSize: 11, color: '#c9a96e', textDecoration: 'none', letterSpacing: 1.5, border: '0.5px solid rgba(201,169,110,0.4)', padding: '8px 16px', borderRadius: 2 }}>
+          Panier
+        </a>
+      </nav>
+
+      {/* Breadcrumb */}
+      <div style={{ padding: '12px 40px', fontSize: 11, color: 'rgba(232,224,213,0.3)', letterSpacing: 0.5 }}>
+        <a href="/" style={{ color: 'inherit', textDecoration: 'none' }}>Accueil</a>
+        <span style={{ margin: '0 8px' }}>·</span>
+        <a href="/boutique" style={{ color: 'inherit', textDecoration: 'none' }}>Boutique</a>
+        <span style={{ margin: '0 8px' }}>·</span>
+        <span style={{ color: '#c9a96e' }}>{product.nom}</span>
+      </div>
+
+      {/* Corps principal */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', maxWidth: 1200, margin: '0 auto', padding: '40px 40px 80px' }}>
+
+        {/* ── COLONNE GAUCHE : Visuel ── */}
+        <div style={{ position: 'sticky' as const, top: 32, alignSelf: 'start' }}>
+
+          {/* Étiquette couleur */}
+          <div style={{ display: 'inline-block', fontSize: 10, letterSpacing: 2.5, color: accent, textTransform: 'uppercase' as const, border: `0.5px solid ${accent}40`, padding: '4px 12px', borderRadius: 2, marginBottom: 24 }}>
+            {COULEUR_LABEL[product.couleur] || product.couleur}
+            {product.region && ` · ${product.region}`}
+          </div>
+
+          {/* Image / Bouteille placeholder */}
+          <div style={{ background: '#100d0a', borderRadius: 8, padding: '60px 40px', textAlign: 'center' as const, marginBottom: 24, border: '0.5px solid rgba(255,255,255,0.05)', minHeight: 420, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {product.image_url ? (
+              <img src={product.image_url} alt={product.nom} style={{ maxHeight: 380, maxWidth: '100%', objectFit: 'contain' }} />
+            ) : (
+              <svg width="140" height="360" viewBox="0 0 140 360" fill="none">
+                {/* Capsule */}
+                <rect x="52" y="12" width="36" height="24" rx="4" fill={accent} opacity="0.7" />
+                {/* Col */}
+                <path d="M52 34 L52 90 Q52 105 44 115 L38 128 L102 128 L96 115 Q88 105 88 90 L88 34 Z" fill="#1c1408" />
+                {/* Corps */}
+                <rect x="28" y="128" width="84" height="200" rx="5" fill="#1a1208" />
+                {/* Étiquette */}
+                <rect x="32" y="148" width="76" height="158" rx="3" fill="#f5efd8" />
+                <rect x="36" y="152" width="68" height="150" rx="2" fill="#faf5e4" />
+                <rect x="40" y="158" width="60" height="0.5" fill={accent} />
+                <text x="70" y="174" textAnchor="middle" fontFamily="Georgia, serif" fontSize="7" fill="#1a0f04" letterSpacing="1">{product.domaine || 'Domaine'}</text>
+                <text x="70" y="195" textAnchor="middle" fontFamily="Georgia, serif" fontSize="8.5" fill="#1a0f04" fontWeight="bold">{(product.nom || '').slice(0, 18)}</text>
+                {product.millesime && (
+                  <>
+                    <rect x="52" y="205" width="36" height="14" rx="1" fill="#1a0f04" />
+                    <text x="70" y="216" textAnchor="middle" fontFamily="Georgia, serif" fontSize="9" fill={accent} letterSpacing="2">{product.millesime}</text>
+                  </>
+                )}
+                <text x="70" y="280" textAnchor="middle" fontSize="6" fill="#8a7355">75 cl</text>
+                <rect x="40" y="288" width="60" height="0.5" fill={accent} />
+                {/* Base */}
+                <path d="M28 328 Q28 340 38 344 L102 344 Q112 340 112 328 L112 324 L28 324 Z" fill="#120e08" />
+                {/* Reflet */}
+                <path d="M32 140 L32 320" stroke="rgba(255,255,255,0.03)" strokeWidth="3" />
+              </svg>
+            )}
+          </div>
+
+          {/* Badges */}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
+            {product.bio && (
+              <span style={{ fontSize: 10, letterSpacing: 1, color: '#6ec96e', border: '0.5px solid rgba(110,201,110,0.3)', padding: '4px 10px', borderRadius: 2 }}>
+                🌿 Agriculture biologique
+              </span>
+            )}
+            {product.ia_generated && (
+              <span style={{ fontSize: 10, letterSpacing: 1, color: 'rgba(175,169,236,0.7)', border: '0.5px solid rgba(175,169,236,0.2)', padding: '4px 10px', borderRadius: 2 }}>
+                ✦ Fiche IA
+              </span>
+            )}
+            {product.stock_statut === 'alerte' && (
+              <span style={{ fontSize: 10, letterSpacing: 1, color: '#c9b06e', border: '0.5px solid rgba(201,176,110,0.3)', padding: '4px 10px', borderRadius: 2 }}>
+                ⚠ Dernières bouteilles
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* ── COLONNE DROITE : Infos ── */}
+        <div style={{ paddingLeft: 60 }}>
+
+          {/* Titre */}
+          <div style={{ fontSize: 10, letterSpacing: 2, color: 'rgba(232,224,213,0.35)', marginBottom: 8 }}>
+            {product.appellation || product.region || ''}
+          </div>
+          <h1 style={{ fontFamily: 'Georgia, serif', fontSize: 36, fontWeight: 300, color: '#f0e8d8', lineHeight: 1.1, marginBottom: 6 }}>
+            {product.nom}
+          </h1>
+          <div style={{ fontFamily: 'Georgia, serif', fontSize: 16, fontStyle: 'italic', color: 'rgba(232,224,213,0.4)', marginBottom: 28 }}>
+            {product.domaine}{product.millesime ? `, ${product.millesime}` : ''}
+          </div>
+
+          {/* Onglets */}
+          <div style={{ display: 'flex', borderBottom: '0.5px solid rgba(255,255,255,0.08)', marginBottom: 28 }}>
+            {(['description', 'degustation', 'service'] as const).map(tab => (
+              <button key={tab} onClick={() => setActiveTab(tab)} style={{
+                background: 'transparent', border: 'none', borderBottom: `1.5px solid ${activeTab === tab ? accent : 'transparent'}`,
+                color: activeTab === tab ? accent : 'rgba(232,224,213,0.35)',
+                padding: '10px 16px', fontSize: 10, letterSpacing: 2, cursor: 'pointer',
+                textTransform: 'uppercase' as const, marginBottom: -1,
+              }}>
+                {tab === 'description' ? 'Description' : tab === 'degustation' ? 'Dégustation' : 'Service'}
+              </button>
+            ))}
+          </div>
+
+          {/* Tab : Description */}
+          {activeTab === 'description' && (
+            <div>
+              {product.description_courte && (
+                <p style={{ fontFamily: 'Georgia, serif', fontSize: 16, fontStyle: 'italic', color: '#e8e0d5', lineHeight: 1.6, marginBottom: 16 }}>
+                  « {product.description_courte} »
+                </p>
+              )}
+              {product.description_longue && (
+                <p style={{ fontSize: 13, color: 'rgba(232,224,213,0.55)', lineHeight: 1.8, marginBottom: 24, fontWeight: 300 }}>
+                  {product.description_longue}
+                </p>
+              )}
+
+              {/* Caractéristiques techniques */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                {[
+                  { label: 'Appellation', value: product.appellation },
+                  { label: 'Région', value: product.region },
+                  { label: 'Domaine', value: product.domaine },
+                  { label: 'Millésime', value: product.millesime },
+                  { label: 'Cépage(s)', value: product.cepages?.join(', ') },
+                  { label: 'Alcool', value: product.alcool ? `${product.alcool}% vol.` : null },
+                ].filter(i => i.value).map(({ label, value }) => (
+                  <div key={label} style={{ borderTop: '0.5px solid rgba(255,255,255,0.06)', paddingTop: 12 }}>
+                    <div style={{ fontSize: 9, letterSpacing: 2, color: 'rgba(232,224,213,0.3)', textTransform: 'uppercase' as const, marginBottom: 4 }}>{label}</div>
+                    <div style={{ fontSize: 13, color: '#e8e0d5' }}>{value}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Tab : Dégustation */}
+          {activeTab === 'degustation' && (
+            <div>
+              {product.aromes?.length > 0 && (
+                <div style={{ marginBottom: 24 }}>
+                  <div style={{ fontSize: 9, letterSpacing: 2, color: 'rgba(232,224,213,0.3)', textTransform: 'uppercase' as const, marginBottom: 12 }}>Arômes & saveurs</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 6 }}>
+                    {product.aromes.map((a: string) => (
+                      <span key={a} style={{ border: `0.5px solid ${accent}40`, borderRadius: 2, padding: '4px 10px', fontSize: 11, color: `${accent}cc`, letterSpacing: 0.5 }}>
+                        {a}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Profil gustatif */}
+              {(product.acidite || product.corps || product.tanins) && (
+                <div style={{ marginBottom: 24 }}>
+                  <div style={{ fontSize: 9, letterSpacing: 2, color: 'rgba(232,224,213,0.3)', textTransform: 'uppercase' as const, marginBottom: 16 }}>Profil gustatif</div>
+                  <ProfilBar label="Acidité" value={product.acidite} />
+                  <ProfilBar label="Tanins" value={product.tanins} />
+                  <ProfilBar label="Corps" value={product.corps} />
+                  <ProfilBar label="Minéralité" value={product.mineralite} />
+                  <ProfilBar label="Sucrosité" value={product.sucrosite} />
+                  <ProfilBar label="Longueur" value={product.longueur} />
+                  <ProfilBar label="Complexité" value={product.complexite} />
+                </div>
+              )}
+
+              {/* Accords */}
+              {product.accords?.length > 0 && (
+                <div>
+                  <div style={{ fontSize: 9, letterSpacing: 2, color: 'rgba(232,224,213,0.3)', textTransform: 'uppercase' as const, marginBottom: 12 }}>Accords mets & vins</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 8 }}>
+                    {product.accords.map((a: string) => (
+                      <span key={a} style={{ fontSize: 12, color: 'rgba(232,224,213,0.6)' }}>
+                        {a}
+                      </span>
+                    )).reduce((acc: any[], el: any, i: number) => i === 0 ? [el] : [...acc, <span key={`sep-${i}`} style={{ color: 'rgba(232,224,213,0.2)' }}>·</span>, el], [])}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Tab : Service */}
+          {activeTab === 'service' && (
+            <div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 24 }}>
+                {[
+                  {
+                    icon: '🌡', label: 'Température de service',
+                    value: product.temp_service_min && product.temp_service_max
+                      ? `${product.temp_service_min} — ${product.temp_service_max} °C`
+                      : null
+                  },
+                  {
+                    icon: '⏱', label: 'Décantation',
+                    value: product.decantation_min ? `${product.decantation_min} min` : 'Non nécessaire'
+                  },
+                  {
+                    icon: '🍷', label: 'Type de verre',
+                    value: product.type_verre
+                  },
+                  {
+                    icon: '📅', label: 'Apogée',
+                    value: product.apogee_debut && product.apogee_fin
+                      ? `${product.apogee_debut} — ${product.apogee_fin}`
+                      : null
+                  },
+                ].filter(i => i.value).map(({ icon, label, value }) => (
+                  <div key={label} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 5, padding: '16px' }}>
+                    <div style={{ fontSize: 20, marginBottom: 8 }}>{icon}</div>
+                    <div style={{ fontSize: 9, letterSpacing: 2, color: 'rgba(232,224,213,0.3)', textTransform: 'uppercase' as const, marginBottom: 4 }}>{label}</div>
+                    <div style={{ fontSize: 14, color: '#e8e0d5' }}>{value}</div>
+                  </div>
+                ))}
+              </div>
+
+              {product.apogee_debut && (
+                <div style={{ padding: '14px 16px', background: `${accent}10`, border: `0.5px solid ${accent}30`, borderRadius: 4 }}>
+                  <div style={{ fontSize: 11, color: accent }}>
+                    {new Date().getFullYear() < product.apogee_debut
+                      ? `Ce vin sera à son apogée dans ${product.apogee_debut - new Date().getFullYear()} ans. Il peut se garder encore.`
+                      : new Date().getFullYear() > product.apogee_fin
+                      ? `Ce vin a dépassé son apogée. Consommez rapidement.`
+                      : `Ce vin est actuellement à son apogée. C'est le moment idéal pour le déguster.`
+                    }
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Séparateur */}
+          <div style={{ height: '0.5px', background: 'rgba(255,255,255,0.07)', margin: '32px 0' }} />
+
+          {/* Prix + Panier */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 20 }}>
+            <div>
+              <span style={{ fontFamily: 'Georgia, serif', fontSize: 44, fontWeight: 300, color: '#f0e8d8' }}>
+                {product.prix_vente_ttc?.toFixed(2)}
+              </span>
+              <span style={{ fontSize: 16, color: 'rgba(232,224,213,0.4)', marginLeft: 4 }}>€</span>
+              <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.3)', marginTop: 2 }}>
+                Prix TTC · 75 cl
+                {product.stock_total > 0 && (
+                  <span style={{ marginLeft: 12, color: product.stock_statut === 'alerte' ? '#c9b06e' : '#6ec96e' }}>
+                    ● {product.stock_statut === 'alerte' ? 'Dernières bouteilles' : 'En stock'}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Sélecteur quantité */}
+            <div style={{ display: 'flex', alignItems: 'center', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 3 }}>
+              <button onClick={() => setQty(q => Math.max(1, q - 1))} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.5)', width: 36, height: 44, cursor: 'pointer', fontSize: 18 }}>−</button>
+              <span style={{ width: 32, textAlign: 'center' as const, fontSize: 14 }}>{qty}</span>
+              <button onClick={() => setQty(q => q + 1)} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.5)', width: 36, height: 44, cursor: 'pointer', fontSize: 18 }}>+</button>
+            </div>
+          </div>
+
+          {/* Boutons action */}
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button
+              onClick={handleAddToCart}
+              disabled={!disponible}
+              style={{
+                flex: 1, padding: '14px 20px',
+                background: addedToCart ? '#2a4a2a' : disponible ? accent : '#333',
+                color: addedToCart ? '#6ec96e' : disponible ? '#0d0a08' : '#888',
+                border: 'none', borderRadius: 3, fontSize: 11, letterSpacing: 2,
+                textTransform: 'uppercase' as const, cursor: disponible ? 'pointer' : 'not-allowed',
+                fontWeight: 500, transition: 'all 0.2s',
+              }}
+            >
+              {addedToCart ? '✓ Ajouté au panier' : !disponible ? 'Rupture de stock' : 'Ajouter au panier'}
+            </button>
+            <button style={{
+              background: 'transparent', border: '0.5px solid rgba(255,255,255,0.15)',
+              color: 'rgba(232,224,213,0.5)', borderRadius: 3, padding: '14px 16px', cursor: 'pointer', fontSize: 16,
+            }}>♡</button>
+          </div>
+
+          {/* Livraison */}
+          <div style={{ marginTop: 16, fontSize: 11, color: 'rgba(232,224,213,0.3)', display: 'flex', gap: 20 }}>
+            <span>🚚 Livraison gratuite dès 150€</span>
+            <span>📦 Expédition sous 24h</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── PRODUITS SIMILAIRES ── */}
+      {similaires.length > 0 && (
+        <div style={{ padding: '48px 40px', borderTop: '0.5px solid rgba(255,255,255,0.06)' }}>
+          <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 22, fontWeight: 300, color: '#f0e8d8', marginBottom: 32, textAlign: 'center' as const }}>
+            Dans le même esprit
+          </h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 20, maxWidth: 1200, margin: '0 auto' }}>
+            {similaires.map(p => (
+              <a key={p.id} href={`/boutique/${p.slug}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+                <div style={{ background: '#18130e', border: '0.5px solid rgba(255,255,255,0.06)', borderRadius: 6, padding: '24px 20px', textAlign: 'center' as const, transition: 'border-color 0.2s' }}
+                  onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(201,169,110,0.3)')}
+                  onMouseLeave={e => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)')}
+                >
+                  <div style={{ fontSize: 9, letterSpacing: 2, color: COULEUR_ACCENT[p.couleur] || '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 8 }}>
+                    {COULEUR_LABEL[p.couleur] || p.couleur}
+                  </div>
+                  <div style={{ fontFamily: 'Georgia, serif', fontSize: 14, color: '#f0e8d8', marginBottom: 4 }}>{p.nom}</div>
+                  <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', marginBottom: 12 }}>{p.domaine}{p.millesime ? ` · ${p.millesime}` : ''}</div>
+                  <div style={{ fontSize: 18, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{p.prix_vente_ttc?.toFixed(2)}€</div>
+                </div>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Footer */}
+      <footer style={{ padding: '32px 40px', borderTop: '0.5px solid rgba(255,255,255,0.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ fontFamily: 'Georgia, serif', fontSize: 14, color: '#c9a96e', letterSpacing: 3, textTransform: 'uppercase' as const }}>Cave de Gilbert</div>
+        <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.25)' }}>La vente d'alcool aux mineurs est interdite</div>
+      </footer>
+    </div>
+  )
+}
