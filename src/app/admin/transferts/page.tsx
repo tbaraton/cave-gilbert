@@ -66,7 +66,6 @@ function NouveauTransfert({ sites, onCreated, onCancel }: {
       .from('stock')
       .select('quantite, product:products(id, nom, millesime, couleur)')
       .eq('site_id', sourceId)
-      .gt('quantite', 0)
       .ilike('products.nom', `%${search}%`)
       .limit(20)
     setProduits((data || []).filter(d => d.product))
