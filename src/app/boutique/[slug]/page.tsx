@@ -6,22 +6,21 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
-export default async function ProductPage({ params }: { params: { slug: string } }) {
+export default async function ProductPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params
+
   const { data: product, error } = await supabase
     .from('products')
     .select('*')
-    .eq('slug', params.slug)
+    .eq('slug', slug)
     .single()
 
-  // Page de debug — affiche ce qui se passe
   if (!product) {
     return (
       <div style={{ background: '#0d0a08', color: '#e8e0d5', padding: '40px', fontFamily: 'monospace' }}>
         <h1 style={{ color: '#c96e6e' }}>Produit non trouvé</h1>
-        <p>Slug recherché : <strong>{params.slug}</strong></p>
-        <p>Erreur Supabase : <strong>{error?.message || 'aucune'}</strong></p>
-        <p>Code erreur : <strong>{error?.code || 'aucun'}</strong></p>
-        <p>URL Supabase : <strong>{process.env.NEXT_PUBLIC_SUPABASE_URL ? 'définie' : 'MANQUANTE'}</strong></p>
+        <p>Slug recherché : <strong>{slug}</strong></p>
+        <p>Erreur : <strong>{error?.message}</strong></p>
       </div>
     )
   }
@@ -40,6 +39,5 @@ export default async function ProductPage({ params }: { params: { slug: string }
     .neq('id', product.id)
     .limit(4)
 
-  const productComplet = { ...product, ...tastingNote }
-  return <ProductPageClient product={productComplet} similaires={similaires || []} />
+  return <ProductPageClient product={{ ...product, ...tastingNote }} similaires={similaires || []} />
 }
