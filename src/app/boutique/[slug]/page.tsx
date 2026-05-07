@@ -7,7 +7,8 @@ const supabase = createClient(
 )
 
 export default async function ProductPage(props: any) {
-  const slug = props.params?.slug || 'inconnu'
+  const params = await props.params
+  const slug = params?.slug || 'inconnu'
 
   const { data: products } = await supabase
     .from('products')
@@ -22,10 +23,23 @@ export default async function ProductPage(props: any) {
       <div style={{ background: '#0d0a08', color: '#e8e0d5', padding: '40px', fontFamily: 'monospace' }}>
         <h1 style={{ color: '#c96e6e' }}>Produit non trouvé</h1>
         <p>Slug reçu : <strong>"{slug}"</strong></p>
-        <p>Props : <strong>{JSON.stringify(Object.keys(props))}</strong></p>
       </div>
     )
   }
 
-  return <ProductPageClient product={product} similaires={[]} />
+  const { data: tastingNote } = await supabase
+    .from('tasting_notes')
+    .select('*')
+    .eq('product_id', product.id)
+    .single()
+
+  const { data: similaires } = await supabase
+    .from('products')
+    .select('id, nom, millesime, couleur, prix_vente_ttc, image_url, slug')
+    .eq('couleur', product.couleur)
+    .eq('actif', true)
+    .neq('id', product.id)
+    .limit(4)
+
+  return <ProductPageClient product={{ ...product, ...tastingNote }} similaires={similaires || []} />
 }
