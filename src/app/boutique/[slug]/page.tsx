@@ -22,7 +22,7 @@ export default async function ProductPage(props: any) {
       <div style={{ background: '#0d0a08', color: '#e8e0d5', padding: '40px', fontFamily: 'monospace' }}>
         <h1 style={{ color: '#c96e6e' }}>Produit non trouvé</h1>
         <p>Slug reçu : <strong>"{slug}"</strong></p>
-        <p>Props reçus : <strong>{JSON.stringify(Object.keys(props))}</strong></p>
+        <p>Props : <strong>{JSON.stringify(Object.keys(props))}</strong></p>
       </div>
     )
   }
