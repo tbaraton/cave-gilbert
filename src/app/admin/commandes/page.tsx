@@ -12,11 +12,9 @@ type View = 'besoins' | 'commandes' | 'reception' | 'detail' | 'associer'
 
 const STATUT_CMD: Record<string, { bg: string; color: string; label: string }> = {
   brouillon:  { bg: '#222',    color: '#888',    label: 'Brouillon' },
-  envoyee:    { bg: '#2a2a1e', color: '#c9b06e', label: 'Envoyée' },
-  confirmee:  { bg: '#1e1e2a', color: '#6e9ec9', label: 'Confirmée' },
-  en_transit: { bg: '#1e1e2a', color: '#6e9ec9', label: 'En transit' },
-  recue:      { bg: '#1e2a1e', color: '#6ec96e', label: 'Reçue ✓' },
-  annulee:    { bg: '#2a1e1e', color: '#c96e6e', label: 'Annulée' },
+  'envoyé':   { bg: '#2a2a1e', color: '#c9b06e', label: 'Envoyée' },
+  'reçue':    { bg: '#1e2a1e', color: '#6ec96e', label: 'Reçue ✓' },
+  'annulé':   { bg: '#2a1e1e', color: '#c96e6e', label: 'Annulée' },
 }
 
 const COULEURS = ['rouge','blanc','rosé','champagne','effervescent','spiritueux','autre']
@@ -840,7 +838,7 @@ function VueCommandes({ onSelectDetail }: { onSelectDetail: (cmd: any) => void }
       </div>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' as const }}>
-        {['tous', 'brouillon', 'envoyee', 'annulee'].map(s => (
+        {['tous', 'brouillon', 'envoyé', 'annulé'].map(s => (
           <button key={s} onClick={() => setFilterStatut(s)} style={{
             background: filterStatut === s ? 'rgba(201,169,110,0.15)' : 'transparent',
             border: `0.5px solid ${filterStatut === s ? 'rgba(201,169,110,0.4)' : 'rgba(255,255,255,0.1)'}`,
@@ -929,7 +927,7 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
     const subject = `Commande ${commande.numero} — Cave de Gilbert`
     const mailBody = `Bonjour,\n\nVeuillez trouver notre commande ${commande.numero} :\n\n${body}\n\nTotal HT : ${totalHT.toFixed(2)}€\n\nCordialement,\nLa Cave de Gilbert`
     window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(mailBody)}`)
-    await supabase.from('supplier_orders').update({ statut: 'envoyee' }).eq('id', commande.id)
+    await supabase.from('supplier_orders').update({ statut: 'envoyé' }).eq('id', commande.id)
     onRefresh()
     onBack()
   }
@@ -952,7 +950,7 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
       }
     }
     await supabase.from('supplier_orders').update({
-      statut: 'recue',
+      statut: 'reçue',
       date_livraison_effective: new Date().toISOString().split('T')[0]
     }).eq('id', commande.id)
     setProcessing(false)
@@ -976,14 +974,14 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
 
       {!showReception && (
         <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' as const }}>
-          {['brouillon', 'envoyee', 'confirmee'].includes(statutLocal) && (
+          {['brouillon', 'envoyé', 'envoyé'].includes(statutLocal) && (
             <button onClick={handleSendEmail} style={{ background: '#1e1e2a', border: '0.5px solid rgba(110,158,201,0.4)', color: '#6e9ec9', borderRadius: 4, padding: '10px 18px', fontSize: 11, cursor: 'pointer', letterSpacing: 1 }}>
               📧 Envoyer par email
             </button>
           )}
           {statutLocal === 'brouillon' && (
             <button onClick={async () => {
-              const { error } = await supabase.from('supplier_orders').update({ statut: 'envoyee' }).eq('id', commande.id)
+              const { error } = await supabase.from('supplier_orders').update({ statut: 'envoyé' }).eq('id', commande.id)
               if (!error) {
                 onRefresh()
                 onBack()
@@ -992,13 +990,13 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
               ✓ Valider (téléphone / visuel)
             </button>
           )}
-          {['envoyee', 'confirmee', 'en_transit'].includes(statutLocal) && (
+          {['envoyé', 'envoyé', 'envoyé'].includes(statutLocal) && (
             <button onClick={() => setShowReception(true)} style={{ background: '#1e2a1e', border: '0.5px solid rgba(110,201,110,0.4)', color: '#6ec96e', borderRadius: 4, padding: '10px 18px', fontSize: 11, cursor: 'pointer', letterSpacing: 1 }}>
               📦 Réceptionner
             </button>
           )}
           {statutLocal === 'brouillon' && (
-            <button onClick={async () => { await supabase.from('supplier_orders').update({ statut: 'annulee' }).eq('id', commande.id); onRefresh(); onBack() }} style={{ background: 'transparent', border: '0.5px solid rgba(201,110,110,0.3)', color: '#c96e6e', borderRadius: 4, padding: '10px 14px', fontSize: 11, cursor: 'pointer' }}>Annuler</button>
+            <button onClick={async () => { await supabase.from('supplier_orders').update({ statut: 'annulé' }).eq('id', commande.id); onRefresh(); onBack() }} style={{ background: 'transparent', border: '0.5px solid rgba(201,110,110,0.3)', color: '#c96e6e', borderRadius: 4, padding: '10px 14px', fontSize: 11, cursor: 'pointer' }}>Annuler</button>
           )}
         </div>
       )}
@@ -1198,7 +1196,7 @@ function VueReception({ onRefresh }: { onRefresh: () => void }) {
       const [{ data: cmds }, { data: sitesData }] = await Promise.all([
         supabase.from('supplier_orders')
           .select('*, fournisseur:domaines(id, nom), items:supplier_order_items(id)')
-          .eq('statut', 'envoyee')
+          .eq('statut', 'envoyé')
           .order('created_at', { ascending: false }),
         supabase.from('sites').select('*').eq('actif', true).order('type'),
       ])
@@ -1277,7 +1275,7 @@ function VueReception({ onRefresh }: { onRefresh: () => void }) {
     }
 
     await supabase.from('supplier_orders').update({
-      statut: 'recue',
+      statut: 'reçue',
       date_livraison_effective: new Date().toISOString().split('T')[0],
     }).eq('id', selectedCmd.id)
 
@@ -1500,7 +1498,7 @@ export default function AdminCommandesPage() {
     const [{ count: cB }, { count: cC }, { count: cR }] = await Promise.all([
       supabase.from('order_needs').select('*', { count: 'exact', head: true }).eq('statut', 'en_attente'),
       supabase.from('supplier_orders').select('*', { count: 'exact', head: true }).in('statut', ['brouillon']),
-      supabase.from('supplier_orders').select('*', { count: 'exact', head: true }).eq('statut', 'envoyee'),
+      supabase.from('supplier_orders').select('*', { count: 'exact', head: true }).eq('statut', 'envoyé'),
     ])
     setCounts({ besoins: cB || 0, commandes: cC || 0, reception: cR || 0 })
   }, [])
