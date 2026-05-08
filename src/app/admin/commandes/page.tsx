@@ -929,27 +929,35 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
     window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(mailBody)}`)
     await supabase.from('supplier_orders').update({ statut: 'envoyee' }).eq('id', commande.id)
     onRefresh()
+    window.location.reload()
   }
 
   const handleReception = async () => {
     setProcessing(true)
+    let stockErreur = false
     for (const item of items) {
       const qty = qtesRecues[item.id] ?? item.quantite_commandee
       if (qty <= 0) continue
       await supabase.from('supplier_order_items').update({ quantite_recue: qty }).eq('id', item.id)
       if (siteReception) {
-        await supabase.rpc('move_stock', {
+        const { error } = await supabase.rpc('move_stock', {
           p_product_id: item.product_id, p_site_id: siteReception,
           p_raison: 'achat', p_quantite: qty,
           p_note: `Réception ${commande.numero}`,
           p_order_id: null, p_transfer_id: null,
         })
+        if (error) stockErreur = true
       }
     }
-    await supabase.from('supplier_orders').update({ statut: 'recue', date_livraison_effective: new Date().toISOString().split('T')[0] }).eq('id', commande.id)
+    await supabase.from('supplier_orders').update({
+      statut: 'recue',
+      date_livraison_effective: new Date().toISOString().split('T')[0]
+    }).eq('id', commande.id)
     setProcessing(false)
+    setShowReception(false)
     onRefresh()
-    onBack()
+    // Recharger la page pour afficher le statut "Reçue"
+    window.location.reload()
   }
 
   const totalHT = items.reduce((acc, i) => acc + (parseFloat(i.prix_achat_ht || 0) * i.quantite_commandee), 0)
@@ -976,8 +984,12 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
           {commande.statut === 'brouillon' && (
             <button onClick={async () => {
               await supabase.from('supplier_orders').update({ statut: 'envoyee' }).eq('id', commande.id)
+              // Mettre à jour le statut localement sans quitter la page
+              commande.statut = 'envoyee'
               onRefresh()
-              onBack()
+              // Forcer le re-render
+              setShowReception(false)
+              window.location.reload()
             }} style={{ background: '#1e2a1e', border: '0.5px solid rgba(110,201,110,0.3)', color: '#6ec96e', borderRadius: 4, padding: '10px 18px', fontSize: 11, cursor: 'pointer', letterSpacing: 1 }}>
               ✓ Valider (téléphone / visuel)
             </button>
