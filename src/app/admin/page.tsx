@@ -568,7 +568,7 @@ export default function AdminPage() {
         { data: tirs },
         { data: kegs },
       ] = await Promise.all([
-        supabase.from('products').select('id, nom, millesime, couleur, prix_vente_ttc, actif, bio, ia_generated, domaine_id, slug').eq('actif', true).order('nom'),
+        supabase.from('products').select('id, nom, millesime, couleur, prix_vente_ttc, actif, bio, ia_generated, domaine_id, slug').eq('actif', true).order('nom').limit(5000),
         supabase.from('v_stock_par_site').select('*'),
         supabase.from('sites').select('*').eq('actif', true).order('nom'),
         supabase.from('beer_rentals').select(`
