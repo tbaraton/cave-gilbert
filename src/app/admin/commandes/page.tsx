@@ -930,8 +930,8 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
     const mailBody = `Bonjour,\n\nVeuillez trouver notre commande ${commande.numero} :\n\n${body}\n\nTotal HT : ${totalHT.toFixed(2)}€\n\nCordialement,\nLa Cave de Gilbert`
     window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(mailBody)}`)
     await supabase.from('supplier_orders').update({ statut: 'envoyee' }).eq('id', commande.id)
-    setStatutLocal('envoyee')
     onRefresh()
+    onBack()
   }
 
   const handleReception = async () => {
@@ -956,9 +956,8 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
       date_livraison_effective: new Date().toISOString().split('T')[0]
     }).eq('id', commande.id)
     setProcessing(false)
-    setShowReception(false)
-    setStatutLocal('recue')
     onRefresh()
+    onBack()
   }
 
   const totalHT = items.reduce((acc, i) => acc + (parseFloat(i.prix_achat_ht || 0) * i.quantite_commandee), 0)
@@ -984,9 +983,11 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
           )}
           {statutLocal === 'brouillon' && (
             <button onClick={async () => {
-              await supabase.from('supplier_orders').update({ statut: 'envoyee' }).eq('id', commande.id)
-              setStatutLocal('envoyee')
-              onRefresh()
+              const { error } = await supabase.from('supplier_orders').update({ statut: 'envoyee' }).eq('id', commande.id)
+              if (!error) {
+                onRefresh()
+                onBack()
+              }
             }} style={{ background: '#1e2a1e', border: '0.5px solid rgba(110,201,110,0.3)', color: '#6ec96e', borderRadius: 4, padding: '10px 18px', fontSize: 11, cursor: 'pointer', letterSpacing: 1 }}>
               ✓ Valider (téléphone / visuel)
             </button>
