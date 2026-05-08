@@ -8,7 +8,7 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
-type View = 'besoins' | 'commandes' | 'detail' | 'associer'
+type View = 'besoins' | 'commandes' | 'reception' | 'detail' | 'associer'
 
 const STATUT_CMD: Record<string, { bg: string; color: string; label: string }> = {
   brouillon:  { bg: '#222',    color: '#888',    label: 'Brouillon' },
@@ -389,8 +389,9 @@ function Sidebar({ view, setView, counts }: { view: View; setView: (v: View) => 
         <div style={{ height: '0.5px', background: 'rgba(255,255,255,0.06)', margin: '8px 0' }} />
         <div style={{ padding: '8px 20px', fontSize: 9, letterSpacing: 2, color: 'rgba(232,224,213,0.25)', textTransform: 'uppercase' as const }}>Commandes</div>
         {[
-          { id: 'besoins',   label: 'Besoins',   icon: '◻', count: counts.besoins },
-          { id: 'commandes', label: 'Commandes', icon: '◈', count: counts.commandes },
+          { id: 'besoins',   label: 'Besoins',    icon: '◻', count: counts.besoins },
+          { id: 'commandes', label: 'Commandes',  icon: '◈', count: counts.commandes },
+          { id: 'reception', label: 'Réception',  icon: '📦', count: counts.reception },
           { id: 'associer',  label: 'Assoc. fournisseurs', icon: '⬥' },
         ].map(item => (
           <button key={item.id} onClick={() => setView(item.id as View)} style={{
@@ -839,7 +840,7 @@ function VueCommandes({ onSelectDetail }: { onSelectDetail: (cmd: any) => void }
       </div>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' as const }}>
-        {['tous', 'brouillon', 'envoyee', 'confirmee', 'en_transit', 'recue', 'annulee'].map(s => (
+        {['tous', 'brouillon', 'envoyee', 'annulee'].map(s => (
           <button key={s} onClick={() => setFilterStatut(s)} style={{
             background: filterStatut === s ? 'rgba(201,169,110,0.15)' : 'transparent',
             border: `0.5px solid ${filterStatut === s ? 'rgba(201,169,110,0.4)' : 'rgba(255,255,255,0.1)'}`,
@@ -1172,19 +1173,334 @@ function AssocierRow({ produit, domaines, saving, success, onSave }: {
   )
 }
 
+
+// ── Vue Réception ─────────────────────────────────────────────
+
+function VueReception({ onRefresh }: { onRefresh: () => void }) {
+  const [commandesEnvoyees, setCommandesEnvoyees] = useState<any[]>([])
+  const [selectedCmd, setSelectedCmd] = useState<any>(null)
+  const [items, setItems] = useState<any[]>([])
+  const [sites, setSites] = useState<any[]>([])
+  const [siteReception, setSiteReception] = useState('')
+  const [qtesRecues, setQtesRecues] = useState<Record<string, number>>({})
+  const [searchProd, setSearchProd] = useState('')
+  const [searchProdRes, setSearchProdRes] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [processing, setProcessing] = useState(false)
+  const [success, setSuccess] = useState('')
+  const [error, setError] = useState('')
+  const [showForm, setShowForm] = useState(false)
+
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true)
+      const [{ data: cmds }, { data: sitesData }] = await Promise.all([
+        supabase.from('supplier_orders')
+          .select('*, fournisseur:domaines(id, nom), items:supplier_order_items(id)')
+          .eq('statut', 'envoyee')
+          .order('created_at', { ascending: false }),
+        supabase.from('sites').select('*').eq('actif', true).order('type'),
+      ])
+      setCommandesEnvoyees(cmds || [])
+      setSites(sitesData || [])
+      const entrepot = sitesData?.find((s: any) => s.type === 'entrepot')
+      setSiteReception(entrepot?.id || sitesData?.[0]?.id || '')
+      setLoading(false)
+    }
+    load()
+  }, [])
+
+  const selectCommande = async (cmd: any) => {
+    setSelectedCmd(cmd)
+    setError('')
+    setSuccess('')
+    const { data } = await supabase
+      .from('supplier_order_items')
+      .select('*, product:products(id, nom, millesime, couleur)')
+      .eq('order_id', cmd.id)
+    const itemsData = data || []
+    setItems(itemsData)
+    const init: Record<string, number> = {}
+    itemsData.forEach((item: any) => { init[item.id] = item.quantite_commandee })
+    setQtesRecues(init)
+    setShowForm(true)
+  }
+
+  const searchProducts = async (q: string) => {
+    setSearchProd(q)
+    if (q.length < 2) { setSearchProdRes([]); return }
+    const { data } = await supabase.from('products').select('id, nom, millesime, prix_achat_ht').ilike('nom', `%${q}%`).eq('actif', true).limit(10)
+    setSearchProdRes(data || [])
+  }
+
+  const addProduitSupplementaire = async (prod: any) => {
+    if (!selectedCmd) return
+    // Ajouter une ligne à la commande
+    const { data: newItem } = await supabase.from('supplier_order_items').insert({
+      order_id: selectedCmd.id,
+      product_id: prod.id,
+      product_nom: prod.nom,
+      product_millesime: prod.millesime,
+      quantite_commandee: 0,
+      prix_achat_ht: prod.prix_achat_ht || 0,
+    }).select().single()
+    if (newItem) {
+      setItems(prev => [...prev, { ...newItem, product: prod }])
+      setQtesRecues(prev => ({ ...prev, [newItem.id]: 1 }))
+    }
+    setSearchProd('')
+    setSearchProdRes([])
+  }
+
+  const handleReception = async () => {
+    if (!selectedCmd) return
+    setProcessing(true)
+    setError('')
+    let hasError = false
+
+    for (const item of items) {
+      const qty = qtesRecues[item.id] ?? 0
+      await supabase.from('supplier_order_items').update({ quantite_recue: qty }).eq('id', item.id)
+      if (qty > 0 && siteReception) {
+        const { error: stockErr } = await supabase.rpc('move_stock', {
+          p_product_id: item.product_id,
+          p_site_id: siteReception,
+          p_raison: 'achat',
+          p_quantite: qty,
+          p_note: `Réception ${selectedCmd.numero}`,
+          p_order_id: null,
+          p_transfer_id: null,
+        })
+        if (stockErr) { console.error(stockErr); hasError = true }
+      }
+    }
+
+    await supabase.from('supplier_orders').update({
+      statut: 'recue',
+      date_livraison_effective: new Date().toISOString().split('T')[0],
+    }).eq('id', selectedCmd.id)
+
+    setProcessing(false)
+    if (hasError) {
+      setError('Réception enregistrée mais certains stocks n\'ont pas pu être mis à jour.')
+    } else {
+      setSuccess(`Réception de ${selectedCmd.numero} validée ! Stock mis à jour sur ${sites.find(s => s.id === siteReception)?.nom || 'le site choisi'}.`)
+    }
+    setShowForm(false)
+    setSelectedCmd(null)
+    setCommandesEnvoyees(prev => prev.filter(c => c.id !== selectedCmd.id))
+    onRefresh()
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 }}>
+        <div>
+          <h1 style={{ fontFamily: 'Georgia, serif', fontSize: 26, fontWeight: 300, color: '#f0e8d8', marginBottom: 4 }}>Réception</h1>
+          <p style={{ fontSize: 12, color: 'rgba(232,224,213,0.35)' }}>{commandesEnvoyees.length} commande{commandesEnvoyees.length > 1 ? 's' : ''} en attente de réception</p>
+        </div>
+        {!showForm && commandesEnvoyees.length > 0 && (
+          <button onClick={() => setShowForm(true)} style={{
+            background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4,
+            padding: '11px 20px', fontSize: 11, letterSpacing: 2, cursor: 'pointer', fontWeight: 500, textTransform: 'uppercase' as const,
+          }}>📦 Créer une réception</button>
+        )}
+      </div>
+
+      {success && (
+        <div style={{ background: 'rgba(110,201,110,0.1)', border: '0.5px solid rgba(110,201,110,0.3)', borderRadius: 4, padding: '14px 18px', marginBottom: 20, fontSize: 13, color: '#6ec96e' }}>
+          ✓ {success}
+        </div>
+      )}
+      {error && (
+        <div style={{ background: 'rgba(201,110,110,0.1)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 4, padding: '14px 18px', marginBottom: 20, fontSize: 13, color: '#c96e6e' }}>
+          ⚠ {error}
+        </div>
+      )}
+
+      {loading ? <Spinner /> : commandesEnvoyees.length === 0 && !showForm ? (
+        <div style={{ ...card, textAlign: 'center' as const, padding: '48px' }}>
+          <p style={{ color: 'rgba(232,224,213,0.4)', fontSize: 14 }}>Aucune commande en attente de réception.</p>
+          <p style={{ color: 'rgba(232,224,213,0.3)', fontSize: 12, marginTop: 8 }}>Les commandes envoyées apparaîtront ici.</p>
+        </div>
+      ) : !showForm ? (
+        // Liste des commandes envoyées
+        <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 10 }}>
+          {commandesEnvoyees.map(cmd => (
+            <div key={cmd.id} style={{ ...card, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6 }}>
+                  <span style={{ fontFamily: 'monospace', fontSize: 12, color: '#c9a96e' }}>{cmd.numero}</span>
+                  <Badge statut={cmd.statut} />
+                </div>
+                <div style={{ fontSize: 15, color: '#f0e8d8', fontFamily: 'Georgia, serif', fontWeight: 300, marginBottom: 3 }}>{cmd.fournisseur?.nom}</div>
+                <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)' }}>
+                  {cmd.items?.length || 0} référence{(cmd.items?.length || 0) > 1 ? 's' : ''}
+                  {cmd.date_commande && ` · Commandée le ${new Date(cmd.date_commande).toLocaleDateString('fr-FR')}`}
+                </div>
+              </div>
+              <button onClick={() => selectCommande(cmd)} style={{
+                background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4,
+                padding: '9px 18px', fontSize: 11, cursor: 'pointer', fontWeight: 500, letterSpacing: 1,
+              }}>Réceptionner →</button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        // Formulaire de réception
+        <div>
+          {/* Choix commande */}
+          {!selectedCmd ? (
+            <div style={card}>
+              <div style={{ fontSize: 10, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 14 }}>Choisir la commande à réceptionner</div>
+              <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
+                {commandesEnvoyees.map(cmd => (
+                  <div key={cmd.id} onClick={() => selectCommande(cmd)} style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    padding: '12px 16px', background: 'rgba(255,255,255,0.03)', borderRadius: 4,
+                    cursor: 'pointer', border: '0.5px solid rgba(255,255,255,0.06)',
+                  }}
+                    onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(201,169,110,0.3)')}
+                    onMouseLeave={e => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)')}
+                  >
+                    <div>
+                      <div style={{ fontFamily: 'monospace', fontSize: 12, color: '#c9a96e' }}>{cmd.numero}</div>
+                      <div style={{ fontSize: 14, color: '#f0e8d8' }}>{cmd.fournisseur?.nom}</div>
+                      <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)' }}>{cmd.items?.length || 0} réf.</div>
+                    </div>
+                    <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>Sélectionner →</span>
+                  </div>
+                ))}
+              </div>
+              <button onClick={() => setShowForm(false)} style={{ marginTop: 16, background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.4)', fontSize: 11, cursor: 'pointer', padding: 0 }}>← Annuler</button>
+            </div>
+          ) : (
+            // Formulaire de saisie des quantités
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                <div>
+                  <div style={{ fontFamily: 'monospace', fontSize: 12, color: '#c9a96e', marginBottom: 4 }}>{selectedCmd.numero}</div>
+                  <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 300, color: '#f0e8d8', margin: 0 }}>{selectedCmd.fournisseur?.nom}</h2>
+                </div>
+                <button onClick={() => { setSelectedCmd(null); setShowForm(true) }} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.4)', fontSize: 11, cursor: 'pointer' }}>← Changer de commande</button>
+              </div>
+
+              {/* Site de réception */}
+              <div style={{ ...card, marginBottom: 16 }}>
+                <div style={lbl}>Site de réception (où entrer le stock)</div>
+                <select value={siteReception} onChange={e => setSiteReception(e.target.value)} style={{ ...sel, maxWidth: 350 }}>
+                  {sites.map(s => <option key={s.id} value={s.id} style={{ background: '#1a1408', color: '#f0e8d8' }}>{s.nom} — {s.ville}</option>)}
+                </select>
+              </div>
+
+              {/* Produits */}
+              <div style={{ ...card, marginBottom: 16 }}>
+                <div style={{ fontSize: 10, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 14 }}>
+                  Quantités reçues — saisissez les quantités exactes
+                </div>
+                <table style={{ width: '100%', borderCollapse: 'collapse' as const }}>
+                  <thead>
+                    <tr style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
+                      {['Produit', 'Commandé', 'Reçu (saisir)', 'Différence'].map(h => (
+                        <th key={h} style={{ padding: '8px 12px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', fontWeight: 400 }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((item, i) => {
+                      const recu = qtesRecues[item.id] ?? item.quantite_commandee
+                      const diff = recu - item.quantite_commandee
+                      return (
+                        <tr key={item.id} style={{ borderBottom: i < items.length - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none' }}>
+                          <td style={{ padding: '10px 12px' }}>
+                            <div style={{ fontSize: 13, color: '#f0e8d8' }}>{item.product_nom}</div>
+                            {item.product_millesime && <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>{item.product_millesime}</div>}
+                            {item.quantite_commandee === 0 && <div style={{ fontSize: 10, color: '#c9b06e' }}>Ajouté à la réception</div>}
+                          </td>
+                          <td style={{ padding: '10px 12px', fontSize: 13, color: 'rgba(232,224,213,0.5)' }}>
+                            {item.quantite_commandee > 0 ? `${item.quantite_commandee} btl` : '—'}
+                          </td>
+                          <td style={{ padding: '10px 12px' }}>
+                            <input
+                              type="number" min={0}
+                              value={recu}
+                              onChange={e => setQtesRecues(q => ({ ...q, [item.id]: parseInt(e.target.value) || 0 }))}
+                              style={{ width: 80, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 3, color: '#e8e0d5', fontSize: 13, padding: '5px 8px', textAlign: 'center' as const }}
+                            />
+                          </td>
+                          <td style={{ padding: '10px 12px', fontSize: 13, color: diff === 0 ? '#6ec96e' : diff > 0 ? '#c9b06e' : '#c96e6e', fontWeight: 500 }}>
+                            {item.quantite_commandee > 0 ? (diff === 0 ? '✓ Complet' : diff > 0 ? `+${diff}` : `${diff}`) : '—'}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+
+                {/* Ajouter produit supplémentaire */}
+                <div style={{ marginTop: 16, borderTop: '0.5px solid rgba(255,255,255,0.06)', paddingTop: 14 }}>
+                  <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', marginBottom: 8 }}>Ajouter un produit non prévu dans la commande :</div>
+                  <input
+                    value={searchProd}
+                    onChange={e => searchProducts(e.target.value)}
+                    placeholder="Tapez le nom d'un vin..."
+                    style={{ ...inp, maxWidth: 380 }}
+                  />
+                  {searchProdRes.length > 0 && (
+                    <div style={{ border: '0.5px solid rgba(255,255,255,0.08)', borderRadius: 4, overflow: 'hidden', marginTop: 4, maxWidth: 380 }}>
+                      {searchProdRes.map(p => (
+                        <div key={p.id} onClick={() => addProduitSupplementaire(p)} style={{
+                          display: 'flex', justifyContent: 'space-between', padding: '9px 14px',
+                          cursor: 'pointer', background: '#18130e', borderBottom: '0.5px solid rgba(255,255,255,0.04)',
+                        }}
+                          onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.03)')}
+                          onMouseLeave={e => (e.currentTarget.style.background = '#18130e')}
+                        >
+                          <span style={{ fontSize: 13, color: '#f0e8d8' }}>{p.nom}{p.millesime ? ` ${p.millesime}` : ''}</span>
+                          <span style={{ fontSize: 10, color: '#c9a96e' }}>+ Ajouter</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div style={{ display: 'flex', gap: 12 }}>
+                <button onClick={() => { setSelectedCmd(null); }} style={{ flex: 1, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '12px', fontSize: 11, cursor: 'pointer' }}>
+                  ← Retour
+                </button>
+                <button onClick={handleReception} disabled={processing} style={{
+                  flex: 3, background: '#6ec96e', color: '#0a1a0a', border: 'none', borderRadius: 4,
+                  padding: '12px', fontSize: 11, cursor: 'pointer', fontWeight: 500,
+                  letterSpacing: 1.5, textTransform: 'uppercase' as const,
+                  opacity: processing ? 0.7 : 1,
+                }}>
+                  {processing ? '⟳ Validation en cours...' : '✓ Valider la réception et mettre le stock à jour'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Page principale ──────────────────────────────────────────
 
 export default function AdminCommandesPage() {
   const [view, setView] = useState<View>('besoins')
   const [selectedCommande, setSelectedCommande] = useState<any>(null)
-  const [counts, setCounts] = useState({ besoins: 0, commandes: 0 })
+  const [counts, setCounts] = useState({ besoins: 0, commandes: 0, reception: 0 })
 
   const loadCounts = useCallback(async () => {
-    const [{ count: cB }, { count: cC }] = await Promise.all([
+    const [{ count: cB }, { count: cC }, { count: cR }] = await Promise.all([
       supabase.from('order_needs').select('*', { count: 'exact', head: true }).eq('statut', 'en_attente'),
-      supabase.from('supplier_orders').select('*', { count: 'exact', head: true }).in('statut', ['brouillon', 'envoyee', 'confirmee', 'en_transit']),
+      supabase.from('supplier_orders').select('*', { count: 'exact', head: true }).in('statut', ['brouillon']),
+      supabase.from('supplier_orders').select('*', { count: 'exact', head: true }).eq('statut', 'envoyee'),
     ])
-    setCounts({ besoins: cB || 0, commandes: cC || 0 })
+    setCounts({ besoins: cB || 0, commandes: cC || 0, reception: cR || 0 })
   }, [])
 
   useEffect(() => { loadCounts() }, [loadCounts])
@@ -1201,7 +1517,8 @@ export default function AdminCommandesPage() {
       <main style={{ marginLeft: 220, flex: 1, padding: '32px 36px' }}>
         {view === 'besoins' && <VueBesoins onRefresh={loadCounts} />}
         {view === 'commandes' && <VueCommandes onSelectDetail={handleSelectDetail} />}
-        {view === 'detail' && selectedCommande && <DetailCommande commande={selectedCommande} onBack={() => setView('commandes')} onRefresh={loadCounts} />}
+        {view === 'reception' && <VueReception onRefresh={loadCounts} />}
+        {view === 'detail' && selectedCommande && <DetailCommande commande={selectedCommande} onBack={() => { setView('commandes'); loadCounts() }} onRefresh={loadCounts} />}
         {view === 'associer' && <VueAssocierFournisseurs />}
       </main>
     </div>
