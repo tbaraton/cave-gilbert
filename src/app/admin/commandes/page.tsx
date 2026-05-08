@@ -143,8 +143,16 @@ function ModalNouveauProduit({ domaines, regions, appellations, onCreated, onClo
     setError('')
 
     // Construire les certifications — seulement les colonnes qui existent
+    // Générer un slug unique
+    const baseSlug = form.nom.trim().toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+      + (form.millesime ? '-' + form.millesime : '')
+    const uniqueSlug = baseSlug + '-' + Math.random().toString(36).substring(2, 7)
+
     const insertData: Record<string, any> = {
       nom: form.nom.trim(),
+      slug: uniqueSlug,
       millesime: form.millesime ? parseInt(form.millesime) : null,
       couleur: form.couleur,
       region_id: form.region_id || null,
