@@ -676,33 +676,166 @@ function VueBesoins({ onRefresh }: { onRefresh: () => void }) {
   )
 }
 
+// ── Modal nouvelle commande directe ──────────────────────────
+
+function ModalNouvelleCommande({ domaines, onCreated, onClose }: {
+  domaines: any[]
+  onCreated: (cmd: any) => void
+  onClose: () => void
+}) {
+  const [domaineId, setDomaineId] = useState('')
+  const [search, setSearch] = useState('')
+  const [searchRes, setSearchRes] = useState<any[]>([])
+  const [lignes, setLignes] = useState<{ product_id: string; nom: string; millesime: number | null; quantite: number; prix_achat_ht: number }[]>([])
+  const [notes, setNotes] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const searchProducts = async (q: string) => {
+    setSearch(q)
+    if (q.length < 2) { setSearchRes([]); return }
+    let query = supabase.from('products').select('id, nom, millesime, prix_achat_ht').ilike('nom', `%${q}%`).eq('actif', true).limit(15)
+    if (domaineId) {
+      const { data: ps } = await supabase.from('product_suppliers').select('product_id').eq('domaine_id', domaineId).eq('fournisseur_principal', true)
+      if (ps && ps.length > 0) {
+        const ids = ps.map(p => p.product_id)
+        query = supabase.from('products').select('id, nom, millesime, prix_achat_ht').ilike('nom', `%${q}%`).in('id', ids).limit(15)
+      }
+    }
+    const { data } = await query
+    setSearchRes(data || [])
+  }
+
+  const addLigne = (p: any) => {
+    if (lignes.find(l => l.product_id === p.id)) return
+    setLignes(l => [...l, { product_id: p.id, nom: p.nom, millesime: p.millesime, quantite: 6, prix_achat_ht: p.prix_achat_ht || 0 }])
+    setSearch('')
+    setSearchRes([])
+  }
+
+  const handleCreate = async () => {
+    if (!domaineId) { setError('Choisissez un fournisseur'); return }
+    if (lignes.length === 0) { setError('Ajoutez au moins un produit'); return }
+    setSaving(true)
+    const { data: cmd } = await supabase.from('supplier_orders').insert({
+      domaine_id: domaineId,
+      statut: 'brouillon',
+      date_commande: new Date().toISOString().split('T')[0],
+      notes,
+    }).select().single()
+    if (!cmd) { setError('Erreur création commande'); setSaving(false); return }
+    await supabase.from('supplier_order_items').insert(
+      lignes.map(l => ({ order_id: cmd.id, product_id: l.product_id, product_nom: l.nom, product_millesime: l.millesime, quantite_commandee: l.quantite, prix_achat_ht: l.prix_achat_ht }))
+    )
+    onCreated(cmd)
+  }
+
+  return (
+    <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }} onClick={onClose}>
+      <div style={{ background: '#18130e', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 8, width: '100%', maxWidth: 620, padding: '28px 32px', maxHeight: '88vh', overflowY: 'auto' as const }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+          <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 300, color: '#f0e8d8', margin: 0 }}>Nouvelle commande</h2>
+          <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.4)', fontSize: 20, cursor: 'pointer' }}>✕</button>
+        </div>
+
+        {error && <div style={{ background: 'rgba(201,110,110,0.1)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 4, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: '#c96e6e' }}>{error}</div>}
+
+        <div style={{ marginBottom: 16 }}>
+          <label style={lbl}>Fournisseur *</label>
+          <select value={domaineId} onChange={e => { setDomaineId(e.target.value); setSearch(''); setSearchRes([]) }} style={sel}>
+            <option value="" style={{ background: '#1a1408', color: '#888' }}>— Choisir un fournisseur —</option>
+            {domaines.map(d => <option key={d.id} value={d.id} style={{ background: '#1a1408', color: '#f0e8d8' }}>{d.nom}</option>)}
+          </select>
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <label style={lbl}>Ajouter des produits</label>
+          <input value={search} onChange={e => searchProducts(e.target.value)} placeholder={domaineId ? "Tapez un vin (filtrés par fournisseur)..." : "Tapez un vin..."} style={inp} />
+          {searchRes.length > 0 && (
+            <div style={{ border: '0.5px solid rgba(255,255,255,0.08)', borderRadius: 4, overflow: 'hidden', marginTop: 4 }}>
+              {searchRes.map(p => (
+                <div key={p.id} onClick={() => addLigne(p)} style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 14px', cursor: 'pointer', background: '#18130e', borderBottom: '0.5px solid rgba(255,255,255,0.04)' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.03)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = '#18130e')}
+                >
+                  <span style={{ fontSize: 13, color: '#f0e8d8' }}>{p.nom}{p.millesime ? ` ${p.millesime}` : ''}</span>
+                  <span style={{ fontSize: 10, color: 'rgba(232,224,213,0.4)' }}>+ Ajouter</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {lignes.length > 0 && (
+          <div style={{ background: 'rgba(255,255,255,0.02)', borderRadius: 4, border: '0.5px solid rgba(255,255,255,0.06)', marginBottom: 16, overflow: 'hidden' }}>
+            {lignes.map((l, i) => (
+              <div key={l.product_id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderBottom: i < lignes.length - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none' }}>
+                <span style={{ flex: 1, fontSize: 13, color: '#f0e8d8' }}>{l.nom}{l.millesime ? ` ${l.millesime}` : ''}</span>
+                <input
+                  type="number" min={1} value={l.quantite}
+                  onChange={e => setLignes(ls => ls.map(x => x.product_id === l.product_id ? { ...x, quantite: parseInt(e.target.value) || 1 } : x))}
+                  style={{ width: 70, background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 3, color: '#e8e0d5', fontSize: 13, padding: '4px 8px', textAlign: 'center' as const }}
+                />
+                <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.3)' }}>btl</span>
+                <button onClick={() => setLignes(ls => ls.filter(x => x.product_id !== l.product_id))} style={{ background: 'transparent', border: 'none', color: '#c96e6e', cursor: 'pointer', fontSize: 14 }}>✕</button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{ marginBottom: 20 }}>
+          <label style={lbl}>Notes (optionnel)</label>
+          <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Ex: Commande passée par téléphone le..." style={{ ...inp, resize: 'vertical' as const }} />
+        </div>
+
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={onClose} style={{ flex: 1, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '11px', fontSize: 11, cursor: 'pointer' }}>Annuler</button>
+          <button onClick={handleCreate} disabled={saving || lignes.length === 0 || !domaineId} style={{ flex: 2, background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '11px', fontSize: 11, letterSpacing: 2, cursor: 'pointer', fontWeight: 500, textTransform: 'uppercase' as const, opacity: (lignes.length === 0 || !domaineId) ? 0.5 : 1 }}>
+            {saving ? '⟳ Création...' : `✓ Créer la commande (${lignes.length} produit${lignes.length > 1 ? 's' : ''})`}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Vue Commandes ─────────────────────────────────────────────
 
 function VueCommandes({ onSelectDetail }: { onSelectDetail: (cmd: any) => void }) {
   const [commandes, setCommandes] = useState<any[]>([])
+  const [domaines, setDomaines] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [filterStatut, setFilterStatut] = useState('tous')
+  const [showNouvelleCommande, setShowNouvelleCommande] = useState(false)
+
+  const loadCommandes = async () => {
+    setLoading(true)
+    const { data } = await supabase
+      .from('supplier_orders')
+      .select('*, fournisseur:domaines(id, nom), items:supplier_order_items(id)')
+      .order('created_at', { ascending: false })
+    setCommandes(data || [])
+    setLoading(false)
+  }
 
   useEffect(() => {
-    const load = async () => {
-      setLoading(true)
-      const { data } = await supabase
-        .from('supplier_orders')
-        .select('*, fournisseur:domaines(id, nom), items:supplier_order_items(id)')
-        .order('created_at', { ascending: false })
-      setCommandes(data || [])
-      setLoading(false)
-    }
-    load()
+    loadCommandes()
+    supabase.from('domaines').select('id, nom').order('nom').then(({ data }) => setDomaines(data || []))
   }, [])
 
   const filtered = commandes.filter(c => filterStatut === 'tous' || c.statut === filterStatut)
 
   return (
     <div>
-      <div style={{ marginBottom: 28 }}>
-        <h1 style={{ fontFamily: 'Georgia, serif', fontSize: 26, fontWeight: 300, color: '#f0e8d8', marginBottom: 4 }}>Commandes fournisseurs</h1>
-        <p style={{ fontSize: 12, color: 'rgba(232,224,213,0.35)' }}>{commandes.length} commande{commandes.length > 1 ? 's' : ''}</p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 }}>
+        <div>
+          <h1 style={{ fontFamily: 'Georgia, serif', fontSize: 26, fontWeight: 300, color: '#f0e8d8', marginBottom: 4 }}>Commandes fournisseurs</h1>
+          <p style={{ fontSize: 12, color: 'rgba(232,224,213,0.35)' }}>{commandes.length} commande{commandes.length > 1 ? 's' : ''}</p>
+        </div>
+        <button onClick={() => setShowNouvelleCommande(true)} style={{
+          background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4,
+          padding: '11px 20px', fontSize: 11, letterSpacing: 2, cursor: 'pointer', fontWeight: 500, textTransform: 'uppercase' as const,
+        }}>+ Nouvelle commande</button>
       </div>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' as const }}>
@@ -719,6 +852,9 @@ function VueCommandes({ onSelectDetail }: { onSelectDetail: (cmd: any) => void }
       {loading ? <Spinner /> : filtered.length === 0 ? (
         <div style={{ ...card, textAlign: 'center' as const, padding: '48px' }}>
           <p style={{ color: 'rgba(232,224,213,0.4)', fontSize: 14 }}>Aucune commande.</p>
+          <button onClick={() => setShowNouvelleCommande(true)} style={{ background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '10px 20px', fontSize: 11, cursor: 'pointer', fontWeight: 500, letterSpacing: 1.5, marginTop: 12 }}>
+            + Créer la première commande
+          </button>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 10 }}>
@@ -743,6 +879,14 @@ function VueCommandes({ onSelectDetail }: { onSelectDetail: (cmd: any) => void }
             </div>
           ))}
         </div>
+      )}
+
+      {showNouvelleCommande && (
+        <ModalNouvelleCommande
+          domaines={domaines}
+          onCreated={(cmd) => { loadCommandes(); setShowNouvelleCommande(false); onSelectDetail(cmd) }}
+          onClose={() => setShowNouvelleCommande(false)}
+        />
       )}
     </div>
   )
@@ -823,10 +967,19 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
       </div>
 
       {!showReception && (
-        <div style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
+        <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' as const }}>
           {['brouillon', 'envoyee', 'confirmee'].includes(commande.statut) && (
             <button onClick={handleSendEmail} style={{ background: '#1e1e2a', border: '0.5px solid rgba(110,158,201,0.4)', color: '#6e9ec9', borderRadius: 4, padding: '10px 18px', fontSize: 11, cursor: 'pointer', letterSpacing: 1 }}>
               📧 Envoyer par email
+            </button>
+          )}
+          {commande.statut === 'brouillon' && (
+            <button onClick={async () => {
+              await supabase.from('supplier_orders').update({ statut: 'envoyee' }).eq('id', commande.id)
+              onRefresh()
+              onBack()
+            }} style={{ background: '#1e2a1e', border: '0.5px solid rgba(110,201,110,0.3)', color: '#6ec96e', borderRadius: 4, padding: '10px 18px', fontSize: 11, cursor: 'pointer', letterSpacing: 1 }}>
+              ✓ Valider (téléphone / visuel)
             </button>
           )}
           {['envoyee', 'confirmee', 'en_transit'].includes(commande.statut) && (
