@@ -395,7 +395,7 @@ export default function AdminPage() {
         { data: tirs },
         { data: kegs },
       ] = await Promise.all([
-        supabase.from('v_catalogue').select('*').order('nom'),
+        supabase.from('products').select('id, nom, millesime, couleur, prix_vente_ttc, actif, bio, ia_generated, domaine_id, slug').eq('actif', true).order('nom'),
         supabase.from('v_stock_par_site').select('*'),
         supabase.from('sites').select('*').eq('actif', true).order('nom'),
         supabase.from('beer_rentals').select(`
@@ -432,8 +432,8 @@ export default function AdminPage() {
 
   const stats = {
     references: produits.filter(p => p.actif).length,
-    stockTotal: produits.reduce((acc, p) => acc + (p.stock_total || 0), 0),
-    ruptures: produits.filter(p => p.stock_statut === 'rupture' && p.actif).length,
+    stockTotal: stockParSite.reduce((acc: number, s: any) => acc + (s.quantite || 0), 0),
+    ruptures: stockParSite.filter((s: any) => s.stock_statut === 'rupture').length,
     locationsActives: locations.filter(l => ['confirmée', 'en_cours'].includes(l.statut)).length,
   }
 
@@ -452,8 +452,7 @@ export default function AdminPage() {
   })
 
   const produitsFiltres = produits.filter(p =>
-    p.nom?.toLowerCase().includes(search.toLowerCase()) ||
-    p.domaine?.toLowerCase().includes(search.toLowerCase())
+    p.nom?.toLowerCase().includes(search.toLowerCase())
   )
 
   // ── Navigation ───────────────────────────────────────────
@@ -628,7 +627,7 @@ export default function AdminPage() {
                       <tr key={p.id} style={{ borderBottom: i < produitsFiltres.length - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none', opacity: p.actif ? 1 : 0.5 }}>
                         <td style={{ padding: '14px 16px' }}>
                           <div style={{ fontSize: 13, color: '#f0e8d8', marginBottom: 2 }}>{p.nom}</div>
-                          <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)' }}>{p.domaine}</div>
+                          <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)' }}>{p.domaine || ''}</div>
                           {p.ia_generated && <span style={{ fontSize: 9, color: 'rgba(175,169,236,0.6)', letterSpacing: 1 }}>✦ IA</span>}
                         </td>
                         <td style={{ padding: '14px 16px' }}>
@@ -636,7 +635,7 @@ export default function AdminPage() {
                         </td>
                         <td style={{ padding: '14px 16px', fontSize: 13, color: 'rgba(232,224,213,0.6)' }}>{p.millesime || '—'}</td>
                         <td style={{ padding: '14px 16px', fontSize: 14, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{p.prix_vente_ttc}€</td>
-                        <td style={{ padding: '14px 16px' }}><StockDot qty={p.stock_total || 0} /></td>
+                        <td style={{ padding: '14px 16px' }}><StockDot qty={stockParSite.filter((s: any) => s.product_id === p.id).reduce((acc: number, s: any) => acc + (s.quantite || 0), 0)} /></td>
                         <td style={{ padding: '14px 16px' }}>
                           <Badge label={p.actif ? 'Actif' : 'Inactif'} bg={p.actif ? '#1e2a1e' : '#2a2a2a'} color={p.actif ? '#6ec96e' : '#888'} />
                         </td>
@@ -878,7 +877,7 @@ export default function AdminPage() {
       </main>
 
       {/* Modals */}
-      {showModalProduit && (
+      {showModalProduit && sites.length > 0 && (
         <ModalAjoutProduit sites={sites} onClose={() => setShowModalProduit(false)} onSaved={loadData} />
       )}
       {showModalMouvement && (
