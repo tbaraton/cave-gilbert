@@ -1505,15 +1505,18 @@ function VueReception({ onRefresh }: { onRefresh: () => void }) {
         regions={regions}
         appellations={appellations}
         onCreated={async (product: any, _domaineId: string, _prixHT: string, _conditionnement: string) => {
-          if (!product) return
-          const { data: newItem } = await supabase.from('supplier_order_items').insert({
-            order_id: selectedCmd.id,
+          if (!product || !product.id) { console.error('Product null or missing id'); return }
+          const cmdId = selectedCmd?.id
+          if (!cmdId) { console.error('selectedCmd null'); return }
+          const { data: newItem, error: insertErr } = await supabase.from('supplier_order_items').insert({
+            order_id: cmdId,
             product_id: product.id,
-            product_nom: product.nom,
-            product_millesime: product.millesime,
+            product_nom: product.nom || '',
+            product_millesime: product.millesime || null,
             quantite_commandee: 0,
             prix_achat_ht: product.prix_achat_ht || 0,
           }).select().single()
+          if (insertErr) { console.error('Insert error:', insertErr.message, insertErr.code); }
           if (newItem) {
             setItems((prev: any[]) => [...prev, { ...newItem, product }])
             setQtesRecues((prev: Record<string, number>) => ({ ...prev, [newItem.id]: 1 }))
