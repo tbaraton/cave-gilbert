@@ -647,6 +647,14 @@ export default function AdminPage() {
     { id: 'biere',      label: 'Stock fûts',        icon: '◉' },
   ]
 
+  const navLinks = [
+    { label: 'Clients',       href: '/admin/clients',       icon: '◎' },
+    { label: 'Fournisseurs',  href: '/admin/fournisseurs',  icon: '◈' },
+    { label: 'Commandes',     href: '/admin/commandes',     icon: '◻' },
+    { label: 'Transferts',    href: '/admin/transferts',    icon: '⇄' },
+    { label: 'Import',        href: '/admin/import',        icon: '↑' },
+  ]
+
   const inputStyle = {
     background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.12)',
     borderRadius: 4, color: '#e8e0d5', fontSize: 13, padding: '9px 12px',
@@ -661,7 +669,8 @@ export default function AdminPage() {
           <div style={{ fontFamily: 'Georgia, serif', fontSize: 15, color: '#c9a96e', letterSpacing: 3, textTransform: 'uppercase' as const, fontWeight: 300 }}>Cave de Gilbert</div>
           <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.3)', letterSpacing: 1.5, marginTop: 3 }}>ADMINISTRATION</div>
         </div>
-        <nav style={{ flex: 1, padding: '16px 0' }}>
+        <nav style={{ flex: 1, padding: '16px 0', overflowY: 'auto' as const }}>
+          <div style={{ fontSize: 9, letterSpacing: 2, color: 'rgba(232,224,213,0.25)', padding: '4px 20px 8px', textTransform: 'uppercase' as const }}>Catalogue & Stock</div>
           {navItems.map(({ id, label, icon }) => (
             <button key={id} onClick={() => setSection(id)} style={{
               width: '100%', textAlign: 'left' as const,
@@ -674,6 +683,22 @@ export default function AdminPage() {
             }}>
               <span style={{ fontSize: 14 }}>{icon}</span>{label}
             </button>
+          ))}
+          <div style={{ height: '0.5px', background: 'rgba(255,255,255,0.06)', margin: '10px 0' }} />
+          <div style={{ fontSize: 9, letterSpacing: 2, color: 'rgba(232,224,213,0.25)', padding: '4px 20px 8px', textTransform: 'uppercase' as const }}>Gestion</div>
+          {navLinks.map(({ href, label, icon }) => (
+            <a key={href} href={href} style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '10px 20px', fontSize: 12, letterSpacing: 0.5,
+              color: 'rgba(232,224,213,0.45)',
+              borderLeft: '2px solid transparent',
+              textDecoration: 'none',
+            }}
+              onMouseEnter={e => { e.currentTarget.style.color = '#c9a96e'; e.currentTarget.style.background = 'rgba(201,169,110,0.05)' }}
+              onMouseLeave={e => { e.currentTarget.style.color = 'rgba(232,224,213,0.45)'; e.currentTarget.style.background = 'transparent' }}
+            >
+              <span style={{ fontSize: 14 }}>{icon}</span>{label}
+            </a>
           ))}
         </nav>
         <div style={{ padding: '16px 20px', borderTop: '0.5px solid rgba(255,255,255,0.06)' }}>
