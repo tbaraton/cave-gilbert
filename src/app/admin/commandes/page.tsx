@@ -1189,19 +1189,29 @@ function VueReception({ onRefresh }: { onRefresh: () => void }) {
   const [success, setSuccess] = useState('')
   const [error, setError] = useState('')
   const [showForm, setShowForm] = useState(false)
+  const [showNouveauProduit, setShowNouveauProduit] = useState(false)
+  const [domaines, setDomaines] = useState<any[]>([])
+  const [regions, setRegions] = useState<any[]>([])
+  const [appellations, setAppellations] = useState<any[]>([])
 
   useEffect(() => {
     const load = async () => {
       setLoading(true)
-      const [{ data: cmds }, { data: sitesData }] = await Promise.all([
+      const [{ data: cmds }, { data: sitesData }, { data: domainesData }, { data: regionsData }, { data: appellationsData }] = await Promise.all([
         supabase.from('supplier_orders')
           .select('*, fournisseur:domaines(id, nom), items:supplier_order_items(id)')
           .eq('statut', 'envoyée')
           .order('created_at', { ascending: false }),
         supabase.from('sites').select('*').eq('actif', true).order('type'),
+        supabase.from('domaines').select('id, nom').order('nom'),
+        supabase.from('regions').select('id, nom').order('nom'),
+        supabase.from('appellations').select('id, nom, region_id').order('nom'),
       ])
       setCommandesEnvoyees(cmds || [])
       setSites(sitesData || [])
+      setDomaines(domainesData || [])
+      setRegions(regionsData || [])
+      setAppellations(appellationsData || [])
       const entrepot = sitesData?.find((s: any) => s.type === 'entrepot')
       setSiteReception(entrepot?.id || sitesData?.[0]?.id || '')
       setLoading(false)
@@ -1438,15 +1448,22 @@ function VueReception({ onRefresh }: { onRefresh: () => void }) {
 
                 {/* Ajouter produit supplémentaire */}
                 <div style={{ marginTop: 16, borderTop: '0.5px solid rgba(255,255,255,0.06)', paddingTop: 14 }}>
-                  <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', marginBottom: 8 }}>Ajouter un produit non prévu dans la commande :</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                    <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>Produit non prévu dans la commande :</div>
+                    <button onClick={() => setShowNouveauProduit(true)} style={{
+                      background: 'transparent', border: '0.5px solid rgba(201,169,110,0.3)',
+                      color: '#c9a96e', borderRadius: 4, padding: '6px 12px', fontSize: 11,
+                      cursor: 'pointer', letterSpacing: 0.5,
+                    }}>+ Créer un nouveau produit</button>
+                  </div>
                   <input
                     value={searchProd}
                     onChange={e => searchProducts(e.target.value)}
-                    placeholder="Tapez le nom d'un vin..."
-                    style={{ ...inp, maxWidth: 380 }}
+                    placeholder="Rechercher un produit existant..."
+                    style={{ ...inp, maxWidth: 420 }}
                   />
                   {searchProdRes.length > 0 && (
-                    <div style={{ border: '0.5px solid rgba(255,255,255,0.08)', borderRadius: 4, overflow: 'hidden', marginTop: 4, maxWidth: 380 }}>
+                    <div style={{ border: '0.5px solid rgba(255,255,255,0.08)', borderRadius: 4, overflow: 'hidden', marginTop: 4, maxWidth: 420 }}>
                       {searchProdRes.map(p => (
                         <div key={p.id} onClick={() => addProduitSupplementaire(p)} style={{
                           display: 'flex', justifyContent: 'space-between', padding: '9px 14px',
@@ -1482,6 +1499,31 @@ function VueReception({ onRefresh }: { onRefresh: () => void }) {
           )}
         </div>
       )}
+
+    {showNouveauProduit && selectedCmd && (
+      <ModalNouveauProduit
+        domaines={domaines}
+        regions={regions}
+        appellations={appellations}
+        onCreated={async (product: any) => {
+          const { data: newItem } = await supabase.from('supplier_order_items').insert({
+            order_id: selectedCmd.id,
+            product_id: product.id,
+            product_nom: product.nom,
+            product_millesime: product.millesime,
+            quantite_commandee: 0,
+            prix_achat_ht: product.prix_achat_ht || 0,
+          }).select().single()
+          if (newItem) {
+            setItems((prev: any[]) => [...prev, { ...newItem, product }])
+            setQtesRecues((prev: Record<string, number>) => ({ ...prev, [newItem.id]: 1 }))
+          }
+          setShowNouveauProduit(false)
+        }}
+        onClose={() => setShowNouveauProduit(false)}
+      />
+    )}
+
     </div>
   )
 }
