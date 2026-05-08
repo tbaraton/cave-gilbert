@@ -902,6 +902,7 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
   const [processing, setProcessing] = useState(false)
   const [qtesRecues, setQtesRecues] = useState<Record<string, number>>({})
   const [showReception, setShowReception] = useState(false)
+  const [statutLocal, setStatutLocal] = useState(commande.statut)
 
   useEffect(() => {
     const load = async () => {
@@ -928,8 +929,8 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
     const mailBody = `Bonjour,\n\nVeuillez trouver notre commande ${commande.numero} :\n\n${body}\n\nTotal HT : ${totalHT.toFixed(2)}€\n\nCordialement,\nLa Cave de Gilbert`
     window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(mailBody)}`)
     await supabase.from('supplier_orders').update({ statut: 'envoyee' }).eq('id', commande.id)
+    setStatutLocal('envoyee')
     onRefresh()
-    window.location.reload()
   }
 
   const handleReception = async () => {
@@ -955,9 +956,8 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
     }).eq('id', commande.id)
     setProcessing(false)
     setShowReception(false)
+    setStatutLocal('recue')
     onRefresh()
-    // Recharger la page pour afficher le statut "Reçue"
-    window.location.reload()
   }
 
   const totalHT = items.reduce((acc, i) => acc + (parseFloat(i.prix_achat_ht || 0) * i.quantite_commandee), 0)
@@ -971,35 +971,31 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
           <h1 style={{ fontFamily: 'Georgia, serif', fontSize: 24, fontWeight: 300, color: '#f0e8d8', margin: 0 }}>{commande.fournisseur?.nom || '—'}</h1>
           {commande.date_commande && <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', marginTop: 4 }}>Commandé le {new Date(commande.date_commande).toLocaleDateString('fr-FR')}</div>}
         </div>
-        <Badge statut={commande.statut} />
+        <Badge statut={statutLocal} />
       </div>
 
       {!showReception && (
         <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' as const }}>
-          {['brouillon', 'envoyee', 'confirmee'].includes(commande.statut) && (
+          {['brouillon', 'envoyee', 'confirmee'].includes(statutLocal) && (
             <button onClick={handleSendEmail} style={{ background: '#1e1e2a', border: '0.5px solid rgba(110,158,201,0.4)', color: '#6e9ec9', borderRadius: 4, padding: '10px 18px', fontSize: 11, cursor: 'pointer', letterSpacing: 1 }}>
               📧 Envoyer par email
             </button>
           )}
-          {commande.statut === 'brouillon' && (
+          {statutLocal === 'brouillon' && (
             <button onClick={async () => {
               await supabase.from('supplier_orders').update({ statut: 'envoyee' }).eq('id', commande.id)
-              // Mettre à jour le statut localement sans quitter la page
-              commande.statut = 'envoyee'
+              setStatutLocal('envoyee')
               onRefresh()
-              // Forcer le re-render
-              setShowReception(false)
-              window.location.reload()
             }} style={{ background: '#1e2a1e', border: '0.5px solid rgba(110,201,110,0.3)', color: '#6ec96e', borderRadius: 4, padding: '10px 18px', fontSize: 11, cursor: 'pointer', letterSpacing: 1 }}>
               ✓ Valider (téléphone / visuel)
             </button>
           )}
-          {['envoyee', 'confirmee', 'en_transit'].includes(commande.statut) && (
+          {['envoyee', 'confirmee', 'en_transit'].includes(statutLocal) && (
             <button onClick={() => setShowReception(true)} style={{ background: '#1e2a1e', border: '0.5px solid rgba(110,201,110,0.4)', color: '#6ec96e', borderRadius: 4, padding: '10px 18px', fontSize: 11, cursor: 'pointer', letterSpacing: 1 }}>
               📦 Réceptionner
             </button>
           )}
-          {commande.statut === 'brouillon' && (
+          {statutLocal === 'brouillon' && (
             <button onClick={async () => { await supabase.from('supplier_orders').update({ statut: 'annulee' }).eq('id', commande.id); onRefresh(); onBack() }} style={{ background: 'transparent', border: '0.5px solid rgba(201,110,110,0.3)', color: '#c96e6e', borderRadius: 4, padding: '10px 14px', fontSize: 11, cursor: 'pointer' }}>Annuler</button>
           )}
         </div>
