@@ -1249,7 +1249,7 @@ function VueReception({ onRefresh }: { onRefresh: () => void }) {
       product_id: prod.id,
       product_nom: prod.nom,
       product_millesime: prod.millesime,
-      quantite_commandee: 0,
+      quantite_commandee: 1,
       prix_achat_ht: prod.prix_achat_ht || 0,
     }).select().single()
     if (newItem) {
@@ -1513,7 +1513,7 @@ function VueReception({ onRefresh }: { onRefresh: () => void }) {
             product_id: product.id,
             product_nom: product.nom || '',
             product_millesime: product.millesime || null,
-            quantite_commandee: 0,
+            quantite_commandee: 1,
             prix_achat_ht: product.prix_achat_ht || 0,
           }).select().single()
           if (insertErr) { console.error('Insert error:', insertErr.message, insertErr.code); }
