@@ -14,7 +14,7 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
-type ImportType = 'produits' | 'clients' | 'fournisseurs'
+type ImportType = 'produits' | 'clients' | 'fournisseurs' | 'associations' | 'associations'
 type Step = 'choose' | 'upload' | 'preview' | 'importing' | 'done'
 
 type ImportResult = {
@@ -166,6 +166,124 @@ function StatCard({ value, label, color }: { value: number; label: string; color
   )
 }
 
+
+// ── Association automatique produits → fournisseurs ──────────
+
+function VueAssociations() {
+  const [status, setStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
+  const [result, setResult] = useState<{ importes: number; ignores: number; erreurs: number } | null>(null)
+  const [error, setError] = useState('')
+
+  const handleAssociation = async () => {
+    setStatus('loading')
+    setError('')
+    try {
+      // Charger le CSV de mapping
+      const res = await fetch('/mapping_produits_fournisseurs.csv')
+      if (!res.ok) throw new Error('Fichier de mapping introuvable — uploadez-le dans /public/')
+      const text = await res.text()
+      
+      // Parser le CSV
+      const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter(l => l.trim())
+      const sep = lines[0].includes(';') ? ';' : ','
+      const headers = lines[0].split(sep).map(h => h.trim().toLowerCase())
+      const rows = lines.slice(1).map(line => {
+        const vals = line.split(sep).map(v => v.trim().replace(/^"|"$/g, ''))
+        const row: Record<string, string> = {}
+        headers.forEach((h, i) => { row[h] = vals[i] || '' })
+        return row
+      })
+
+      // Appeler l'API
+      const apiRes = await fetch('/api/import/associations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows }),
+      })
+      const data = await apiRes.json()
+      if (!apiRes.ok) throw new Error(data.error || 'Erreur API')
+      
+      setResult({ importes: data.importes, ignores: data.ignores, erreurs: data.erreurs })
+      setStatus('done')
+    } catch (e: any) {
+      setError(e.message)
+      setStatus('error')
+    }
+  }
+
+  const card = { background: '#18130e', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 6, padding: '24px' } as React.CSSProperties
+
+  return (
+    <div style={{ maxWidth: 600 }}>
+      <div style={{ marginBottom: 28 }}>
+        <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 22, fontWeight: 300, color: '#f0e8d8', marginBottom: 8 }}>
+          Association produits → fournisseurs
+        </h2>
+        <p style={{ fontSize: 13, color: 'rgba(232,224,213,0.4)', lineHeight: 1.6 }}>
+          Lance l'association automatique de vos {3527} produits avec leurs fournisseurs 
+          depuis votre export logiciel. L'opération peut prendre 30 à 60 secondes.
+        </p>
+      </div>
+
+      {error && (
+        <div style={{ background: 'rgba(201,110,110,0.1)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 4, padding: '12px 16px', marginBottom: 20, fontSize: 12, color: '#c96e6e' }}>
+          {error}
+        </div>
+      )}
+
+      {status === 'done' && result && (
+        <div style={{ ...card, marginBottom: 20 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, textAlign: 'center' as const }}>
+            <div>
+              <div style={{ fontSize: 32, color: '#6ec96e', fontFamily: 'Georgia, serif' }}>{result.importes}</div>
+              <div style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.35)', textTransform: 'uppercase' as const, marginTop: 4 }}>Associés</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 32, color: '#888', fontFamily: 'Georgia, serif' }}>{result.ignores}</div>
+              <div style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.35)', textTransform: 'uppercase' as const, marginTop: 4 }}>Ignorés</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 32, color: result.erreurs > 0 ? '#c96e6e' : '#888', fontFamily: 'Georgia, serif' }}>{result.erreurs}</div>
+              <div style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.35)', textTransform: 'uppercase' as const, marginTop: 4 }}>Erreurs</div>
+            </div>
+          </div>
+          {result.importes > 0 && (
+            <div style={{ marginTop: 16, padding: '10px 14px', background: 'rgba(110,201,110,0.08)', borderRadius: 4, fontSize: 12, color: '#6ec96e' }}>
+              ✓ {result.importes} produits maintenant associés à leur fournisseur
+            </div>
+          )}
+        </div>
+      )}
+
+      <button onClick={handleAssociation} disabled={status === 'loading'} style={{
+        background: status === 'loading' ? '#2a2a1e' : '#c9a96e',
+        color: status === 'loading' ? '#c9b06e' : '#0d0a08',
+        border: 'none', borderRadius: 4, padding: '14px 28px',
+        fontSize: 11, letterSpacing: 2, cursor: status === 'loading' ? 'not-allowed' : 'pointer',
+        fontWeight: 500, textTransform: 'uppercase' as const, width: '100%',
+      }}>
+        {status === 'loading' ? '⟳ Association en cours... (30-60s)' : '⬥ Lancer l\'association automatique'}
+      </button>
+
+      <div style={{ marginTop: 20, ...card }}>
+        <div style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.35)', textTransform: 'uppercase' as const, marginBottom: 12 }}>Comment ça fonctionne</div>
+        {[
+          'Charge le fichier de mapping (4138 paires produit → fournisseur)',
+          'Compare les noms de produits en ignorant les majuscules et guillemets spéciaux',
+          'Recherche le fournisseur correspondant dans la table domaines',
+          'Crée l\'association dans product_suppliers',
+          'Les produits déjà associés sont ignorés',
+        ].map((s, i) => (
+          <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 8 }}>
+            <span style={{ color: '#c9a96e', fontSize: 12, flexShrink: 0 }}>{i + 1}.</span>
+            <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>{s}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ── Page principale ──────────────────────────────────────────
 
 export default function ImportPage() {
@@ -302,11 +420,30 @@ export default function ImportPage() {
               <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>{cfg.description}</div>
             </button>
           ))}
+          <button onClick={() => { setImportType('associations' as any); setStep('upload') }} style={{
+              background: '#18130e', border: '0.5px solid rgba(201,169,110,0.2)',
+              borderRadius: 8, padding: '28px 24px', cursor: 'pointer', textAlign: 'left' as const,
+            }}
+              onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(201,169,110,0.5)')}
+              onMouseLeave={e => (e.currentTarget.style.borderColor = 'rgba(201,169,110,0.2)')}
+            >
+              <div style={{ fontSize: 24, color: '#c9a96e', marginBottom: 12 }}>⇄</div>
+              <div style={{ fontSize: 16, color: '#f0e8d8', fontFamily: 'Georgia, serif', fontWeight: 300, marginBottom: 4 }}>Associations</div>
+              <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>Produits ↔ Fournisseurs</div>
+            </button>
+        </div>
+      )}
+
+      {/* ── ÉTAPE 2 : Upload (associations spécial) ── */}
+      {step === 'upload' && (importType as string) === 'associations' && (
+        <div style={{ maxWidth: 600 }}>
+          <button onClick={() => setStep('choose')} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.4)', fontSize: 11, cursor: 'pointer', marginBottom: 16, padding: 0 }}>← Retour</button>
+          <VueAssociations />
         </div>
       )}
 
       {/* ── ÉTAPE 2 : Upload ── */}
-      {step === 'upload' && config && (
+      {step === 'upload' && config && (importType as string) !== 'associations' && (
         <div style={{ maxWidth: 680 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
             <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 300, color: '#f0e8d8' }}>
