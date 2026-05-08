@@ -362,6 +362,169 @@ function ModalMouvement({ produits, sites, onClose, onSaved }: {
   )
 }
 
+
+// ── Modal Édition Produit ────────────────────────────────────
+
+function ModalEditProduit({ produit, onClose, onSaved }: {
+  produit: any
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [form, setForm] = useState({
+    nom: produit.nom || '',
+    millesime: produit.millesime?.toString() || '',
+    couleur: produit.couleur || 'rouge',
+    prix_vente_ttc: produit.prix_vente_ttc?.toString() || '',
+    prix_vente_pro: produit.prix_vente_pro?.toString() || '',
+    prix_achat_ht: produit.prix_achat_ht?.toString() || '',
+    description_courte: produit.description_courte || '',
+    image_url: produit.image_url || '',
+    bio: produit.bio || false,
+    vegan: produit.vegan || false,
+    casher: produit.casher || false,
+    naturel: produit.naturel || false,
+    biodynamique: produit.biodynamique || false,
+    actif: produit.actif !== false,
+  })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const handleSave = async () => {
+    if (!form.nom.trim()) { setError('Le nom est obligatoire'); return }
+    if (!form.prix_vente_ttc) { setError('Le prix TTC est obligatoire'); return }
+    setSaving(true)
+    setError('')
+    const { error: err } = await supabase.from('products').update({
+      nom: form.nom.trim(),
+      millesime: form.millesime ? parseInt(form.millesime) : null,
+      couleur: form.couleur,
+      prix_vente_ttc: parseFloat(form.prix_vente_ttc),
+      prix_vente_pro: form.prix_vente_pro ? parseFloat(form.prix_vente_pro) : null,
+      prix_achat_ht: form.prix_achat_ht ? parseFloat(form.prix_achat_ht) : null,
+      description_courte: form.description_courte || null,
+      image_url: form.image_url || null,
+      bio: form.bio,
+      vegan: form.vegan,
+      casher: form.casher,
+      naturel: form.naturel,
+      biodynamique: form.biodynamique,
+      actif: form.actif,
+    }).eq('id', produit.id)
+    if (err) { setError(err.message); setSaving(false); return }
+    onSaved()
+    onClose()
+  }
+
+  const inp = { width: '100%', background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#e8e0d5', fontSize: 13, padding: '9px 12px', boxSizing: 'border-box' as const }
+  const lbl = { fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, display: 'block', marginBottom: 6 }
+  const sel = { ...inp, background: '#1a1408', border: '0.5px solid rgba(201,169,110,0.3)', cursor: 'pointer' }
+
+  const CERTIFS = [
+    { key: 'bio', label: '🌿 Bio' },
+    { key: 'vegan', label: '🌱 Vegan' },
+    { key: 'casher', label: '✡ Casher' },
+    { key: 'naturel', label: '🍃 Naturel' },
+    { key: 'biodynamique', label: '🌙 Biodynamique' },
+  ]
+
+  return (
+    <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }} onClick={onClose}>
+      <div style={{ background: '#18130e', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 8, width: '100%', maxWidth: 640, padding: '28px 32px', maxHeight: '90vh', overflowY: 'auto' as const }} onClick={e => e.stopPropagation()}>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+          <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 300, color: '#f0e8d8', margin: 0 }}>Modifier le produit</h2>
+          <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.4)', fontSize: 20, cursor: 'pointer' }}>✕</button>
+        </div>
+
+        {error && <div style={{ background: 'rgba(201,110,110,0.1)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 4, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: '#c96e6e' }}>{error}</div>}
+
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 12, marginBottom: 14 }}>
+          <div style={{ gridColumn: '1 / -1' }}>
+            <label style={lbl}>Nom *</label>
+            <input value={form.nom} onChange={e => setForm(f => ({ ...f, nom: e.target.value }))} style={inp} />
+          </div>
+          <div>
+            <label style={lbl}>Millésime</label>
+            <input type="number" value={form.millesime} onChange={e => setForm(f => ({ ...f, millesime: e.target.value }))} placeholder="2022" style={inp} />
+          </div>
+          <div style={{ gridColumn: '2 / -1' }}>
+            <label style={lbl}>Couleur</label>
+            <select value={form.couleur} onChange={e => setForm(f => ({ ...f, couleur: e.target.value }))} style={sel}>
+              {Object.entries(COULEUR_STYLE).map(([k, v]) => (
+                <option key={k} value={k} style={{ background: '#1a1408', color: '#f0e8d8' }}>{v.label}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 14 }}>
+          <div>
+            <label style={lbl}>Prix achat HT (€)</label>
+            <input type="number" step="0.01" value={form.prix_achat_ht} onChange={e => setForm(f => ({ ...f, prix_achat_ht: e.target.value }))} placeholder="0.00" style={inp} />
+          </div>
+          <div>
+            <label style={lbl}>Prix vente TTC particulier (€) *</label>
+            <input type="number" step="0.50" value={form.prix_vente_ttc} onChange={e => setForm(f => ({ ...f, prix_vente_ttc: e.target.value }))} placeholder="0.00" style={inp} />
+          </div>
+          <div>
+            <label style={lbl}>Prix vente TTC pro (€)</label>
+            <input type="number" step="0.50" value={form.prix_vente_pro} onChange={e => setForm(f => ({ ...f, prix_vente_pro: e.target.value }))} placeholder="0.00" style={inp} />
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 14 }}>
+          <label style={lbl}>Description courte</label>
+          <textarea value={form.description_courte} onChange={e => setForm(f => ({ ...f, description_courte: e.target.value }))} rows={2}
+            style={{ ...inp, resize: 'vertical' as const }} />
+        </div>
+
+        <div style={{ marginBottom: 14 }}>
+          <label style={lbl}>URL photo</label>
+          <input value={form.image_url} onChange={e => setForm(f => ({ ...f, image_url: e.target.value }))} placeholder="https://..." style={inp} />
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <label style={lbl}>Certifications</label>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
+            {CERTIFS.map(({ key, label }) => {
+              const active = (form as any)[key]
+              return (
+                <button key={key} onClick={() => setForm(f => ({ ...f, [key]: !active }))} style={{
+                  background: active ? 'rgba(201,169,110,0.15)' : 'rgba(255,255,255,0.03)',
+                  border: `0.5px solid ${active ? 'rgba(201,169,110,0.5)' : 'rgba(255,255,255,0.1)'}`,
+                  color: active ? '#c9a96e' : 'rgba(232,224,213,0.4)',
+                  borderRadius: 20, padding: '5px 12px', fontSize: 12, cursor: 'pointer',
+                }}>{label}</button>
+              )
+            })}
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24 }}>
+          <div onClick={() => setForm(f => ({ ...f, actif: !f.actif }))} style={{
+            width: 14, height: 14, borderRadius: 2,
+            border: `0.5px solid ${form.actif ? '#c9a96e' : 'rgba(255,255,255,0.2)'}`,
+            background: form.actif ? '#c9a96e' : 'transparent',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+          }}>
+            {form.actif && <span style={{ fontSize: 9, color: '#0d0a08', fontWeight: 700 }}>✓</span>}
+          </div>
+          <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)', cursor: 'pointer' }} onClick={() => setForm(f => ({ ...f, actif: !f.actif }))}>
+            Produit actif (visible en boutique)
+          </span>
+        </div>
+
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={onClose} style={{ flex: 1, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '11px', fontSize: 11, cursor: 'pointer' }}>Annuler</button>
+          <button onClick={handleSave} disabled={saving} style={{ flex: 2, background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '11px', fontSize: 11, letterSpacing: 2, cursor: 'pointer', fontWeight: 500, textTransform: 'uppercase' as const, opacity: saving ? 0.7 : 1 }}>
+            {saving ? '⟳ Enregistrement...' : '✓ Enregistrer'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Page principale ──────────────────────────────────────────
 
 export default function AdminPage() {
@@ -380,7 +543,17 @@ export default function AdminPage() {
   // Modals
   const [showModalProduit, setShowModalProduit] = useState(false)
   const [showModalMouvement, setShowModalMouvement] = useState(false)
+  const [selectedProduit, setSelectedProduit] = useState<any>(null)
   const [search, setSearch] = useState('')
+  const [sortCol, setSortCol] = useState<string>('nom')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+
+  const handleSort = (col: string) => {
+    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortCol(col); setSortDir('asc') }
+  }
+
+  const sortIcon = (col: string) => sortCol === col ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ' ·'
 
   // ── Chargement des données ───────────────────────────────
 
@@ -451,9 +624,17 @@ export default function AdminPage() {
     return { ...p, parSite }
   })
 
-  const produitsFiltres = produits.filter(p =>
-    p.nom?.toLowerCase().includes(search.toLowerCase())
-  )
+  const produitsFiltres = produits
+    .filter(p => p.nom?.toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => {
+      let va = a[sortCol] ?? ''
+      let vb = b[sortCol] ?? ''
+      if (typeof va === 'string') va = va.toLowerCase()
+      if (typeof vb === 'string') vb = vb.toLowerCase()
+      if (va < vb) return sortDir === 'asc' ? -1 : 1
+      if (va > vb) return sortDir === 'asc' ? 1 : -1
+      return 0
+    })
 
   // ── Navigation ───────────────────────────────────────────
 
@@ -617,14 +798,32 @@ export default function AdminPage() {
                 <table style={{ width: '100%', borderCollapse: 'collapse' as const }}>
                   <thead>
                     <tr style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
-                      {['Produit', 'Couleur', 'Millésime', 'Prix', 'Stock', 'Statut', ''].map(h => (
-                        <th key={h} style={{ padding: '12px 16px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', textTransform: 'uppercase' as const, fontWeight: 400 }}>{h}</th>
+                      {[
+                        { label: 'Produit', col: 'nom' },
+                        { label: 'Couleur', col: 'couleur' },
+                        { label: 'Millésime', col: 'millesime' },
+                        { label: 'Prix', col: 'prix_vente_ttc' },
+                        { label: 'Stock', col: null },
+                        { label: 'Statut', col: 'actif' },
+                        { label: '', col: null },
+                      ].map(({ label, col }) => (
+                        <th key={label} onClick={col ? () => handleSort(col) : undefined} style={{
+                          padding: '12px 16px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5,
+                          color: col && sortCol === col ? '#c9a96e' : 'rgba(232,224,213,0.3)',
+                          textTransform: 'uppercase' as const, fontWeight: 400,
+                          cursor: col ? 'pointer' : 'default',
+                          userSelect: 'none' as const,
+                        }}>
+                          {label}{col ? sortIcon(col) : ''}
+                        </th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {produitsFiltres.map((p, i) => (
-                      <tr key={p.id} style={{ borderBottom: i < produitsFiltres.length - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none', opacity: p.actif ? 1 : 0.5 }}>
+                      <tr key={p.id} onClick={() => setSelectedProduit(p)} style={{ borderBottom: i < produitsFiltres.length - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none', opacity: p.actif ? 1 : 0.5, cursor: 'pointer' }}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                         <td style={{ padding: '14px 16px' }}>
                           <div style={{ fontSize: 13, color: '#f0e8d8', marginBottom: 2 }}>{p.nom}</div>
                           <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)' }}>{p.domaine || ''}</div>
@@ -882,6 +1081,9 @@ export default function AdminPage() {
       )}
       {showModalMouvement && (
         <ModalMouvement produits={produits} sites={sites} onClose={() => setShowModalMouvement(false)} onSaved={loadData} />
+      )}
+      {selectedProduit && (
+        <ModalEditProduit produit={selectedProduit} onClose={() => setSelectedProduit(null)} onSaved={() => { loadData(); setSelectedProduit(null) }} />
       )}
     </div>
   )
