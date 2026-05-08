@@ -1493,6 +1493,7 @@ export default function AdminCommandesPage() {
   const [view, setView] = useState<View>('besoins')
   const [selectedCommande, setSelectedCommande] = useState<any>(null)
   const [counts, setCounts] = useState({ besoins: 0, commandes: 0, reception: 0 })
+  const [refreshKey, setRefreshKey] = useState(0)
 
   const loadCounts = useCallback(async () => {
     const [{ count: cB }, { count: cC }, { count: cR }] = await Promise.all([
@@ -1505,20 +1506,37 @@ export default function AdminCommandesPage() {
 
   useEffect(() => { loadCounts() }, [loadCounts])
 
+  const handleRefresh = useCallback(() => {
+    loadCounts()
+    setRefreshKey(k => k + 1)
+  }, [loadCounts])
+
   const handleSelectDetail = async (cmd: any) => {
     const { data } = await supabase.from('supplier_orders').select('*, fournisseur:domaines(id, nom)').eq('id', cmd.id).single()
     setSelectedCommande(data || cmd)
     setView('detail')
   }
 
+  const goToCommandes = () => {
+    setView('commandes')
+    setSelectedCommande(null)
+    handleRefresh()
+  }
+
   return (
     <div style={{ minHeight: '100vh', background: '#0d0a08', fontFamily: "'DM Sans', system-ui, sans-serif", color: '#e8e0d5', display: 'flex' }}>
-      <Sidebar view={view} setView={v => { setView(v); setSelectedCommande(null) }} counts={counts} />
+      <Sidebar view={view} setView={v => { setView(v); setSelectedCommande(null); handleRefresh() }} counts={counts} />
       <main style={{ marginLeft: 220, flex: 1, padding: '32px 36px' }}>
-        {view === 'besoins' && <VueBesoins onRefresh={loadCounts} />}
-        {view === 'commandes' && <VueCommandes onSelectDetail={handleSelectDetail} />}
-        {view === 'reception' && <VueReception onRefresh={loadCounts} />}
-        {view === 'detail' && selectedCommande && <DetailCommande commande={selectedCommande} onBack={() => { setView('commandes'); loadCounts() }} onRefresh={loadCounts} />}
+        {view === 'besoins' && <VueBesoins onRefresh={handleRefresh} />}
+        {view === 'commandes' && <VueCommandes key={refreshKey} onSelectDetail={handleSelectDetail} />}
+        {view === 'reception' && <VueReception key={refreshKey} onRefresh={handleRefresh} />}
+        {view === 'detail' && selectedCommande && (
+          <DetailCommande
+            commande={selectedCommande}
+            onBack={goToCommandes}
+            onRefresh={handleRefresh}
+          />
+        )}
         {view === 'associer' && <VueAssocierFournisseurs />}
       </main>
     </div>
