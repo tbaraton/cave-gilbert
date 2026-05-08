@@ -139,7 +139,6 @@ function ModalNouveauProduit({ domaines, regions, appellations, onCreated, onClo
   const handleSave = async () => {
     if (!form.nom.trim()) { setError('Le nom du vin est obligatoire'); return }
     if (!form.prix_vente_ttc) { setError('Le prix de vente TTC est obligatoire'); return }
-    if (!form.domaine_id) { setError('Le fournisseur est obligatoire pour passer commande'); return }
     setSaving(true)
     setError('')
 
@@ -1505,7 +1504,8 @@ function VueReception({ onRefresh }: { onRefresh: () => void }) {
         domaines={domaines}
         regions={regions}
         appellations={appellations}
-        onCreated={async (product: any) => {
+        onCreated={async (product: any, _domaineId: string, _prixHT: string, _conditionnement: string) => {
+          if (!product) return
           const { data: newItem } = await supabase.from('supplier_order_items').insert({
             order_id: selectedCmd.id,
             product_id: product.id,
