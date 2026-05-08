@@ -142,42 +142,57 @@ function ModalNouveauProduit({ domaines, regions, appellations, onCreated, onClo
     setSaving(true)
     setError('')
 
-    // Construire les certifications comme colonnes booléennes
-    const certObj: Record<string, boolean> = {}
-    CERTIFICATIONS.forEach(c => { certObj[c] = form.certifications.includes(c) })
+    // Construire les certifications — seulement les colonnes qui existent
+    const insertData: Record<string, any> = {
+      nom: form.nom.trim(),
+      millesime: form.millesime ? parseInt(form.millesime) : null,
+      couleur: form.couleur,
+      region_id: form.region_id || null,
+      appellation_id: form.appellation_id || null,
+      domaine_id: form.domaine_id || null,
+      prix_achat_ht: form.prix_achat_ht ? parseFloat(form.prix_achat_ht) : null,
+      prix_vente_ttc: parseFloat(form.prix_vente_ttc),
+      prix_vente_pro: form.prix_vente_pro ? parseFloat(form.prix_vente_pro) : null,
+      image_url: form.image_url || null,
+      bio: form.certifications.includes('bio'),
+      vegan: form.certifications.includes('vegan'),
+      casher: form.certifications.includes('casher'),
+      naturel: form.certifications.includes('naturel'),
+      biodynamique: form.certifications.includes('biodynamique'),
+      actif: form.actif,
+    }
 
     const { data: product, error: err } = await supabase
       .from('products')
-      .insert({
-        nom: form.nom.trim(),
-        millesime: form.millesime ? parseInt(form.millesime) : null,
-        couleur: form.couleur,
-        region_id: form.region_id || null,
-        appellation_id: form.appellation_id || null,
-        domaine_id: form.domaine_id || null,
-        prix_achat_ht: form.prix_achat_ht ? parseFloat(form.prix_achat_ht) : null,
-        prix_vente_ttc: parseFloat(form.prix_vente_ttc),
-        prix_vente_pro: form.prix_vente_pro ? parseFloat(form.prix_vente_pro) : null,
-        image_url: form.image_url || null,
-        bio: form.certifications.includes('bio'),
-        actif: form.actif,
-        ...certObj,
-      })
-      .select()
+      .insert(insertData)
+      .select('id, nom, millesime, couleur, prix_achat_ht, prix_vente_ttc, actif')
       .single()
 
-    if (err) { setError(err.message); setSaving(false); return }
+    if (err) {
+      console.error('Erreur création produit:', err)
+      setError(`Erreur: ${err.message} (${err.code})`)
+      setSaving(false)
+      return
+    }
 
-    if (form.domaine_id && product) {
-      await supabase.from('product_suppliers').upsert({
+    if (!product) {
+      setError('Produit non créé - réponse vide')
+      setSaving(false)
+      return
+    }
+
+    if (form.domaine_id) {
+      const { error: supplierErr } = await supabase.from('product_suppliers').upsert({
         product_id: product.id,
         domaine_id: form.domaine_id,
         prix_achat_ht: form.prix_achat_ht ? parseFloat(form.prix_achat_ht) : null,
         conditionnement: parseInt(form.conditionnement) || 6,
         fournisseur_principal: true,
       }, { onConflict: 'product_id,domaine_id' })
+      if (supplierErr) console.warn('Supplier association error:', supplierErr.message)
     }
 
+    setSaving(false)
     onCreated(product, form.domaine_id, form.prix_achat_ht, form.conditionnement)
     onClose()
   }
