@@ -635,11 +635,13 @@ function VueBesoins({ onRefresh }: { onRefresh: () => void }) {
                     {b.prix_achat_ht ? `${parseFloat(b.prix_achat_ht).toFixed(2)}€` : '—'}
                   </td>
                   <td style={{ padding: '11px 14px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 0, border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 3, width: 'fit-content' }}>
-                      <button onClick={() => updateQty(b.id, b.quantite - 1)} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.5)', width: 26, height: 28, cursor: 'pointer', fontSize: 14 }}>−</button>
-                      <span style={{ width: 30, textAlign: 'center' as const, fontSize: 13, color: '#e8e0d5' }}>{b.quantite}</span>
-                      <button onClick={() => updateQty(b.id, b.quantite + 1)} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.5)', width: 26, height: 28, cursor: 'pointer', fontSize: 14 }}>+</button>
-                    </div>
+                    <input
+                      type="number" min={1}
+                      defaultValue={b.quantite}
+                      onBlur={e => updateQty(b.id, parseInt(e.target.value) || 1)}
+                      onKeyDown={e => { if (e.key === 'Enter') updateQty(b.id, parseInt((e.target as HTMLInputElement).value) || 1) }}
+                      style={{ width: 70, background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 3, color: '#e8e0d5', fontSize: 13, padding: '4px 8px', textAlign: 'center' as const }}
+                    />
                   </td>
                   <td style={{ padding: '11px 14px', fontSize: 13, fontFamily: 'Georgia, serif' }}>
                     {b.prix_achat_ht ? `${(parseFloat(b.prix_achat_ht) * b.quantite).toFixed(2)}€` : '—'}
@@ -852,11 +854,12 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
               <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                 <span style={{ flex: 1, fontSize: 13, color: '#e8e0d5' }}>{item.product_nom}{item.product_millesime ? ` ${item.product_millesime}` : ''}</span>
                 <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>Commandé : {item.quantite_commandee}</span>
-                <div style={{ display: 'flex', alignItems: 'center', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 3 }}>
-                  <button onClick={() => setQtesRecues(q => ({ ...q, [item.id]: Math.max(0, (q[item.id] ?? item.quantite_commandee) - 1) }))} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.5)', width: 28, height: 30, cursor: 'pointer', fontSize: 14 }}>−</button>
-                  <span style={{ width: 36, textAlign: 'center' as const, fontSize: 13, color: '#e8e0d5' }}>{qtesRecues[item.id] ?? item.quantite_commandee}</span>
-                  <button onClick={() => setQtesRecues(q => ({ ...q, [item.id]: (q[item.id] ?? item.quantite_commandee) + 1 }))} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.5)', width: 28, height: 30, cursor: 'pointer', fontSize: 14 }}>+</button>
-                </div>
+                <input
+                  type="number" min={0}
+                  defaultValue={qtesRecues[item.id] ?? item.quantite_commandee}
+                  onChange={e => setQtesRecues(q => ({ ...q, [item.id]: parseInt(e.target.value) || 0 }))}
+                  style={{ width: 80, background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 3, color: '#e8e0d5', fontSize: 13, padding: '4px 8px', textAlign: 'center' as const }}
+                />
               </div>
             ))}
           </div>
