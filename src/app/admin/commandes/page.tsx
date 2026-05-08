@@ -137,8 +137,11 @@ function ModalNouveauProduit({ domaines, regions, appellations, onCreated, onClo
   }
 
   const handleSave = async () => {
+    const prixNum = parseFloat(form.prix_vente_ttc)
     if (!form.nom.trim()) { setError('Le nom du vin est obligatoire'); return }
-    if (!form.prix_vente_ttc) { setError('Le prix de vente TTC est obligatoire'); return }
+    if (!form.prix_vente_ttc || isNaN(prixNum) || prixNum <= 0) { 
+      setError('Le prix de vente TTC est obligatoire (ex: 15.50)'); return 
+    }
     setSaving(true)
     setError('')
 
@@ -159,7 +162,7 @@ function ModalNouveauProduit({ domaines, regions, appellations, onCreated, onClo
       appellation_id: form.appellation_id || null,
       domaine_id: form.domaine_id || null,
       prix_achat_ht: form.prix_achat_ht ? parseFloat(form.prix_achat_ht) : null,
-      prix_vente_ttc: parseFloat(form.prix_vente_ttc),
+      prix_vente_ttc: prixNum,
       prix_vente_pro: form.prix_vente_pro ? parseFloat(form.prix_vente_pro) : null,
       image_url: form.image_url || null,
       bio: form.certifications.includes('bio'),
