@@ -177,6 +177,9 @@ function VueSaisie({ inventaire, onBack }: { inventaire: Inventaire; onBack: () 
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
   const [filterCouleur, setFilterCouleur] = useState('')
+  const [filterDomaine, setFilterDomaine] = useState('')
+  const [sortBy, setSortBy] = useState<'nom' | 'domaine'>('nom')
+  const [domaines, setDomaines] = useState<any[]>([])
   const [showValider, setShowValider] = useState(false)
   const [confirmText, setConfirmText] = useState('')
   const [validating, setValidating] = useState(false)
@@ -184,12 +187,16 @@ function VueSaisie({ inventaire, onBack }: { inventaire: Inventaire; onBack: () 
 
   const loadLignes = useCallback(async () => {
     setLoading(true)
-    const { data } = await supabase
-      .from('inventaire_lignes')
-      .select('*, product:products(nom, millesime, couleur, nom_cuvee)')
-      .eq('inventaire_id', inventaire.id)
-      .order('product(nom)')
+    const [{ data }, { data: domsData }] = await Promise.all([
+      supabase
+        .from('inventaire_lignes')
+        .select('*, product:products(nom, millesime, couleur, nom_cuvee, domaine_id)')
+        .eq('inventaire_id', inventaire.id)
+        .order('product(nom)'),
+      supabase.from('domaines').select('id, nom').order('nom'),
+    ])
     setLignes(data || [])
+    setDomaines(domsData || [])
     setLoading(false)
   }, [inventaire.id])
 
@@ -253,8 +260,17 @@ function VueSaisie({ inventaire, onBack }: { inventaire: Inventaire; onBack: () 
   const lignesFiltrees = lignes
     .filter(l =>
       (!search || l.product?.nom?.toLowerCase().includes(search.toLowerCase())) &&
-      (!filterCouleur || l.product?.couleur === filterCouleur)
+      (!filterCouleur || l.product?.couleur === filterCouleur) &&
+      (!filterDomaine || (l.product as any)?.domaine_id === filterDomaine)
     )
+    .sort((a, b) => {
+      if (sortBy === 'domaine') {
+        const da = domaines.find(d => d.id === (a.product as any)?.domaine_id)?.nom || 'zzz'
+        const db = domaines.find(d => d.id === (b.product as any)?.domaine_id)?.nom || 'zzz'
+        if (da !== db) return da.localeCompare(db)
+      }
+      return (a.product?.nom || '').localeCompare(b.product?.nom || '')
+    })
 
   const nbComptees = lignes.filter(l => l.stock_compte !== null).length
   const nbEcarts = lignes.filter(l => l.ecart !== null && l.ecart !== 0).length
@@ -339,7 +355,7 @@ function VueSaisie({ inventaire, onBack }: { inventaire: Inventaire; onBack: () 
           <table style={{ width: '100%', borderCollapse: 'collapse' as const }}>
             <thead style={{ position: 'sticky' as const, top: 0, background: '#14100c', zIndex: 5 }}>
               <tr style={{ borderBottom: '0.5px solid rgba(255,255,255,0.08)' }}>
-                {['Produit', 'Couleur', 'Millésime', 'Stock théorique', 'Stock compté', 'Écart'].map(h => (
+                {['Produit', 'Domaine', 'Couleur', 'Millésime', 'Stock théorique', 'Stock compté', 'Écart'].map(h => (
                   <th key={h} style={{ padding: '10px 14px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', fontWeight: 400 }}>{h}</th>
                 ))}
               </tr>
@@ -361,6 +377,9 @@ function VueSaisie({ inventaire, onBack }: { inventaire: Inventaire; onBack: () 
                       {ligne.product?.nom_cuvee && (
                         <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.3)', fontStyle: 'italic' }}>{ligne.product.nom_cuvee}</div>
                       )}
+                    </td>
+                    <td style={{ padding: '10px 14px', fontSize: 12, color: 'rgba(232,224,213,0.45)' }}>
+                      {domaines.find(d => d.id === (ligne.product as any)?.domaine_id)?.nom || '—'}
                     </td>
                     <td style={{ padding: '10px 14px' }}>
                       <span style={{ fontSize: 11, color: COULEUR_COLOR[ligne.product?.couleur || ''] || '#888' }}>
