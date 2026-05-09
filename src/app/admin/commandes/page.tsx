@@ -611,12 +611,6 @@ function ModalNouvelleCommande({ domaines, preselectedDomaineId, onCreated, onCl
   const [sites, setSites] = useState<any[]>([])
   const [notes, setNotes] = useState('')
 
-  // Charger les produits automatiquement si fournisseur pré-sélectionné
-  useEffect(() => {
-    if (preselectedDomaineId) {
-      loadProduitsDomaine(preselectedDomaineId)
-    }
-  }, [preselectedDomaineId])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -651,6 +645,13 @@ function ModalNouvelleCommande({ domaines, preselectedDomaineId, onCreated, onCl
     })))
     setLoadingProduits(false)
   }
+
+  // Auto-charger les produits si fournisseur pré-sélectionné
+  useEffect(() => {
+    if (preselectedDomaineId) {
+      loadProduitsDomaine(preselectedDomaineId)
+    }
+  }, [])
 
   const toggleProduit = (produit: any) => {
     setSelected(prev => {
