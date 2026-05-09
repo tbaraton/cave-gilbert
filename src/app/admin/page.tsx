@@ -1205,9 +1205,13 @@ export default function AdminPage() {
       setTireuses(tirs || [])
       setKegStock(kegs || [])
 
-      // Alertes : grouper par produit et sommer tous les sites
+      // Alertes : grouper par produit et sommer tous les sites (vins uniquement)
+      const couleursVin = new Set(['rouge', 'blanc', 'rosé', 'champagne', 'effervescent'])
+      const produitsVin = new Set((prods || []).filter((p: any) => couleursVin.has(p.couleur)).map((p: any) => p.id))
+      
       const stockParProduit: Record<string, any> = {}
       ;(stock || []).forEach((s: any) => {
+        if (!produitsVin.has(s.product_id)) return // ignorer non-vins
         if (!stockParProduit[s.product_id]) {
           stockParProduit[s.product_id] = {
             product_id: s.product_id,
