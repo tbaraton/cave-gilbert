@@ -1123,6 +1123,7 @@ export default function AdminPage() {
   const [prixMaxCatalogue, setPrixMaxCatalogue] = useState<number>(500)
   const [filterMillesime, setFilterMillesime] = useState('')
   const [filterCertif, setFilterCertif] = useState('')
+  const [filterActif, setFilterActif] = useState<'tous' | 'actif' | 'inactif'>('actif')
   const [sortCol, setSortCol] = useState<string>('nom')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
 
@@ -1146,7 +1147,7 @@ export default function AdminPage() {
         { data: tirs },
         { data: kegs },
       ] = await Promise.all([
-        supabase.from('products').select('id, nom, nom_cuvee, contenance, millesime, couleur, prix_vente_ttc, prix_vente_pro, prix_achat_ht, actif, bio, vegan, casher, naturel, biodynamique, ia_generated, domaine_id, slug, region_id, appellation_id, description_courte, image_url').eq('actif', true).order('nom').limit(5000),
+        supabase.from('products').select('id, nom, nom_cuvee, contenance, millesime, couleur, prix_vente_ttc, prix_vente_pro, prix_achat_ht, actif, bio, vegan, casher, naturel, biodynamique, ia_generated, domaine_id, slug, region_id, appellation_id, description_courte, image_url').order('nom').limit(5000),
         supabase.from('v_stock_par_site').select('*'),
         supabase.from('sites').select('*').eq('actif', true).order('nom'),
         supabase.from('beer_rentals').select(`
@@ -1251,7 +1252,8 @@ export default function AdminPage() {
       (parseFloat(p.prix_vente_ttc || 0) >= filterPrixMin) &&
       (parseFloat(p.prix_vente_ttc || 0) <= filterPrixMax) &&
       (filterMillesime === '' || String(p.millesime || '') === filterMillesime) &&
-      (filterCertif === '' || p[filterCertif] === true)
+      (filterCertif === '' || p[filterCertif] === true) &&
+      (filterActif === 'tous' || (filterActif === 'actif' ? p.actif : !p.actif))
     )
     .sort((a, b) => {
       let va = a[sortCol] ?? ''
@@ -1457,7 +1459,18 @@ export default function AdminPage() {
                 <h1 style={{ fontFamily: 'Georgia, serif', fontSize: 28, fontWeight: 300, color: '#f0e8d8', marginBottom: 4 }}>Catalogue</h1>
                 <p style={{ fontSize: 12, color: 'rgba(232,224,213,0.35)' }}>{produits.length} référence{produits.length > 1 ? 's' : ''}</p>
               </div>
-              <div style={{ display: 'flex', gap: 10 }}>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                {/* Toggle actif/inactif */}
+                <div style={{ display: 'flex', background: 'rgba(255,255,255,0.04)', borderRadius: 4, border: '0.5px solid rgba(255,255,255,0.1)', overflow: 'hidden' }}>
+                  {([['actif', 'Actifs'], ['inactif', 'Inactifs'], ['tous', 'Tous']] as const).map(([val, label]) => (
+                    <button key={val} onClick={() => setFilterActif(val)} style={{
+                      background: filterActif === val ? 'rgba(201,169,110,0.15)' : 'transparent',
+                      color: filterActif === val ? '#c9a96e' : 'rgba(232,224,213,0.4)',
+                      border: 'none', borderRight: val !== 'tous' ? '0.5px solid rgba(255,255,255,0.08)' : 'none',
+                      padding: '8px 14px', fontSize: 11, cursor: 'pointer',
+                    }}>{label}</button>
+                  ))}
+                </div>
                 <button onClick={() => setShowNouveauProduit(true)} style={{ background: 'transparent', border: '0.5px solid rgba(201,169,110,0.4)', color: '#c9a96e', borderRadius: 4, padding: '11px 20px', fontSize: 11, letterSpacing: 2, cursor: 'pointer', fontWeight: 500, textTransform: 'uppercase' as const }}>
                   + Nouveau produit
                 </button>
