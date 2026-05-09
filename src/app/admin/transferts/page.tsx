@@ -306,27 +306,66 @@ function DetailTransfert({ transfer, onBack, onRefresh }: {
 
   const handleDispatch = async () => {
     setProcessing(true)
-    const { error } = await supabase.rpc('confirm_transfer_dispatch', {
-      p_transfer_id: transfer.id,
-      p_confirmed_by: null,
-    })
-    if (error) { alert(error.message); setProcessing(false); return }
-    onRefresh()
+    try {
+      // Débiter le site source pour chaque item
+      for (const item of items) {
+        const qty = item.quantite_expediee ?? item.quantite_demandee
+        if (!qty || qty <= 0) continue
+        await supabase.rpc('move_stock', {
+          p_product_id: item.product_id,
+          p_site_id: transfer.site_source_id,
+          p_raison: 'transfert_sortant',
+          p_quantite: -qty,
+          p_note: `Expédition transfert ${transfer.numero}`,
+          p_order_id: null,
+          p_transfer_id: transfer.id,
+        })
+      }
+      await supabase.from('transfers').update({
+        statut: 'confirmé',
+        confirme_le: new Date().toISOString(),
+      }).eq('id', transfer.id)
+      onRefresh()
+    } catch (e: any) {
+      alert(e.message)
+      setProcessing(false)
+    }
   }
 
   const handleReceive = async () => {
     setProcessing(true)
-    const adj = Object.entries(adjustments)
-      .filter(([, qty]) => qty > 0)
-      .map(([product_id, quantite_recue]) => ({ product_id, quantite_recue }))
+    try {
+      // Pour chaque item : créditer le stock destination, débiter source si besoin
+      for (const item of items) {
+        const qtyRecue = adjustments[item.product_id] ?? item.quantite_expediee ?? item.quantite_demandee
+        if (!qtyRecue || qtyRecue <= 0) continue
 
-    const { error } = await supabase.rpc('confirm_transfer_receipt', {
-      p_transfer_id: transfer.id,
-      p_received_by: null,
-      p_adjustments: adj.length > 0 ? JSON.stringify(adj) : null,
-    })
-    if (error) { alert(error.message); setProcessing(false); return }
-    onRefresh()
+        // Mettre à jour quantite_recue sur l'item
+        await supabase.from('transfer_items').update({ quantite_recue: qtyRecue }).eq('id', item.id)
+
+        // Créditer le site destination
+        await supabase.rpc('move_stock', {
+          p_product_id: item.product_id,
+          p_site_id: transfer.site_destination_id,
+          p_raison: 'transfert_entrant',
+          p_quantite: qtyRecue,
+          p_note: `Réception transfert ${transfer.numero}`,
+          p_order_id: null,
+          p_transfer_id: transfer.id,
+        })
+      }
+
+      // Mettre à jour le statut du transfert
+      await supabase.from('transfers').update({
+        statut: 'reçu',
+        recu_le: new Date().toISOString(),
+      }).eq('id', transfer.id)
+
+      onRefresh()
+    } catch (e: any) {
+      alert(e.message)
+      setProcessing(false)
+    }
   }
 
   const handleCancel = async () => {
