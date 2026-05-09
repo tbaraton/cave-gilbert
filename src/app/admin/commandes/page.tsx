@@ -1285,6 +1285,8 @@ function VueReception({ onRefresh }: { onRefresh: () => void }) {
   const [sites, setSites] = useState<any[]>([])
   const [siteReception, setSiteReception] = useState('')
   const [qtesRecues, setQtesRecues] = useState<Record<string, number>>({})
+  const [prixRecus, setPrixRecus] = useState<Record<string, number>>({})
+  const [popupPrix, setPopupPrix] = useState<{ item: any; newPrix: number } | null>(null)
   const [searchProd, setSearchProd] = useState('')
   const [searchProdRes, setSearchProdRes] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -1332,9 +1334,14 @@ function VueReception({ onRefresh }: { onRefresh: () => void }) {
       .eq('order_id', cmd.id)
     const itemsData = data || []
     setItems(itemsData)
-    const init: Record<string, number> = {}
-    itemsData.forEach((item: any) => { init[item.id] = item.quantite_commandee })
-    setQtesRecues(init)
+    const initQty: Record<string, number> = {}
+    const initPrix: Record<string, number> = {}
+    itemsData.forEach((item: any) => {
+      initQty[item.id] = item.quantite_commandee
+      initPrix[item.id] = parseFloat(item.prix_achat_ht || 0)
+    })
+    setQtesRecues(initQty)
+    setPrixRecus(initPrix)
     setShowForm(true)
   }
 
@@ -1359,6 +1366,7 @@ function VueReception({ onRefresh }: { onRefresh: () => void }) {
     if (newItem) {
       setItems(prev => [...prev, { ...newItem, product: prod }])
       setQtesRecues(prev => ({ ...prev, [newItem.id]: 1 }))
+      setPrixRecus(prev => ({ ...prev, [newItem.id]: parseFloat(prod.prix_achat_ht || 0) }))
     }
     setSearchProd('')
     setSearchProdRes([])
@@ -1372,7 +1380,16 @@ function VueReception({ onRefresh }: { onRefresh: () => void }) {
 
     for (const item of items) {
       const qty = qtesRecues[item.id] ?? 0
-      await supabase.from('supplier_order_items').update({ quantite_recue: qty }).eq('id', item.id)
+      const newPrix = prixRecus[item.id] ?? parseFloat(item.prix_achat_ht || 0)
+      const oldPrix = parseFloat(item.prix_achat_ht || 0)
+      await supabase.from('supplier_order_items').update({ quantite_recue: qty, prix_achat_ht: newPrix }).eq('id', item.id)
+      // Si prix changé → mettre à jour la fiche produit
+      if (Math.abs(newPrix - oldPrix) > 0.001 && item.product_id) {
+        const newTTC = Math.ceil(newPrix * 2 * 2) / 2
+        const newPro = Math.round(newPrix * 1.70 * 100) / 100
+        await supabase.from('products').update({ prix_achat_ht: newPrix, prix_vente_ttc: newTTC, prix_vente_pro: newPro }).eq('id', item.product_id)
+        await supabase.from('product_suppliers').update({ prix_achat_ht: newPrix }).eq('product_id', item.product_id).eq('fournisseur_principal', true)
+      }
       if (qty > 0 && siteReception) {
         const { error: stockErr } = await supabase.rpc('move_stock', {
           p_product_id: item.product_id,
@@ -1513,15 +1530,54 @@ function VueReception({ onRefresh }: { onRefresh: () => void }) {
                 <table style={{ width: '100%', borderCollapse: 'collapse' as const }}>
                   <thead>
                     <tr style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
-                      {['Produit', 'Commandé', 'Reçu (saisir)', 'Différence'].map(h => (
+                      {['Produit', 'Commandé', 'Prix achat HT', 'Reçu', 'Différence'].map(h => (
                         <th key={h} style={{ padding: '8px 12px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', fontWeight: 400 }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
+                    {/* Popup prix */}
+                    {popupPrix && (
+                      <tr>
+                        <td colSpan={5} style={{ padding: 0 }}>
+                          <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 }}>
+                            <div style={{ background: '#18130e', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 8, padding: '24px 28px', maxWidth: 400, width: '100%' }}>
+                              <h3 style={{ fontFamily: 'Georgia, serif', fontSize: 16, fontWeight: 300, color: '#f0e8d8', marginBottom: 8 }}>Mise à jour des prix</h3>
+                              <p style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)', marginBottom: 16 }}>{popupPrix.item.product_nom}</p>
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 16 }}>
+                                {[
+                                  { label: 'Prix achat HT', val: `${popupPrix.newPrix.toFixed(2)}€`, color: '#e8e0d5' },
+                                  { label: 'TTC part. (×2 arr.)', val: `${(Math.ceil(popupPrix.newPrix * 2 * 2) / 2).toFixed(2)}€`, color: '#c9a96e' },
+                                  { label: 'TTC pro (×1.70)', val: `${(Math.round(popupPrix.newPrix * 1.70 * 100) / 100).toFixed(2)}€`, color: '#6e9ec9' },
+                                ].map(({ label, val, color }) => (
+                                  <div key={label} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 4, padding: '8px', textAlign: 'center' as const }}>
+                                    <div style={{ fontSize: 9, letterSpacing: 1, color: 'rgba(232,224,213,0.3)', textTransform: 'uppercase' as const, marginBottom: 4 }}>{label}</div>
+                                    <div style={{ fontSize: 15, color, fontFamily: 'Georgia, serif' }}>{val}</div>
+                                  </div>
+                                ))}
+                              </div>
+                              <p style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)', marginBottom: 14 }}>La fiche produit sera mise à jour lors de la validation.</p>
+                              <div style={{ display: 'flex', gap: 10 }}>
+                                <button onClick={() => { setPrixRecus(p => ({ ...p, [popupPrix.item.id]: parseFloat(popupPrix.item.prix_achat_ht || 0) })); setPopupPrix(null) }}
+                                  style={{ flex: 1, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '8px', fontSize: 11, cursor: 'pointer' }}>
+                                  Annuler
+                                </button>
+                                <button onClick={() => setPopupPrix(null)}
+                                  style={{ flex: 2, background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '8px', fontSize: 11, cursor: 'pointer', fontWeight: 500 }}>
+                                  ✓ Confirmer le nouveau prix
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
                     {items.map((item, i) => {
                       const recu = qtesRecues[item.id] ?? item.quantite_commandee
                       const diff = recu - item.quantite_commandee
+                      const currentPrix = prixRecus[item.id] ?? parseFloat(item.prix_achat_ht || 0)
+                      const originalPrix = parseFloat(item.prix_achat_ht || 0)
+                      const prixChanged = Math.abs(currentPrix - originalPrix) > 0.001
                       return (
                         <tr key={item.id} style={{ borderBottom: i < items.length - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none' }}>
                           <td style={{ padding: '10px 12px' }}>
@@ -1531,6 +1587,19 @@ function VueReception({ onRefresh }: { onRefresh: () => void }) {
                           </td>
                           <td style={{ padding: '10px 12px', fontSize: 13, color: 'rgba(232,224,213,0.5)' }}>
                             {item.quantite_commandee > 0 ? `${item.quantite_commandee} btl` : '—'}
+                          </td>
+                          <td style={{ padding: '10px 12px' }}>
+                            <input
+                              type="number" step="0.01"
+                              value={currentPrix}
+                              onChange={e => {
+                                const newVal = parseFloat(e.target.value) || 0
+                                setPrixRecus(p => ({ ...p, [item.id]: newVal }))
+                                if (Math.abs(newVal - originalPrix) > 0.001) setPopupPrix({ item, newPrix: newVal })
+                              }}
+                              style={{ width: 90, background: prixChanged ? 'rgba(201,169,110,0.08)' : 'rgba(255,255,255,0.04)', border: `0.5px solid ${prixChanged ? 'rgba(201,169,110,0.5)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 3, color: prixChanged ? '#c9a96e' : '#e8e0d5', fontSize: 13, padding: '5px 8px', textAlign: 'center' as const }}
+                            />
+                            {prixChanged && <div style={{ fontSize: 9, color: '#c9a96e', textAlign: 'center' as const, marginTop: 2 }}>Modifié ✓</div>}
                           </td>
                           <td style={{ padding: '10px 12px' }}>
                             <input
