@@ -1514,6 +1514,53 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
           </table>
         </div>
       )}
+
+      {/* Modal nouveau produit depuis brouillon */}
+      {showNouveauProduit && (
+        <ModalNouveauProduit
+          domaines={domaines}
+          regions={regions}
+          appellations={appellations}
+          onCreated={async (product) => {
+            if (product?.id) {
+              await supabase.from('supplier_order_items').insert({
+                order_id: commande.id,
+                product_id: product.id,
+                product_nom: product.nom,
+                product_millesime: product.millesime || null,
+                quantite_commandee: 6,
+                prix_achat_ht: product.prix_achat_ht || 0,
+              })
+              const { data } = await supabase.from('supplier_order_items').select('*').eq('order_id', commande.id)
+              setItems(data || [])
+              const initQty: Record<string, number> = {}
+              const initPrix: Record<string, number> = {}
+              ;(data || []).forEach((i: any) => { initQty[i.id] = i.quantite_commandee; initPrix[i.id] = parseFloat(i.prix_achat_ht || 0) })
+              setEditQty(initQty); setEditPrix(initPrix)
+            }
+            setShowNouveauProduit(false)
+          }}
+          onClose={() => setShowNouveauProduit(false)}
+        />
+      )}
+
+      {/* Modal dupliquer produit depuis brouillon */}
+      {showDupliquer && (
+        <ModalDupliquerCommande
+          produit={showDupliquer}
+          commandeId={commande.id}
+          onCreated={async () => {
+            const { data } = await supabase.from('supplier_order_items').select('*').eq('order_id', commande.id)
+            setItems(data || [])
+            const initQty: Record<string, number> = {}
+            const initPrix: Record<string, number> = {}
+            ;(data || []).forEach((i: any) => { initQty[i.id] = i.quantite_commandee; initPrix[i.id] = parseFloat(i.prix_achat_ht || 0) })
+            setEditQty(initQty); setEditPrix(initPrix)
+            setShowDupliquer(null)
+          }}
+          onClose={() => setShowDupliquer(null)}
+        />
+      )}
     </div>
   )
 }
