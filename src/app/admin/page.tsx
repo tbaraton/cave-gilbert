@@ -390,18 +390,11 @@ function ModalEditProduit({ produit, regions, appellations, onClose, onSaved }: 
     biodynamique: produit.biodynamique || false,
     actif: produit.actif !== false,
   })
-  const [regions, setRegions] = useState<any[]>([])
-  const [appellations, setAppellations] = useState<any[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  useEffect(() => {
-    supabase.from('regions').select('id, nom').order('nom').then(({ data }) => setRegions(data || []))
-    supabase.from('appellations').select('id, nom, region_id').order('nom').then(({ data }) => setAppellations(data || []))
-  }, [])
-
   const appsFiltrees = form.region_id
-    ? appellations.filter(a => a.region_id === form.region_id)
+    ? appellations.filter((a: any) => a.region_id === form.region_id)
     : appellations
 
   const handleSave = async () => {
@@ -591,8 +584,8 @@ export default function AdminPage() {
   const [search, setSearch] = useState('')
   const [filterRegion, setFilterRegion] = useState('')
   const [filterAppellation, setFilterAppellation] = useState('')
-  const [regionsList, setRegionsList] = useState<any[]>([])
-  const [appellationsList, setAppellationsList] = useState<any[]>([])
+  const [regions, setRegionsList] = useState<any[]>([])
+  const [appellations, setAppellationsList] = useState<any[]>([])
   const [sortCol, setSortCol] = useState<string>('nom')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
 
