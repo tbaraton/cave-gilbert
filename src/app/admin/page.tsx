@@ -1214,7 +1214,7 @@ export default function AdminPage() {
                   <div style={{ marginBottom: 32 }}>
                     <h2 style={{ fontSize: 11, letterSpacing: 2, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, marginBottom: 14 }}>Alertes stock</h2>
                     <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
-                      {alertes.slice(0, 5).map((a: any) => (
+                      {alertes.slice(0, 10).map((a: any) => (
                         <div key={a.product_id + a.site_id} style={{
                           background: a.stock_statut === 'rupture' ? 'rgba(201,110,110,0.08)' : 'rgba(201,176,110,0.08)',
                           border: `0.5px solid ${a.stock_statut === 'rupture' ? 'rgba(201,110,110,0.2)' : 'rgba(201,176,110,0.2)'}`,
@@ -1225,9 +1225,30 @@ export default function AdminPage() {
                             <span style={{ fontSize: 13 }}>{a.produit}{a.millesime ? ` ${a.millesime}` : ''}</span>
                             <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)' }}>{a.site}</span>
                           </div>
-                          <span style={{ fontSize: 12, color: a.stock_statut === 'rupture' ? '#c96e6e' : '#c9b06e' }}>
-                            {a.quantite === 0 ? 'Rupture' : `${a.quantite} bouteille${a.quantite > 1 ? 's' : ''}`}
-                          </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                            <span style={{ fontSize: 12, color: a.stock_statut === 'rupture' ? '#c96e6e' : '#c9b06e' }}>
+                              {a.quantite === 0 ? 'Rupture' : `${a.quantite} bouteille${a.quantite > 1 ? 's' : ''}`}
+                            </span>
+                            <button onClick={async (e) => {
+                              e.stopPropagation()
+                              const btn = e.currentTarget
+                              btn.disabled = true
+                              btn.textContent = '⟳'
+                              const { data: existing } = await supabase.from('order_needs').select('id').eq('product_id', a.product_id).eq('statut', 'en_attente').maybeSingle()
+                              if (existing) { btn.textContent = '✓ Déjà ajouté'; btn.style.color = '#6ec96e'; return }
+                              const { data: ps } = await supabase.from('product_suppliers').select('domaine_id, prix_achat_ht, conditionnement').eq('product_id', a.product_id).eq('fournisseur_principal', true).maybeSingle()
+                              await supabase.from('order_needs').insert({ product_id: a.product_id, domaine_id: ps?.domaine_id || null, quantite: ps?.conditionnement || 6, prix_achat_ht: ps?.prix_achat_ht || 0, statut: 'en_attente' })
+                              btn.textContent = '✓ Ajouté'
+                              btn.style.color = '#6ec96e'
+                              btn.style.borderColor = 'rgba(110,201,110,0.3)'
+                            }} style={{
+                              background: 'transparent',
+                              border: `0.5px solid ${a.stock_statut === 'rupture' ? 'rgba(201,110,110,0.3)' : 'rgba(201,176,110,0.3)'}`,
+                              color: a.stock_statut === 'rupture' ? '#c96e6e' : '#c9b06e',
+                              borderRadius: 4, padding: '4px 10px', fontSize: 10,
+                              cursor: 'pointer', whiteSpace: 'nowrap' as const,
+                            }}>+ Besoins</button>
+                          </div>
                         </div>
                       ))}
                     </div>
