@@ -32,6 +32,8 @@ Si pas de SQL nécessaire : {"answer":"réponse","sql":null}
 
 Règles SQL critiques :
 - Noms de tables TOUJOURS au pluriel avec 's' : products, regions, appellations, domaines, sites, customers
+- TOUJOURS préfixer les colonnes avec l'alias de table : p.nom, r.nom, a.nom, d.nom, s.nom — jamais juste 'nom' seul dans un JOIN
+- Alias standards : products=p, regions=r, appellations=a, domaines=d, sites=s, customers=c
 - Pour filtrer par région : JOIN regions r ON r.id = p.region_id WHERE r.nom = 'Beaujolais'
 - Pour filtrer par appellation : JOIN appellations a ON a.id = p.appellation_id WHERE a.nom ILIKE '%Morgon%'
 - actif est un boolean : WHERE actif = true (pas WHERE actif = 1)
