@@ -104,7 +104,7 @@ function NouveauTransfert({ sites, onCreated, onCancel }: {
   }
 
   const updateQty = (id: string, qty: number) => {
-    setLignes(l => l.map(item => item.product_id === id ? { ...item, quantite: Math.max(1, Math.min(qty, item.stock_source)) } : item))
+    setLignes(l => l.map(item => item.product_id === id ? { ...item, quantite: Math.max(1, qty) } : item))
   }
 
   const removeLigne = (id: string) => setLignes(l => l.filter(item => item.product_id !== id))
@@ -238,10 +238,10 @@ function NouveauTransfert({ sites, onCreated, onCancel }: {
                   <td style={{ padding: '10px 12px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <input
-                        type="number" min={1} max={l.stock_source}
+                        type="number" min={1}
                         value={l.quantite}
                         onChange={e => updateQty(l.product_id, parseInt(e.target.value) || 1)}
-                        style={{ width: 80, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 3, color: '#e8e0d5', fontSize: 14, padding: '5px 8px', textAlign: 'center' as const }}
+                        style={{ width: 80, background: 'rgba(255,255,255,0.06)', border: `0.5px solid ${l.quantite > l.stock_source ? 'rgba(201,110,110,0.5)' : 'rgba(201,169,110,0.3)'}`, borderRadius: 3, color: '#e8e0d5', fontSize: 14, padding: '5px 8px', textAlign: 'center' as const }}
                       />
                       <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.3)' }}>/ {l.stock_source} max</span>
                     </div>
@@ -291,6 +291,7 @@ function DetailTransfert({ transfer, onBack, onRefresh }: {
   const [loading, setLoading] = useState(true)
   const [processing, setProcessing] = useState(false)
   const [adjustments, setAdjustments] = useState<Record<string, number>>({})
+  const [qtesExpediees, setQtesExpediees] = useState<Record<string, number>>({})
 
   useEffect(() => {
     const load = async () => {
@@ -298,6 +299,9 @@ function DetailTransfert({ transfer, onBack, onRefresh }: {
         .from('transfer_items')
         .select('*, product:products(id, nom, millesime, couleur)')
         .eq('transfer_id', transfer.id)
+      const init: Record<string, number> = {}
+      ;(data || []).forEach((item: any) => { init[item.product_id] = item.quantite_expediee ?? item.quantite_demandee })
+      setQtesExpediees(init)
       setItems(data || [])
       setLoading(false)
     }
@@ -307,15 +311,17 @@ function DetailTransfert({ transfer, onBack, onRefresh }: {
   const handleDispatch = async () => {
     setProcessing(true)
     try {
-      // Débiter le site source pour chaque item
       for (const item of items) {
-        const qty = item.quantite_expediee ?? item.quantite_demandee
+        const qty = qtesExpediees[item.product_id] ?? item.quantite_demandee
         if (!qty || qty <= 0) continue
+        // Sauvegarder la quantite_expediee sur l'item
+        await supabase.from('transfer_items').update({ quantite_expediee: qty }).eq('id', item.id)
+        // Débiter le site source
         await supabase.rpc('move_stock', {
           p_product_id: item.product_id,
           p_site_id: transfer.site_source_id,
           p_raison: 'transfert_out',
-          p_quantite: -qty,
+          p_quantite: qty,
           p_note: `Expédition transfert ${transfer.numero}`,
           p_order_id: null,
           p_transfer_id: transfer.id,
@@ -335,16 +341,13 @@ function DetailTransfert({ transfer, onBack, onRefresh }: {
   const handleReceive = async () => {
     setProcessing(true)
     try {
-      // Pour chaque item : créditer le stock destination, débiter source si besoin
       for (const item of items) {
         const qtyRecue = adjustments[item.product_id] ?? item.quantite_expediee ?? item.quantite_demandee
         if (!qtyRecue || qtyRecue <= 0) continue
 
-        // Mettre à jour quantite_recue sur l'item
         await supabase.from('transfer_items').update({ quantite_recue: qtyRecue }).eq('id', item.id)
 
-        // Créditer le site destination
-        await supabase.rpc('move_stock', {
+        const { error: stockErr } = await supabase.rpc('move_stock', {
           p_product_id: item.product_id,
           p_site_id: transfer.site_destination_id,
           p_raison: 'transfert_in',
@@ -353,14 +356,12 @@ function DetailTransfert({ transfer, onBack, onRefresh }: {
           p_order_id: null,
           p_transfer_id: transfer.id,
         })
+        if (stockErr) throw new Error(stockErr.message)
       }
-
-      // Mettre à jour le statut du transfert
       await supabase.from('transfers').update({
         statut: 'reçu',
         recu_le: new Date().toISOString(),
       }).eq('id', transfer.id)
-
       onRefresh()
     } catch (e: any) {
       alert(e.message)
@@ -440,18 +441,31 @@ function DetailTransfert({ transfer, onBack, onRefresh }: {
                     {item.product?.millesime && <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>{item.product.millesime}</div>}
                   </td>
                   <td style={{ padding: '12px 14px', fontSize: 13, color: '#e8e0d5' }}>{item.quantite_demandee} btl</td>
-                  <td style={{ padding: '12px 14px', fontSize: 13, color: item.quantite_envoyee ? '#6ec96e' : 'rgba(232,224,213,0.3)' }}>
-                    {item.quantite_envoyee ?? '—'}{item.quantite_envoyee ? ' btl' : ''}
+                  <td style={{ padding: '12px 14px' }}>
+                    {transfer.statut === 'demandé' ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <input type="number" min={0}
+                          value={qtesExpediees[item.product_id] ?? item.quantite_demandee}
+                          onChange={e => setQtesExpediees(q => ({ ...q, [item.product_id]: parseInt(e.target.value) || 0 }))}
+                          style={{ width: 70, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(110,158,201,0.4)', borderRadius: 3, color: '#6e9ec9', fontSize: 13, padding: '5px 8px', textAlign: 'center' as const }}
+                        />
+                        <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.3)' }}>/ {item.quantite_demandee}</span>
+                      </div>
+                    ) : (
+                      <span style={{ fontSize: 13, color: item.quantite_expediee != null ? '#6ec96e' : 'rgba(232,224,213,0.3)' }}>
+                        {item.quantite_expediee != null ? `${item.quantite_expediee} btl` : '—'}
+                      </span>
+                    )}
                   </td>
                   <td style={{ padding: '12px 14px' }}>
                     {transfer.statut === 'confirmé' || transfer.statut === 'en_transit' ? (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <input type="number" min={0} max={item.quantite_envoyee || item.quantite_demandee}
-                          defaultValue={item.quantite_envoyee || item.quantite_demandee}
-                          onChange={e => setAdjustments(a => ({ ...a, [item.product_id]: parseInt(e.target.value) }))}
-                          style={{ width: 60, background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 3, color: '#e8e0d5', fontSize: 12, padding: '4px 8px' }}
+                        <input type="number" min={0}
+                          defaultValue={item.quantite_recue ?? item.quantite_expediee ?? item.quantite_demandee}
+                          onChange={e => setAdjustments(a => ({ ...a, [item.product_id]: parseInt(e.target.value) || 0 }))}
+                          style={{ width: 70, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(110,201,110,0.4)', borderRadius: 3, color: '#6ec96e', fontSize: 13, padding: '5px 8px', textAlign: 'center' as const }}
                         />
-                        <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>btl reçues</span>
+                        <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.3)' }}>btl</span>
                       </div>
                     ) : (
                       <span style={{ fontSize: 13, color: item.quantite_recue != null ? '#6ec96e' : 'rgba(232,224,213,0.3)' }}>
