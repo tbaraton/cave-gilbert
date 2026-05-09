@@ -468,7 +468,7 @@ function ModalEditProduit({ produit, regions, appellations, onClose, onSaved }: 
 
   const handleSave = async () => {
     const nomFinal = buildNom()
-    if (!nomFinal.trim()) { setError('Remplissez au moins l'appellation'); return }
+    if (!nomFinal.trim()) { setError("Remplissez au moins l'appellation"); return }
     if (!form.prix_vente_ttc) { setError('Le prix TTC est obligatoire'); return }
     setSaving(true)
     setError('')
