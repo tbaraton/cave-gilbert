@@ -337,7 +337,7 @@ function VueSaisie({ inventaire, onBack }: { inventaire: Inventaire; onBack: () 
       ) : (
         <div style={{ background: '#18130e', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 6, overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' as const }}>
-            <thead style={{ position: 'sticky' as const, top: 168, background: '#14100c', zIndex: 5 }}>
+            <thead style={{ position: 'sticky' as const, top: 0, background: '#14100c', zIndex: 5 }}>
               <tr style={{ borderBottom: '0.5px solid rgba(255,255,255,0.08)' }}>
                 {['Produit', 'Couleur', 'Millésime', 'Stock théorique', 'Stock compté', 'Écart'].map(h => (
                   <th key={h} style={{ padding: '10px 14px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', fontWeight: 400 }}>{h}</th>
