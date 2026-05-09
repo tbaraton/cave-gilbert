@@ -405,13 +405,25 @@ function NomVinPreview({ appellation, cuvee, couleur, millesime, contenance, dom
 
 // ── Modal Édition Produit ────────────────────────────────────
 
-function ModalEditProduit({ produit, regions, appellations, onClose, onSaved }: {
+function ModalEditProduit({ produit, regions: regionsProp, appellations: appellationsProp, onClose, onSaved }: {
   produit: any
   regions: any[]
   appellations: any[]
   onClose: () => void
   onSaved: () => void
 }) {
+  const [regions, setRegions] = useState<any[]>(regionsProp || [])
+  const [appellations, setAppellations] = useState<any[]>(appellationsProp || [])
+
+  useEffect(() => {
+    if (!regionsProp || regionsProp.length === 0) {
+      supabase.from('regions').select('id, nom').order('nom').then(({ data }) => setRegions(data || []))
+    }
+    if (!appellationsProp || appellationsProp.length === 0) {
+      supabase.from('appellations').select('id, nom, region_id').order('nom').then(({ data }) => setAppellations(data || []))
+    }
+  }, [])
+
   const [form, setForm] = useState({
     appellation_nom: produit.appellation_nom || '',
     nom_cuvee: produit.nom_cuvee || '',
@@ -657,12 +669,25 @@ function ModalEditProduit({ produit, regions, appellations, onClose, onSaved }: 
 
 // ── Modal Nouveau Produit (admin catalogue) ──────────────────
 
-function ModalNouveauProduitAdmin({ regions, appellations, onClose, onSaved }: {
+function ModalNouveauProduitAdmin({ regions: regionsProp, appellations: appellationsProp, onClose, onSaved }: {
   regions: any[]
   appellations: any[]
   onClose: () => void
   onSaved: () => void
 }) {
+  const [regions, setRegions] = useState<any[]>(regionsProp || [])
+  const [appellations, setAppellations] = useState<any[]>(appellationsProp || [])
+
+  useEffect(() => {
+    // Charger directement si les props sont vides
+    if (!regionsProp || regionsProp.length === 0) {
+      supabase.from('regions').select('id, nom').order('nom').then(({ data }) => setRegions(data || []))
+    }
+    if (!appellationsProp || appellationsProp.length === 0) {
+      supabase.from('appellations').select('id, nom, region_id').order('nom').then(({ data }) => setAppellations(data || []))
+    }
+  }, [])
+
   const [form, setForm] = useState({
     appellation_nom: '',
     nom_cuvee: '',
