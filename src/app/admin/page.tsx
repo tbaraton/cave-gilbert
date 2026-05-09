@@ -518,6 +518,16 @@ function ModalEditProduit({ produit, regions: regionsProp, appellations: appella
       actif: form.actif,
     }).eq('id', produit.id)
     if (err) { setError(err.message); setSaving(false); return }
+    // Mettre à jour product_suppliers si domaine sélectionné
+    if (form.domaine_id) {
+      await supabase.from('product_suppliers').upsert({
+        product_id: produit.id,
+        domaine_id: form.domaine_id,
+        prix_achat_ht: form.prix_achat_ht ? parseFloat(form.prix_achat_ht) : null,
+        conditionnement: 6,
+        fournisseur_principal: true,
+      }, { onConflict: 'product_id,domaine_id' })
+    }
     onSaved()
     onClose()
   }
@@ -767,7 +777,7 @@ function ModalNouveauProduitAdmin({ regions: regionsProp, appellations: appellat
       .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
       + '-' + Math.random().toString(36).substring(2, 7)
-    const { error: err } = await supabase.from('products').insert({
+    const { data: newProduct, error: err } = await supabase.from('products').insert({
       nom: nomFinal,
       slug,
       nom_cuvee: form.nom_cuvee || null,
@@ -785,8 +795,18 @@ function ModalNouveauProduitAdmin({ regions: regionsProp, appellations: appellat
       bio: form.bio, vegan: form.vegan, casher: form.casher,
       naturel: form.naturel, biodynamique: form.biodynamique,
       actif: form.actif,
-    })
+    }).select('id').single()
     if (err) { setError(err.message); setSaving(false); return }
+    // Associer au fournisseur dans product_suppliers
+    if (form.domaine_id && newProduct?.id) {
+      await supabase.from('product_suppliers').upsert({
+        product_id: newProduct.id,
+        domaine_id: form.domaine_id,
+        prix_achat_ht: form.prix_achat_ht ? parseFloat(form.prix_achat_ht) : null,
+        conditionnement: 6,
+        fournisseur_principal: true,
+      }, { onConflict: 'product_id,domaine_id' })
+    }
     setSaving(false)
     onSaved()
     onClose()
