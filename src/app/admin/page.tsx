@@ -971,19 +971,28 @@ function ModalDupliquer({ produit, onClose, onSaved }: {
   onSaved: () => void
 }) {
   const [millesime, setMillesime] = useState(produit.millesime ? String(produit.millesime + 1) : '')
+  const [prixAchatHT, setPrixAchatHT] = useState(produit.prix_achat_ht ? String(produit.prix_achat_ht) : '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+
+  const arrondir50 = (n: number) => Math.ceil(n * 2) / 2
+
+  const prixTTC = prixAchatHT && parseFloat(prixAchatHT) > 0
+    ? arrondir50(parseFloat(prixAchatHT) * 2)
+    : produit.prix_vente_ttc
+  const prixPro = prixAchatHT && parseFloat(prixAchatHT) > 0
+    ? Math.round(parseFloat(prixAchatHT) * 1.70 * 100) / 100
+    : produit.prix_vente_pro
 
   const handleDupliquer = async () => {
     setSaving(true)
     setError('')
-    
-    // Construire le nouveau nom
+
     let newNom = produit.nom
     if (produit.millesime && millesime) {
       newNom = produit.nom.replace(String(produit.millesime), millesime)
     }
-    
+
     const slug = newNom.toLowerCase()
       .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
@@ -999,9 +1008,9 @@ function ModalDupliquer({ produit, onClose, onSaved }: {
       region_id: produit.region_id || null,
       appellation_id: produit.appellation_id || null,
       domaine_id: produit.domaine_id || null,
-      prix_achat_ht: produit.prix_achat_ht || null,
-      prix_vente_ttc: produit.prix_vente_ttc || null,
-      prix_vente_pro: produit.prix_vente_pro || null,
+      prix_achat_ht: prixAchatHT ? parseFloat(prixAchatHT) : (produit.prix_achat_ht || null),
+      prix_vente_ttc: prixTTC || null,
+      prix_vente_pro: prixPro || null,
       description_courte: produit.description_courte || null,
       image_url: produit.image_url || null,
       bio: produit.bio || false,
@@ -1009,7 +1018,7 @@ function ModalDupliquer({ produit, onClose, onSaved }: {
       casher: produit.casher || false,
       naturel: produit.naturel || false,
       biodynamique: produit.biodynamique || false,
-      actif: false, // inactif par défaut pour vérification
+      actif: true,
     }).select('id').single()
 
     if (err) { setError(err.message); setSaving(false); return }
@@ -1052,22 +1061,47 @@ function ModalDupliquer({ produit, onClose, onSaved }: {
 
         {error && <div style={{ background: 'rgba(201,110,110,0.1)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 4, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: '#c96e6e' }}>{error}</div>}
 
-        <div style={{ marginBottom: 20 }}>
-          <label style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, display: 'block', marginBottom: 8 }}>
-            Nouveau millésime
-          </label>
-          <input
-            type="number"
-            value={millesime}
-            onChange={e => setMillesime(e.target.value)}
-            placeholder="Ex: 2024"
-            style={inp}
-            autoFocus
-          />
-          <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.3)', marginTop: 6 }}>
-            Laissez vide pour conserver le même millésime
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+          <div>
+            <label style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, display: 'block', marginBottom: 8 }}>
+              Nouveau millésime
+            </label>
+            <input
+              type="number"
+              value={millesime}
+              onChange={e => setMillesime(e.target.value)}
+              placeholder="Ex: 2024"
+              style={inp}
+              autoFocus
+            />
+            <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.25)', marginTop: 4 }}>Vide = même millésime</div>
+          </div>
+          <div>
+            <label style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, display: 'block', marginBottom: 8 }}>
+              Prix achat HT (€)
+            </label>
+            <input
+              type="number" step="0.01"
+              value={prixAchatHT}
+              onChange={e => setPrixAchatHT(e.target.value)}
+              placeholder={produit.prix_achat_ht ? String(produit.prix_achat_ht) : '0.00'}
+              style={inp}
+            />
+            <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.25)', marginTop: 4 }}>Vide = même prix</div>
           </div>
         </div>
+        {prixAchatHT && parseFloat(prixAchatHT) > 0 && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
+            <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 4, padding: '8px 12px', textAlign: 'center' as const }}>
+              <div style={{ fontSize: 9, color: 'rgba(232,224,213,0.3)', letterSpacing: 1, marginBottom: 4 }}>TTC PARTICULIER</div>
+              <div style={{ fontSize: 15, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{prixTTC?.toFixed(2)}€</div>
+            </div>
+            <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 4, padding: '8px 12px', textAlign: 'center' as const }}>
+              <div style={{ fontSize: 9, color: 'rgba(232,224,213,0.3)', letterSpacing: 1, marginBottom: 4 }}>TTC PRO</div>
+              <div style={{ fontSize: 15, color: '#6e9ec9', fontFamily: 'Georgia, serif' }}>{prixPro?.toFixed(2)}€</div>
+            </div>
+          </div>
+        )}
 
         {/* Aperçu du nouveau nom */}
         {millesime && produit.millesime && (
@@ -1076,7 +1110,7 @@ function ModalDupliquer({ produit, onClose, onSaved }: {
             <div style={{ fontSize: 13, color: '#c9a96e' }}>
               {produit.nom.replace(String(produit.millesime), millesime)}
             </div>
-            <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.3)', marginTop: 4 }}>Créé inactif — à activer après vérification</div>
+            <div style={{ fontSize: 10, color: '#6ec96e', marginTop: 4 }}>✓ Sera créé actif</div>
           </div>
         )}
 
