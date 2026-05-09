@@ -31,6 +31,9 @@ Réponds en JSON valide UNIQUEMENT : {"answer":"réponse en français","sql":"SE
 Si pas de SQL nécessaire : {"answer":"réponse","sql":null}
 
 Règles SQL critiques :
+- Noms de tables TOUJOURS au pluriel avec 's' : products, regions, appellations, domaines, sites, customers
+- Pour filtrer par région : JOIN regions r ON r.id = p.region_id WHERE r.nom = 'Beaujolais'
+- Pour filtrer par appellation : JOIN appellations a ON a.id = p.appellation_id WHERE a.nom ILIKE '%Morgon%'
 - actif est un boolean : WHERE actif = true (pas WHERE actif = 1)
 - bio, vegan, casher, naturel, biodynamique sont des boolean
 - prix_vente_ttc est numeric : WHERE prix_vente_ttc < 20
