@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
@@ -591,17 +591,25 @@ function VueBesoins({ onRefresh }: { onRefresh: () => void }) {
 
 // ── Modal nouvelle commande directe ──────────────────────────
 
-function ModalNouvelleCommande({ domaines, onCreated, onClose }: {
+function ModalNouvelleCommande({ domaines, preselectedDomaineId, onCreated, onClose }: {
   domaines: any[]
+  preselectedDomaineId?: string
   onCreated: (cmd: any) => void
   onClose: () => void
 }) {
-  const [domaineId, setDomaineId] = useState('')
+  const [domaineId, setDomaineId] = useState(preselectedDomaineId || '')
   const [produitsDomaine, setProduitsDomaine] = useState<any[]>([])
   const [loadingProduits, setLoadingProduits] = useState(false)
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<Record<string, number>>({}) // product_id -> quantite
   const [notes, setNotes] = useState('')
+
+  // Charger les produits automatiquement si fournisseur pré-sélectionné
+  useEffect(() => {
+    if (preselectedDomaineId) {
+      loadProduitsDomaine(preselectedDomaineId)
+    }
+  }, [preselectedDomaineId])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -837,7 +845,11 @@ function ModalNouvelleCommande({ domaines, onCreated, onClose }: {
 
 // ── Vue Commandes ─────────────────────────────────────────────
 
-function VueCommandes({ onSelectDetail }: { onSelectDetail: (cmd: any) => void }) {
+function VueCommandes({ onSelectDetail, preselectedDomaineId, onClearPreselect }: {
+  onSelectDetail: (cmd: any) => void
+  preselectedDomaineId?: string | null
+  onClearPreselect?: () => void
+}) {
   const [commandes, setCommandes] = useState<any[]>([])
   const [domaines, setDomaines] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -858,6 +870,14 @@ function VueCommandes({ onSelectDetail }: { onSelectDetail: (cmd: any) => void }
     loadCommandes()
     supabase.from('domaines').select('id, nom').order('nom').then(({ data }) => setDomaines(data || []))
   }, [])
+
+  // Ouvrir le modal si un fournisseur est pré-sélectionné (venant de fournisseurs)
+  useEffect(() => {
+    if (preselectedDomaineId && domaines.length > 0) {
+      setShowNouvelleCommande(true)
+      if (onClearPreselect) onClearPreselect()
+    }
+  }, [preselectedDomaineId, domaines])
 
   const filtered = commandes.filter(c => filterStatut === 'tous' || c.statut === filterStatut)
 
@@ -920,6 +940,7 @@ function VueCommandes({ onSelectDetail }: { onSelectDetail: (cmd: any) => void }
       {showNouvelleCommande && (
         <ModalNouvelleCommande
           domaines={domaines}
+          preselectedDomaineId={preselectedDomaineId || undefined}
           onCreated={(cmd) => { loadCommandes(); setShowNouvelleCommande(false); onSelectDetail(cmd) }}
           onClose={() => setShowNouvelleCommande(false)}
         />
@@ -1739,10 +1760,11 @@ function VueReception({ onRefresh }: { onRefresh: () => void }) {
 // ── Page principale ──────────────────────────────────────────
 
 export default function AdminCommandesPage() {
-  const [view, setView] = useState<View>('besoins')
+  const [view, setView] = useState<View>('commandes')
   const [selectedCommande, setSelectedCommande] = useState<any>(null)
   const [counts, setCounts] = useState({ besoins: 0, commandes: 0, reception: 0 })
   const [refreshKey, setRefreshKey] = useState(0)
+  const [preselectedDomaineId, setPreselectedDomaineId] = useState<string | null>(null)
 
   const loadCounts = useCallback(async () => {
     const [{ count: cB }, { count: cC }, { count: cR }] = await Promise.all([
@@ -1754,6 +1776,16 @@ export default function AdminCommandesPage() {
   }, [])
 
   useEffect(() => { loadCounts() }, [loadCounts])
+
+  useEffect(() => {
+    // Lire le paramètre domaine depuis l'URL (venant de la fiche fournisseur)
+    const params = new URLSearchParams(window.location.search)
+    const domaineId = params.get('domaine')
+    if (domaineId) {
+      setPreselectedDomaineId(domaineId)
+      setView('commandes')
+    }
+  }, [])
 
   const handleRefresh = useCallback(() => {
     loadCounts()
@@ -1777,7 +1809,7 @@ export default function AdminCommandesPage() {
       <Sidebar view={view} setView={v => { setView(v); setSelectedCommande(null); handleRefresh() }} counts={counts} />
       <main style={{ marginLeft: 220, flex: 1, padding: '32px 36px' }}>
         {view === 'besoins' && <VueBesoins onRefresh={handleRefresh} />}
-        {view === 'commandes' && <VueCommandes key={refreshKey} onSelectDetail={handleSelectDetail} />}
+        {view === 'commandes' && <VueCommandes key={refreshKey} onSelectDetail={handleSelectDetail} preselectedDomaineId={preselectedDomaineId} onClearPreselect={() => setPreselectedDomaineId(null)} />}
         {view === 'reception' && <VueReception key={refreshKey} onRefresh={handleRefresh} />}
         {view === 'detail' && selectedCommande && (
           <DetailCommande
