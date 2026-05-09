@@ -982,6 +982,146 @@ function VueCommandes({ onSelectDetail, preselectedDomaineId, onClearPreselect }
   )
 }
 
+
+// ── Modal Dupliquer Produit (depuis commande) ─────────────────
+
+function ModalDupliquerCommande({ produit, commandeId, onCreated, onClose }: {
+  produit: any
+  commandeId: string
+  onCreated: () => void
+  onClose: () => void
+}) {
+  const [millesime, setMillesime] = useState(produit.millesime ? String(produit.millesime + 1) : '')
+  const [prixAchatHT, setPrixAchatHT] = useState(produit.prix_achat_ht_override ? String(produit.prix_achat_ht_override) : produit.prix_achat_ht ? String(produit.prix_achat_ht) : '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const arrondir50 = (n: number) => Math.ceil(n * 2) / 2
+  const prixTTC = prixAchatHT && parseFloat(prixAchatHT) > 0 ? arrondir50(parseFloat(prixAchatHT) * 2) : produit.prix_vente_ttc
+  const prixPro = prixAchatHT && parseFloat(prixAchatHT) > 0 ? Math.round(parseFloat(prixAchatHT) * 1.70 * 100) / 100 : produit.prix_vente_pro
+
+  const buildNomDuplique = () => {
+    let nom = produit.nom || ''
+    if (produit.millesime && millesime) {
+      nom = nom.replace(String(produit.millesime), millesime)
+    }
+    return nom
+  }
+
+  const handleDupliquer = async () => {
+    setSaving(true)
+    setError('')
+    const nomFinal = buildNomDuplique()
+    const slug = nomFinal.toLowerCase()
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+      + '-' + Math.random().toString(36).substring(2, 7)
+
+    const { data: newProd, error: err } = await supabase.from('products').insert({
+      nom: nomFinal, slug,
+      nom_cuvee: produit.nom_cuvee || null,
+      contenance: produit.contenance || '75cl',
+      millesime: millesime ? parseInt(millesime) : null,
+      couleur: produit.couleur,
+      region_id: produit.region_id || null,
+      appellation_id: produit.appellation_id || null,
+      domaine_id: produit.domaine_id || null,
+      prix_achat_ht: prixAchatHT ? parseFloat(prixAchatHT) : produit.prix_achat_ht,
+      prix_vente_ttc: prixTTC,
+      prix_vente_pro: prixPro,
+      image_url: produit.image_url || null,
+      bio: produit.bio || false, vegan: produit.vegan || false,
+      casher: produit.casher || false, naturel: produit.naturel || false,
+      biodynamique: produit.biodynamique || false, actif: true,
+    }).select('id, nom, millesime').single()
+
+    if (err) { setError(err.message); setSaving(false); return }
+
+    // Associer au même fournisseur
+    if (produit.domaine_id && newProd?.id) {
+      await supabase.from('product_suppliers').upsert({
+        product_id: newProd.id, domaine_id: produit.domaine_id,
+        prix_achat_ht: prixAchatHT ? parseFloat(prixAchatHT) : produit.prix_achat_ht,
+        conditionnement: 6, fournisseur_principal: true,
+      }, { onConflict: 'product_id,domaine_id' })
+    }
+
+    // Ajouter à la commande
+    await supabase.from('supplier_order_items').insert({
+      order_id: commandeId,
+      product_id: newProd.id,
+      product_nom: newProd.nom,
+      product_millesime: newProd.millesime,
+      quantite_commandee: 6,
+      prix_achat_ht: prixAchatHT ? parseFloat(prixAchatHT) : produit.prix_achat_ht,
+    })
+
+    setSaving(false)
+    onCreated()
+  }
+
+  const inp = { width: '100%', background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#e8e0d5', fontSize: 14, padding: '10px 12px', boxSizing: 'border-box' as const }
+
+  return (
+    <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 }} onClick={onClose}>
+      <div style={{ background: '#18130e', border: '0.5px solid rgba(201,169,110,0.25)', borderRadius: 8, width: 440, padding: '28px 32px' }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 18, fontWeight: 300, color: '#f0e8d8', margin: 0 }}>⧉ Dupliquer le produit</h2>
+          <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.4)', fontSize: 20, cursor: 'pointer' }}>✕</button>
+        </div>
+
+        <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 4, padding: '10px 14px', marginBottom: 20 }}>
+          <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.3)', letterSpacing: 1.5, marginBottom: 4 }}>PRODUIT ORIGINAL</div>
+          <div style={{ fontSize: 13, color: '#e8e0d5' }}>{produit.nom}</div>
+        </div>
+
+        {error && <div style={{ background: 'rgba(201,110,110,0.1)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 4, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: '#c96e6e' }}>{error}</div>}
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+          <div>
+            <label style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, display: 'block', marginBottom: 8 }}>Nouveau millésime</label>
+            <input type="number" value={millesime} onChange={e => setMillesime(e.target.value)} placeholder="Ex: 2024" style={inp} autoFocus />
+            <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.25)', marginTop: 4 }}>Vide = même millésime</div>
+          </div>
+          <div>
+            <label style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, display: 'block', marginBottom: 8 }}>Prix achat HT (€)</label>
+            <input type="number" step="0.01" value={prixAchatHT} onChange={e => setPrixAchatHT(e.target.value)} placeholder="0.00" style={inp} />
+            <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.25)', marginTop: 4 }}>Vide = même prix</div>
+          </div>
+        </div>
+
+        {prixAchatHT && parseFloat(prixAchatHT) > 0 && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
+            <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 4, padding: '8px', textAlign: 'center' as const }}>
+              <div style={{ fontSize: 9, color: 'rgba(232,224,213,0.3)', letterSpacing: 1, marginBottom: 4 }}>TTC PARTICULIER</div>
+              <div style={{ fontSize: 16, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{prixTTC?.toFixed(2)}€</div>
+            </div>
+            <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 4, padding: '8px', textAlign: 'center' as const }}>
+              <div style={{ fontSize: 9, color: 'rgba(232,224,213,0.3)', letterSpacing: 1, marginBottom: 4 }}>TTC PRO</div>
+              <div style={{ fontSize: 16, color: '#6e9ec9', fontFamily: 'Georgia, serif' }}>{prixPro?.toFixed(2)}€</div>
+            </div>
+          </div>
+        )}
+
+        {millesime && produit.millesime && (
+          <div style={{ background: 'rgba(201,169,110,0.06)', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 4, padding: '10px 14px', marginBottom: 16 }}>
+            <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.3)', letterSpacing: 1.5, marginBottom: 4 }}>NOUVEAU PRODUIT</div>
+            <div style={{ fontSize: 13, color: '#c9a96e' }}>{buildNomDuplique()}</div>
+            <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.3)', marginTop: 4 }}>Sera ajouté à la commande · Qté: 6 btl</div>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={onClose} style={{ flex: 1, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '11px', fontSize: 11, cursor: 'pointer' }}>Annuler</button>
+          <button onClick={handleDupliquer} disabled={saving} style={{ flex: 2, background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '11px', fontSize: 11, letterSpacing: 2, cursor: 'pointer', fontWeight: 500, textTransform: 'uppercase' as const, opacity: saving ? 0.7 : 1 }}>
+            {saving ? '⟳ Création...' : '⧉ Dupliquer et ajouter'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Détail commande ───────────────────────────────────────────
 
 function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack: () => void; onRefresh: () => void }) {
@@ -1002,6 +1142,11 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
   const [actionLoading, setActionLoading] = useState(false)
   const [editQty, setEditQty] = useState<Record<string, number>>({})
   const [editPrix, setEditPrix] = useState<Record<string, number>>({})
+  const [showNouveauProduit, setShowNouveauProduit] = useState(false)
+  const [showDupliquer, setShowDupliquer] = useState<any>(null)
+  const [regions, setRegions] = useState<any[]>([])
+  const [appellations, setAppellations] = useState<any[]>([])
+  const [domaines, setDomaines] = useState<any[]>([])
 
   useEffect(() => {
     const load = async () => {
@@ -1187,6 +1332,11 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
               ✕ Annuler la commande
             </button>
           )}
+          {statutLocal === 'brouillon' && (
+            <button onClick={() => setShowNouveauProduit(true)} style={{ background: 'transparent', border: '0.5px solid rgba(110,158,201,0.3)', color: '#6e9ec9', borderRadius: 4, padding: '10px 18px', fontSize: 11, cursor: 'pointer', letterSpacing: 1 }}>
+              + Nouveau produit
+            </button>
+          )}
           {statutLocal === 'reçue' && (
             <button onClick={() => setShowSupprimer(true)} style={{ background: 'transparent', border: '0.5px solid rgba(201,110,110,0.2)', color: 'rgba(201,110,110,0.6)', borderRadius: 4, padding: '10px 18px', fontSize: 11, cursor: 'pointer', letterSpacing: 1 }}>
               🗑 Supprimer
@@ -1305,8 +1455,18 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
               {items.map((item, i) => (
                 <tr key={item.id} style={{ borderBottom: i < items.length - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none' }}>
                   <td style={{ padding: '11px 14px' }}>
-                    <div style={{ fontSize: 13, color: '#f0e8d8' }}>{item.product_nom}</div>
-                    {item.product_millesime && <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>{item.product_millesime}</div>}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div>
+                        <div style={{ fontSize: 13, color: '#f0e8d8' }}>{item.product_nom}</div>
+                        {item.product_millesime && <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>{item.product_millesime}</div>}
+                      </div>
+                      {statutLocal === 'brouillon' && item.product_id && (
+                        <button onClick={async () => {
+                          const { data: prod } = await supabase.from('products').select('*').eq('id', item.product_id).single()
+                          if (prod) setShowDupliquer({ ...prod, prix_achat_ht_override: editPrix[item.id] })
+                        }} title="Dupliquer ce produit (changer millésime)" style={{ background: 'transparent', border: '0.5px solid rgba(201,169,110,0.2)', color: 'rgba(201,169,110,0.5)', borderRadius: 3, padding: '3px 7px', fontSize: 11, cursor: 'pointer' }}>⧉</button>
+                      )}
+                    </div>
                   </td>
                   <td style={{ padding: '11px 14px' }}>
                     {statutLocal === 'brouillon' ? (
