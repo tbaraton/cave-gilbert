@@ -1304,8 +1304,6 @@ export default function AdminPage() {
   const navItems: { id: Section; label: string; icon: string }[] = [
     { id: 'dashboard',  label: 'Tableau de bord',  icon: '⬡' },
     { id: 'produits',   label: 'Produits',          icon: '⬥' },
-    { id: 'stock',      label: 'Stock multi-sites', icon: '◈' },
-    { id: 'transferts', label: 'Transferts',        icon: '⇄' },
     { id: 'locations',  label: 'Locations tireuse', icon: '⟁' },
     { id: 'biere',      label: 'Stock fûts',        icon: '◉' },
   ]
