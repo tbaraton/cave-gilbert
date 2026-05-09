@@ -416,18 +416,37 @@ function ModalEditProduit({ produit, regions: regionsProp, appellations: appella
   const [appellations, setAppellations] = useState<any[]>(appellationsProp || [])
 
   useEffect(() => {
-    if (!regionsProp || regionsProp.length === 0) {
-      supabase.from('regions').select('id, nom').order('nom').then(({ data }) => setRegions(data || []))
+    const loadAll = async () => {
+      // Charger régions si manquantes
+      let regs = regionsProp || []
+      let apps = appellationsProp || []
+      if (regs.length === 0) {
+        const { data } = await supabase.from('regions').select('id, nom').order('nom')
+        regs = data || []
+        setRegions(regs)
+      }
+      if (apps.length === 0) {
+        const { data } = await supabase.from('appellations').select('id, nom, region_id').order('nom')
+        apps = data || []
+        setAppellations(apps)
+      }
+      // Résoudre les noms depuis les IDs
+      const appNom = apps.find((a: any) => a.id === produit.appellation_id)?.nom || ''
+      // Charger le nom du domaine depuis domaine_id
+      let domaineNom = ''
+      if (produit.domaine_id) {
+        const { data } = await supabase.from('domaines').select('nom').eq('id', produit.domaine_id).single()
+        domaineNom = data?.nom || ''
+      }
+      setForm(f => ({ ...f, appellation_nom: appNom, domaine_nom: domaineNom }))
     }
-    if (!appellationsProp || appellationsProp.length === 0) {
-      supabase.from('appellations').select('id, nom, region_id').order('nom').then(({ data }) => setAppellations(data || []))
-    }
+    loadAll()
   }, [])
 
   const [form, setForm] = useState({
-    appellation_nom: produit.appellation_nom || '',
+    appellation_nom: '',
     nom_cuvee: produit.nom_cuvee || '',
-    domaine_nom: produit.domaine_nom || '',
+    domaine_nom: '',
     contenance: produit.contenance || '75cl',
     millesime: produit.millesime?.toString() || '',
     couleur: produit.couleur || 'rouge',
