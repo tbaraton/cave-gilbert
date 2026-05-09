@@ -937,6 +937,8 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
   const [loading, setLoading] = useState(true)
   const [processing, setProcessing] = useState(false)
   const [qtesRecues, setQtesRecues] = useState<Record<string, number>>({})
+  const [prixRecus, setPrixRecus] = useState<Record<string, number>>({})
+  const [popupPrix, setPopupPrix] = useState<{ item: any; newPrix: number } | null>(null)
   const [showReception, setShowReception] = useState(false)
   const [statutLocal, setStatutLocal] = useState(commande.statut)
 
@@ -1047,19 +1049,83 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
               {sites.map(s => <option key={s.id} value={s.id} style={{ background: '#1a1408', color: '#f0e8d8' }}>{s.nom} — {s.ville}</option>)}
             </select>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 10, marginBottom: 14 }}>
-            {items.map(item => (
-              <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                <span style={{ flex: 1, fontSize: 13, color: '#e8e0d5' }}>{item.product_nom}{item.product_millesime ? ` ${item.product_millesime}` : ''}</span>
-                <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>Commandé : {item.quantite_commandee}</span>
-                <input
-                  type="number" min={0}
-                  defaultValue={qtesRecues[item.id] ?? item.quantite_commandee}
-                  onChange={e => setQtesRecues(q => ({ ...q, [item.id]: parseInt(e.target.value) || 0 }))}
-                  style={{ width: 80, background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 3, color: '#e8e0d5', fontSize: 13, padding: '4px 8px', textAlign: 'center' as const }}
-                />
+          {/* Popup modification prix */}
+          {popupPrix && (
+            <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 }}>
+              <div style={{ background: '#18130e', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 8, padding: '24px 28px', maxWidth: 380, width: '100%' }}>
+                <h3 style={{ fontFamily: 'Georgia, serif', fontSize: 16, fontWeight: 300, color: '#f0e8d8', marginBottom: 16 }}>Mise à jour des prix</h3>
+                <p style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)', marginBottom: 16 }}>{popupPrix.item.product_nom}</p>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 20 }}>
+                  {[
+                    { label: 'Prix achat HT', val: `${popupPrix.newPrix.toFixed(2)}€`, color: '#e8e0d5' },
+                    { label: 'Prix TTC part. (×2 arr.)', val: `${(Math.ceil(popupPrix.newPrix * 2 * 2) / 2).toFixed(2)}€`, color: '#c9a96e' },
+                    { label: 'Prix TTC pro (×1.70)', val: `${(Math.round(popupPrix.newPrix * 1.70 * 100) / 100).toFixed(2)}€`, color: '#6e9ec9' },
+                  ].map(({ label, val, color }) => (
+                    <div key={label} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 4, padding: '10px', textAlign: 'center' as const }}>
+                      <div style={{ fontSize: 9, letterSpacing: 1.5, color: 'rgba(232,224,213,0.35)', textTransform: 'uppercase' as const, marginBottom: 6 }}>{label}</div>
+                      <div style={{ fontSize: 16, color, fontFamily: 'Georgia, serif' }}>{val}</div>
+                    </div>
+                  ))}
+                </div>
+                <p style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', marginBottom: 16 }}>
+                  Ces prix seront mis à jour sur la fiche produit lors de la validation de la réception.
+                </p>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button onClick={() => {
+                    setPrixRecus(p => ({ ...p, [popupPrix.item.id]: parseFloat(popupPrix.item.prix_achat_ht || 0) }))
+                    setPopupPrix(null)
+                  }} style={{ flex: 1, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '9px', fontSize: 11, cursor: 'pointer' }}>
+                    Annuler
+                  </button>
+                  <button onClick={() => setPopupPrix(null)} style={{ flex: 2, background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '9px', fontSize: 11, cursor: 'pointer', fontWeight: 500 }}>
+                    ✓ Confirmer le nouveau prix
+                  </button>
+                </div>
               </div>
-            ))}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8, marginBottom: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 100px 130px 90px', gap: 8, padding: '6px 0', borderBottom: '0.5px solid rgba(255,255,255,0.06)' }}>
+              {['Produit', 'Commandé', 'Prix achat HT', 'Reçu'].map(h => (
+                <div key={h} style={{ fontSize: 9, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', textTransform: 'uppercase' as const }}>{h}</div>
+              ))}
+            </div>
+            {items.map(item => {
+              const currentPrix = prixRecus[item.id] ?? parseFloat(item.prix_achat_ht || 0)
+              const originalPrix = parseFloat(item.prix_achat_ht || 0)
+              const prixChanged = Math.abs(currentPrix - originalPrix) > 0.001
+              return (
+                <div key={item.id} style={{ display: 'grid', gridTemplateColumns: '2fr 100px 130px 90px', gap: 8, alignItems: 'center', padding: '6px 0', borderBottom: '0.5px solid rgba(255,255,255,0.04)' }}>
+                  <div>
+                    <div style={{ fontSize: 13, color: '#e8e0d5' }}>{item.product_nom}</div>
+                    {item.product_millesime && <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>{item.product_millesime}</div>}
+                  </div>
+                  <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>{item.quantite_commandee} btl</div>
+                  <div style={{ position: 'relative' as const }}>
+                    <input
+                      type="number" step="0.01"
+                      value={currentPrix}
+                      onChange={e => {
+                        const newVal = parseFloat(e.target.value) || 0
+                        setPrixRecus(p => ({ ...p, [item.id]: newVal }))
+                        if (Math.abs(newVal - originalPrix) > 0.001) {
+                          setPopupPrix({ item, newPrix: newVal })
+                        }
+                      }}
+                      style={{ width: '100%', background: prixChanged ? 'rgba(201,169,110,0.08)' : 'rgba(255,255,255,0.04)', border: `0.5px solid ${prixChanged ? 'rgba(201,169,110,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 3, color: prixChanged ? '#c9a96e' : '#e8e0d5', fontSize: 13, padding: '4px 8px', textAlign: 'center' as const }}
+                    />
+                    {prixChanged && <div style={{ fontSize: 9, color: '#c9a96e', textAlign: 'center' as const, marginTop: 2 }}>Modifié ✓</div>}
+                  </div>
+                  <input
+                    type="number" min={0}
+                    defaultValue={qtesRecues[item.id] ?? item.quantite_commandee}
+                    onChange={e => setQtesRecues(q => ({ ...q, [item.id]: parseInt(e.target.value) || 0 }))}
+                    style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 3, color: '#e8e0d5', fontSize: 13, padding: '4px 8px', textAlign: 'center' as const }}
+                  />
+                </div>
+              )
+            })}
           </div>
           <div style={{ display: 'flex', gap: 10 }}>
             <button onClick={() => setShowReception(false)} style={{ flex: 1, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '10px', fontSize: 11, cursor: 'pointer' }}>Annuler</button>
