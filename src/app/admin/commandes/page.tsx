@@ -602,6 +602,8 @@ function ModalNouvelleCommande({ domaines, preselectedDomaineId, onCreated, onCl
   const [loadingProduits, setLoadingProduits] = useState(false)
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<Record<string, number>>({}) // product_id -> quantite
+  const [stockParProduit, setStockParProduit] = useState<Record<string, Record<string, number>>>({})
+  const [sites, setSites] = useState<any[]>([])
   const [notes, setNotes] = useState('')
 
   // Charger les produits automatiquement si fournisseur pré-sélectionné
@@ -614,7 +616,7 @@ function ModalNouvelleCommande({ domaines, preselectedDomaineId, onCreated, onCl
   const [error, setError] = useState('')
 
   const loadProduitsDomaine = async (id: string) => {
-    if (!id) { setProduitsDomaine([]); return }
+    if (!id) { setProduitsDomaine([]); setStockParProduit({}); return }
     setLoadingProduits(true)
     const { data: ps } = await supabase
       .from('product_suppliers')
@@ -623,13 +625,19 @@ function ModalNouvelleCommande({ domaines, preselectedDomaineId, onCreated, onCl
       .eq('fournisseur_principal', true)
     if (!ps || ps.length === 0) { setProduitsDomaine([]); setLoadingProduits(false); return }
     const ids = ps.map(p => p.product_id)
-    const { data: prods } = await supabase
-      .from('products')
-      .select('id, nom, millesime, couleur, prix_achat_ht')
-      .in('id', ids)
-      .eq('actif', true)
-      .order('nom')
-    // Merge prix from product_suppliers
+    const [{ data: prods }, { data: stockData }, { data: sitesData }] = await Promise.all([
+      supabase.from('products').select('id, nom, millesime, couleur, prix_achat_ht').in('id', ids).eq('actif', true).order('nom'),
+      supabase.from('stock').select('product_id, site_id, quantite').in('product_id', ids),
+      supabase.from('sites').select('id, nom, code').eq('actif', true).order('type'),
+    ])
+    setSites(sitesData || [])
+    // Build stock map: product_id -> { site_id -> quantite }
+    const stockMap: Record<string, Record<string, number>> = {}
+    ;(stockData || []).forEach((s: any) => {
+      if (!stockMap[s.product_id]) stockMap[s.product_id] = {}
+      stockMap[s.product_id][s.site_id] = s.quantite || 0
+    })
+    setStockParProduit(stockMap)
     const psMap = Object.fromEntries(ps.map(p => [p.product_id, p]))
     setProduitsDomaine((prods || []).map(p => ({
       ...p,
@@ -757,6 +765,11 @@ function ModalNouvelleCommande({ domaines, preselectedDomaineId, onCreated, onCl
                         <th style={{ width: 36, padding: '8px 12px' }}></th>
                         <th style={{ padding: '8px 12px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', fontWeight: 400 }}>PRODUIT</th>
                         <th style={{ padding: '8px 12px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', fontWeight: 400 }}>PRIX HT</th>
+                        {sites.map(s => (
+                          <th key={s.id} style={{ padding: '8px 12px', textAlign: 'center' as const, fontSize: 9, letterSpacing: 1, color: 'rgba(201,169,110,0.5)', fontWeight: 400 }}>
+                            📦 {s.code || s.nom.split(' ')[0].toUpperCase()}
+                          </th>
+                        ))}
                         <th style={{ padding: '8px 12px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', fontWeight: 400 }}>QTÉ</th>
                       </tr>
                     </thead>
@@ -791,6 +804,18 @@ function ModalNouvelleCommande({ domaines, preselectedDomaineId, onCreated, onCl
                             <td style={{ padding: '10px 12px', fontSize: 13, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>
                               {parseFloat(p.prix_achat_ht || 0).toFixed(2)}€
                             </td>
+                            {sites.map(s => {
+                              const qty = stockParProduit[p.id]?.[s.id] || 0
+                              return (
+                                <td key={s.id} style={{ padding: '10px 12px', textAlign: 'center' as const }} onClick={e => e.stopPropagation()}>
+                                  <span style={{
+                                    fontSize: 13, fontFamily: 'Georgia, serif',
+                                    color: qty === 0 ? '#c96e6e' : qty <= 3 ? '#c9b06e' : '#6ec96e',
+                                    fontWeight: 500,
+                                  }}>{qty}</span>
+                                </td>
+                              )
+                            })}
                             <td style={{ padding: '10px 12px' }} onClick={e => e.stopPropagation()}>
                               {checked ? (
                                 <input
