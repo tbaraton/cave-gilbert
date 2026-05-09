@@ -363,6 +363,46 @@ function ModalMouvement({ produits, sites, onClose, onSaved }: {
 }
 
 
+// ── Helpers couleur ──────────────────────────────────────────
+
+const COULEUR_COLOR: Record<string, string> = {
+  rouge: '#e07070',
+  blanc: '#c9b06e',
+  rosé: '#e8a0b0',
+  champagne: '#c0c0d8',
+  effervescent: '#c0c0d8',
+  spiritueux: '#8ec98e',
+  autre: '#888888',
+}
+
+function arrondir50(prix: number): number {
+  return Math.ceil(prix * 2) / 2
+}
+
+// Prévisualisation du nom du vin
+function NomVinPreview({ appellation, cuvee, couleur, millesime, contenance, domaine }: {
+  appellation: string, cuvee: string, couleur: string,
+  millesime: string, contenance: string, domaine: string
+}) {
+  if (!appellation && !domaine) return null
+  const couleurColor = COULEUR_COLOR[couleur] || '#888'
+  const couleurLabel = couleur.charAt(0).toUpperCase() + couleur.slice(1)
+  
+  return (
+    <div style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 4, padding: '10px 14px', marginBottom: 14 }}>
+      <div style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', textTransform: 'uppercase' as const, marginBottom: 6 }}>Aperçu du nom</div>
+      <div style={{ fontSize: 15, color: '#f0e8d8', fontFamily: 'Georgia, serif' }}>
+        {appellation}
+        {cuvee && <span style={{ fontStyle: 'italic', color: 'rgba(232,224,213,0.7)' }}> {cuvee}</span>}
+        {couleur && <span style={{ color: couleurColor, fontWeight: 500 }}> {couleurLabel}</span>}
+        {millesime && <span style={{ color: 'rgba(232,224,213,0.6)' }}> {millesime}</span>}
+        {contenance && <span style={{ color: 'rgba(232,224,213,0.4)', fontSize: 12 }}> {contenance}</span>}
+        {domaine && <span style={{ color: 'rgba(232,224,213,0.5)', fontSize: 13 }}> — {domaine}</span>}
+      </div>
+    </div>
+  )
+}
+
 // ── Modal Édition Produit ────────────────────────────────────
 
 function ModalEditProduit({ produit, regions, appellations, onClose, onSaved }: {
@@ -373,14 +413,19 @@ function ModalEditProduit({ produit, regions, appellations, onClose, onSaved }: 
   onSaved: () => void
 }) {
   const [form, setForm] = useState({
-    nom: produit.nom || '',
+    appellation_nom: produit.appellation_nom || '',
+    nom_cuvee: produit.nom_cuvee || '',
+    domaine_nom: produit.domaine_nom || '',
+    contenance: produit.contenance || '75cl',
     millesime: produit.millesime?.toString() || '',
     couleur: produit.couleur || 'rouge',
     region_id: produit.region_id || '',
     appellation_id: produit.appellation_id || '',
-    prix_vente_ttc: produit.prix_vente_ttc?.toString() || '',
-    prix_vente_pro: produit.prix_vente_pro?.toString() || '',
     prix_achat_ht: produit.prix_achat_ht?.toString() || '',
+    coeff_particulier: '2',
+    prix_vente_ttc: produit.prix_vente_ttc?.toString() || '',
+    coeff_pro: '1.70',
+    prix_vente_pro: produit.prix_vente_pro?.toString() || '',
     description_courte: produit.description_courte || '',
     image_url: produit.image_url || '',
     bio: produit.bio || false,
@@ -397,13 +442,40 @@ function ModalEditProduit({ produit, regions, appellations, onClose, onSaved }: 
     ? appellations.filter((a: any) => a.region_id === form.region_id)
     : appellations
 
+  // Calcul du nom automatique
+  const buildNom = () => {
+    const parts = []
+    if (form.appellation_nom) parts.push(form.appellation_nom)
+    if (form.nom_cuvee) parts.push(form.nom_cuvee)
+    if (form.couleur) parts.push(form.couleur.charAt(0).toUpperCase() + form.couleur.slice(1))
+    if (form.millesime) parts.push(form.millesime)
+    if (form.contenance) parts.push(form.contenance)
+    let nom = parts.join(' ')
+    if (form.domaine_nom) nom += ' - ' + form.domaine_nom
+    return nom
+  }
+
+  // Calcul auto des prix
+  const handleHTChange = (ht: string) => {
+    const htNum = parseFloat(ht)
+    setForm(f => ({
+      ...f,
+      prix_achat_ht: ht,
+      prix_vente_ttc: !isNaN(htNum) && htNum > 0 ? arrondir50(htNum * parseFloat(f.coeff_particulier)).toFixed(2) : f.prix_vente_ttc,
+      prix_vente_pro: !isNaN(htNum) && htNum > 0 ? (htNum * parseFloat(f.coeff_pro)).toFixed(2) : f.prix_vente_pro,
+    }))
+  }
+
   const handleSave = async () => {
-    if (!form.nom.trim()) { setError('Le nom est obligatoire'); return }
+    const nomFinal = buildNom()
+    if (!nomFinal.trim()) { setError('Remplissez au moins l'appellation'); return }
     if (!form.prix_vente_ttc) { setError('Le prix TTC est obligatoire'); return }
     setSaving(true)
     setError('')
     const { error: err } = await supabase.from('products').update({
-      nom: form.nom.trim(),
+      nom: nomFinal,
+      nom_cuvee: form.nom_cuvee || null,
+      contenance: form.contenance || '75cl',
       millesime: form.millesime ? parseInt(form.millesime) : null,
       couleur: form.couleur,
       region_id: form.region_id || null,
@@ -428,82 +500,111 @@ function ModalEditProduit({ produit, regions, appellations, onClose, onSaved }: 
   const inp = { width: '100%', background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#e8e0d5', fontSize: 13, padding: '9px 12px', boxSizing: 'border-box' as const }
   const lbl = { fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, display: 'block', marginBottom: 6 }
   const sel = { ...inp, background: '#1a1408', border: '0.5px solid rgba(201,169,110,0.2)', cursor: 'pointer' }
-
   const CERTIFS = [
-    { key: 'bio', label: '🌿 Bio' },
-    { key: 'vegan', label: '🌱 Vegan' },
-    { key: 'casher', label: '✡ Casher' },
-    { key: 'naturel', label: '🍃 Naturel' },
+    { key: 'bio', label: '🌿 Bio' }, { key: 'vegan', label: '🌱 Vegan' },
+    { key: 'casher', label: '✡ Casher' }, { key: 'naturel', label: '🍃 Naturel' },
     { key: 'biodynamique', label: '🌙 Biodynamique' },
   ]
 
   return (
     <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }} onClick={onClose}>
-      <div style={{ background: '#18130e', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 8, width: '100%', maxWidth: 680, padding: '28px 32px', maxHeight: '92vh', overflowY: 'auto' as const }} onClick={e => e.stopPropagation()}>
+      <div style={{ background: '#18130e', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 8, width: '100%', maxWidth: 700, padding: '28px 32px', maxHeight: '92vh', overflowY: 'auto' as const }} onClick={e => e.stopPropagation()}>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 300, color: '#f0e8d8', margin: 0 }}>Modifier le produit</h2>
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.4)', fontSize: 20, cursor: 'pointer' }}>✕</button>
         </div>
 
         {error && <div style={{ background: 'rgba(201,110,110,0.1)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 4, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: '#c96e6e' }}>{error}</div>}
 
+        {/* Aperçu nom en temps réel */}
+        <NomVinPreview
+          appellation={form.appellation_nom || appsFiltrees.find(a => a.id === form.appellation_id)?.nom || ''}
+          cuvee={form.nom_cuvee}
+          couleur={form.couleur}
+          millesime={form.millesime}
+          contenance={form.contenance}
+          domaine={form.domaine_nom}
+        />
+
         {/* Identité */}
         <div style={{ fontSize: 10, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 10 }}>Identité</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 12, marginBottom: 14 }}>
-          <div style={{ gridColumn: '1 / -1' }}>
-            <label style={lbl}>Nom *</label>
-            <input value={form.nom} onChange={e => setForm(f => ({ ...f, nom: e.target.value }))} style={inp} />
-          </div>
-          <div>
-            <label style={lbl}>Millésime</label>
-            <input type="number" value={form.millesime} onChange={e => setForm(f => ({ ...f, millesime: e.target.value }))} placeholder="2022" style={inp} />
-          </div>
-          <div style={{ gridColumn: '2 / -1' }}>
-            <label style={lbl}>Couleur</label>
-            <select value={form.couleur} onChange={e => setForm(f => ({ ...f, couleur: e.target.value }))} style={sel}>
-              {Object.entries(COULEUR_STYLE).map(([k, v]) => (
-                <option key={k} value={k} style={{ background: '#1a1408', color: '#f0e8d8' }}>{v.label}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {/* Région & Appellation */}
-        <div style={{ fontSize: 10, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 10 }}>Région & Appellation</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 12, marginBottom: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
           <div>
             <label style={lbl}>Région viticole</label>
-            <select value={form.region_id} onChange={e => setForm(f => ({ ...f, region_id: e.target.value, appellation_id: '' }))} style={sel}>
+            <select value={form.region_id} onChange={e => setForm(f => ({ ...f, region_id: e.target.value, appellation_id: '', appellation_nom: '' }))} style={sel}>
               <option value="" style={{ background: '#1a1408', color: '#888' }}>— Choisir —</option>
               {regions.map(r => <option key={r.id} value={r.id} style={{ background: '#1a1408', color: '#f0e8d8' }}>{r.nom}</option>)}
             </select>
           </div>
           <div>
-            <label style={lbl}>Appellation {form.region_id && <span style={{ color: 'rgba(232,224,213,0.3)' }}>({appsFiltrees.length} disponibles)</span>}</label>
-            <select value={form.appellation_id} onChange={e => setForm(f => ({ ...f, appellation_id: e.target.value }))} style={sel}>
+            <label style={lbl}>Appellation *</label>
+            <select value={form.appellation_id} onChange={e => {
+              const app = appsFiltrees.find(a => a.id === e.target.value)
+              setForm(f => ({ ...f, appellation_id: e.target.value, appellation_nom: app?.nom || '' }))
+            }} style={sel}>
               <option value="" style={{ background: '#1a1408', color: '#888' }}>— Choisir —</option>
               {appsFiltrees.map(a => <option key={a.id} value={a.id} style={{ background: '#1a1408', color: '#f0e8d8' }}>{a.nom}</option>)}
             </select>
+          </div>
+          <div>
+            <label style={lbl}>Nom de la cuvée</label>
+            <input value={form.nom_cuvee} onChange={e => setForm(f => ({ ...f, nom_cuvee: e.target.value }))} placeholder="Laisser vide si pas de cuvée" style={{ ...inp, fontStyle: 'italic' }} />
+          </div>
+          <div>
+            <label style={lbl}>Nom du domaine</label>
+            <input value={form.domaine_nom} onChange={e => setForm(f => ({ ...f, domaine_nom: e.target.value }))} placeholder="Ex: Domaine Jean Foillard" style={inp} />
+          </div>
+          <div>
+            <label style={lbl}>Couleur *</label>
+            <select value={form.couleur} onChange={e => setForm(f => ({ ...f, couleur: e.target.value }))} style={{ ...sel, color: COULEUR_COLOR[form.couleur] || '#e8e0d5', fontWeight: 600 }}>
+              {Object.entries(COULEUR_STYLE).map(([k, v]) => (
+                <option key={k} value={k} style={{ background: '#1a1408', color: COULEUR_COLOR[k] || '#f0e8d8', fontWeight: 600 }}>{v.label}</option>
+              ))}
+            </select>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div>
+              <label style={lbl}>Millésime</label>
+              <input type="number" value={form.millesime} onChange={e => setForm(f => ({ ...f, millesime: e.target.value }))} placeholder="2022" style={inp} />
+            </div>
+            <div>
+              <label style={lbl}>Contenance</label>
+              <input value={form.contenance} onChange={e => setForm(f => ({ ...f, contenance: e.target.value }))} placeholder="75cl" style={inp} />
+            </div>
           </div>
         </div>
 
         {/* Prix */}
         <div style={{ fontSize: 10, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 10 }}>Prix</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr', gap: 10, marginBottom: 6 }}>
           <div>
             <label style={lbl}>Prix achat HT (€)</label>
-            <input type="number" step="0.01" value={form.prix_achat_ht} onChange={e => setForm(f => ({ ...f, prix_achat_ht: e.target.value }))} placeholder="0.00" style={inp} />
+            <input type="number" step="0.01" value={form.prix_achat_ht} onChange={e => handleHTChange(e.target.value)} placeholder="0.00" style={inp} />
           </div>
           <div>
-            <label style={lbl}>Prix TTC particulier (€) *</label>
+            <label style={lbl}>Coeff. part.</label>
+            <input type="number" step="0.01" value={form.coeff_particulier} onChange={e => setForm(f => ({ ...f, coeff_particulier: e.target.value }))} style={{ ...inp, color: '#c9b06e' }} />
+          </div>
+          <div>
+            <label style={lbl}>Prix TTC part. (€) *</label>
             <input type="number" step="0.50" value={form.prix_vente_ttc} onChange={e => setForm(f => ({ ...f, prix_vente_ttc: e.target.value }))} placeholder="0.00" style={inp} />
           </div>
           <div>
+            <label style={lbl}>Coeff. pro</label>
+            <input type="number" step="0.01" value={form.coeff_pro} onChange={e => setForm(f => ({ ...f, coeff_pro: e.target.value }))} style={{ ...inp, color: '#c9b06e' }} />
+          </div>
+          <div>
             <label style={lbl}>Prix TTC pro (€)</label>
-            <input type="number" step="0.50" value={form.prix_vente_pro} onChange={e => setForm(f => ({ ...f, prix_vente_pro: e.target.value }))} placeholder="0.00" style={inp} />
+            <input type="number" step="0.01" value={form.prix_vente_pro} onChange={e => setForm(f => ({ ...f, prix_vente_pro: e.target.value }))} placeholder="0.00" style={inp} />
           </div>
         </div>
+        {form.prix_achat_ht && (
+          <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)', marginBottom: 14 }}>
+            {form.prix_achat_ht}€ HT × {form.coeff_particulier} = <strong style={{ color: '#c9a96e' }}>{arrondir50(parseFloat(form.prix_achat_ht) * parseFloat(form.coeff_particulier)).toFixed(2)}€</strong> part.
+            {' · '}× {form.coeff_pro} = <strong style={{ color: '#c9a96e' }}>{(parseFloat(form.prix_achat_ht) * parseFloat(form.coeff_pro)).toFixed(2)}€</strong> pro
+          </div>
+        )}
 
         {/* Description & Photo */}
         <div style={{ fontSize: 10, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 10 }}>Description & Photo</div>
@@ -515,7 +616,7 @@ function ModalEditProduit({ produit, regions, appellations, onClose, onSaved }: 
           <label style={lbl}>URL photo</label>
           <input value={form.image_url} onChange={e => setForm(f => ({ ...f, image_url: e.target.value }))} placeholder="https://..." style={inp} />
           {form.image_url && (
-            <img src={form.image_url} alt="" style={{ height: 50, marginTop: 8, borderRadius: 4, objectFit: 'contain' as const, background: '#100d0a', padding: 4 }} onError={e => (e.currentTarget.style.display = 'none')} />
+            <img src={form.image_url} alt="" style={{ height: 60, marginTop: 8, borderRadius: 4, objectFit: 'contain' as const, background: '#100d0a', padding: 4 }} onError={e => (e.currentTarget.style.display = 'none')} />
           )}
         </div>
 
@@ -536,17 +637,10 @@ function ModalEditProduit({ produit, regions, appellations, onClose, onSaved }: 
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24 }}>
-          <div onClick={() => setForm(f => ({ ...f, actif: !f.actif }))} style={{
-            width: 14, height: 14, borderRadius: 2,
-            border: `0.5px solid ${form.actif ? '#c9a96e' : 'rgba(255,255,255,0.2)'}`,
-            background: form.actif ? '#c9a96e' : 'transparent',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-          }}>
+          <div onClick={() => setForm(f => ({ ...f, actif: !f.actif }))} style={{ width: 14, height: 14, borderRadius: 2, border: `0.5px solid ${form.actif ? '#c9a96e' : 'rgba(255,255,255,0.2)'}`, background: form.actif ? '#c9a96e' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
             {form.actif && <span style={{ fontSize: 9, color: '#0d0a08', fontWeight: 700 }}>✓</span>}
           </div>
-          <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)', cursor: 'pointer' }} onClick={() => setForm(f => ({ ...f, actif: !f.actif }))}>
-            Produit actif (visible en boutique)
-          </span>
+          <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)', cursor: 'pointer' }} onClick={() => setForm(f => ({ ...f, actif: !f.actif }))}>Produit actif (visible en boutique)</span>
         </div>
 
         <div style={{ display: 'flex', gap: 10 }}>
