@@ -183,8 +183,10 @@ function VueSaisie({ inventaire, onBack }: { inventaire: Inventaire; onBack: () 
   const [search, setSearch] = useState('')
   const [filterCouleur, setFilterCouleur] = useState('')
   const [filterDomaine, setFilterDomaine] = useState('')
-  const [sortBy, setSortBy] = useState<'nom' | 'domaine'>('nom')
+  const [filterRegion, setFilterRegion] = useState('')
+  const [sortBy, setSortBy] = useState<'nom' | 'domaine' | 'region'>('nom')
   const [domaines, setDomaines] = useState<any[]>([])
+  const [regions, setRegions] = useState<any[]>([])
   const [showValider, setShowValider] = useState(false)
   const [confirmText, setConfirmText] = useState('')
   const [validating, setValidating] = useState(false)
@@ -192,16 +194,18 @@ function VueSaisie({ inventaire, onBack }: { inventaire: Inventaire; onBack: () 
 
   const loadLignes = useCallback(async () => {
     setLoading(true)
-    const [{ data }, { data: domsData }] = await Promise.all([
+    const [{ data }, { data: domsData }, { data: regsData }] = await Promise.all([
       supabase
         .from('inventaire_lignes')
-        .select('*, product:products(nom, millesime, couleur, nom_cuvee, domaine_id)')
+        .select('*, product:products(nom, millesime, couleur, nom_cuvee, domaine_id, region_id)')
         .eq('inventaire_id', inventaire.id)
         .order('product(nom)'),
       supabase.from('domaines').select('id, nom').order('nom'),
+      supabase.from('regions').select('id, nom').order('nom'),
     ])
     setLignes(data || [])
     setDomaines(domsData || [])
+    setRegions(regsData || [])
     setLoading(false)
   }, [inventaire.id])
 
@@ -266,13 +270,19 @@ function VueSaisie({ inventaire, onBack }: { inventaire: Inventaire; onBack: () 
     .filter(l =>
       (!search || l.product?.nom?.toLowerCase().includes(search.toLowerCase())) &&
       (!filterCouleur || l.product?.couleur === filterCouleur) &&
-      (!filterDomaine || (l.product as any)?.domaine_id === filterDomaine)
+      (!filterDomaine || (l.product as any)?.domaine_id === filterDomaine) &&
+      (!filterRegion || (l.product as any)?.region_id === filterRegion)
     )
     .sort((a, b) => {
       if (sortBy === 'domaine') {
         const da = domaines.find(d => d.id === (a.product as any)?.domaine_id)?.nom || 'zzz'
         const db = domaines.find(d => d.id === (b.product as any)?.domaine_id)?.nom || 'zzz'
         if (da !== db) return da.localeCompare(db)
+      }
+      if (sortBy === 'region') {
+        const ra = regions.find(r => r.id === (a.product as any)?.region_id)?.nom || 'zzz'
+        const rb = regions.find(r => r.id === (b.product as any)?.region_id)?.nom || 'zzz'
+        if (ra !== rb) return ra.localeCompare(rb)
       }
       return (a.product?.nom || '').localeCompare(b.product?.nom || '')
     })
@@ -321,34 +331,54 @@ function VueSaisie({ inventaire, onBack }: { inventaire: Inventaire; onBack: () 
           </div>
         </div>
 
-        {/* Filtres */}
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' as const }}>
+        {/* Filtres ligne 1 */}
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' as const, marginBottom: 8 }}>
           <input placeholder="🔍 Rechercher un produit..." value={search} onChange={e => setSearch(e.target.value)}
             style={{ flex: '1 1 200px', ...inp, boxSizing: 'border-box' as const }} />
-          <div style={{ display: 'flex', gap: 6 }}>
-            {[
-              { key: '', label: 'Tous' },
-              { key: 'rouge', label: '🔴 Rouge' },
-              { key: 'blanc', label: '🟡 Blanc' },
-              { key: 'rosé', label: '🌸 Rosé' },
-              { key: 'champagne', label: '✨ Champ.' },
-              { key: 'autre', label: 'Autre' },
-            ].map(({ key, label }) => (
-              <button key={key} onClick={() => setFilterCouleur(key)} style={{
-                background: filterCouleur === key ? 'rgba(201,169,110,0.15)' : 'rgba(255,255,255,0.03)',
-                border: `0.5px solid ${filterCouleur === key ? 'rgba(201,169,110,0.4)' : 'rgba(255,255,255,0.1)'}`,
-                color: filterCouleur === key ? '#c9a96e' : 'rgba(232,224,213,0.4)',
-                borderRadius: 20, padding: '6px 12px', fontSize: 11, cursor: 'pointer',
+          <select value={filterRegion} onChange={e => setFilterRegion(e.target.value)}
+            style={{ ...inp, background: '#1a1408', cursor: 'pointer', minWidth: 140 }}>
+            <option value="">Toutes les régions</option>
+            {regions.map(r => <option key={r.id} value={r.id}>{r.nom}</option>)}
+          </select>
+          <select value={filterDomaine} onChange={e => setFilterDomaine(e.target.value)}
+            style={{ ...inp, background: '#1a1408', cursor: 'pointer', minWidth: 160 }}>
+            <option value="">Tous les domaines</option>
+            {domaines.map(d => <option key={d.id} value={d.id}>{d.nom}</option>)}
+          </select>
+          <button onClick={() => { setSearch(''); setFilterCouleur(''); setFilterDomaine(''); setFilterRegion('') }}
+            style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.3)', borderRadius: 4, padding: '6px 12px', fontSize: 10, cursor: 'pointer' }}>
+            À compter ({lignes.filter(l => l.stock_compte === null).length})
+          </button>
+        </div>
+        {/* Couleur + tri */}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' as const }}>
+          <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)' }}>Couleur :</span>
+          {[
+            { key: '', label: 'Toutes' },
+            { key: 'rouge', label: '🔴 Rouge' },
+            { key: 'blanc', label: '🟡 Blanc' },
+            { key: 'rosé', label: '🌸 Rosé' },
+            { key: 'champagne', label: '✨ Champ.' },
+            { key: 'autre', label: 'Autre' },
+          ].map(({ key, label }) => (
+            <button key={key} onClick={() => setFilterCouleur(key)} style={{
+              background: filterCouleur === key ? 'rgba(201,169,110,0.15)' : 'rgba(255,255,255,0.03)',
+              border: `0.5px solid ${filterCouleur === key ? 'rgba(201,169,110,0.4)' : 'rgba(255,255,255,0.1)'}`,
+              color: filterCouleur === key ? '#c9a96e' : 'rgba(232,224,213,0.4)',
+              borderRadius: 20, padding: '5px 10px', fontSize: 11, cursor: 'pointer',
+            }}>{label}</button>
+          ))}
+          <div style={{ marginLeft: 12, display: 'flex', gap: 6, alignItems: 'center' }}>
+            <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)' }}>Trier par :</span>
+            {([['nom', 'Nom'], ['region', 'Région'], ['domaine', 'Domaine']] as [string, string][]).map(([val, label]) => (
+              <button key={val} onClick={() => setSortBy(val as any)} style={{
+                background: sortBy === val ? 'rgba(201,169,110,0.12)' : 'transparent',
+                border: `0.5px solid ${sortBy === val ? 'rgba(201,169,110,0.4)' : 'rgba(255,255,255,0.1)'}`,
+                color: sortBy === val ? '#c9a96e' : 'rgba(232,224,213,0.4)',
+                borderRadius: 4, padding: '5px 10px', fontSize: 11, cursor: 'pointer',
               }}>{label}</button>
             ))}
           </div>
-          {/* Filtres rapides */}
-          <button onClick={() => {
-            setSearch('')
-            setFilterCouleur('')
-          }} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.3)', borderRadius: 4, padding: '6px 12px', fontSize: 10, cursor: 'pointer' }}>
-            À compter ({lignes.filter(l => l.stock_compte === null).length})
-          </button>
         </div>
       </div>
 
