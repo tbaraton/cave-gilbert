@@ -584,8 +584,6 @@ export default function AdminPage() {
   const [search, setSearch] = useState('')
   const [filterRegion, setFilterRegion] = useState('')
   const [filterAppellation, setFilterAppellation] = useState('')
-  const [regions, setRegionsList] = useState<any[]>([])
-  const [appellations, setAppellationsList] = useState<any[]>([])
   const [sortCol, setSortCol] = useState<string>('nom')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
 
