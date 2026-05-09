@@ -962,7 +962,14 @@ export default function AdminPage() {
       )
       setAlertes(alertesData)
 
-      // Charger régions et appellations pour les filtres
+    } catch (e) {
+      console.error('Erreur chargement données:', e)
+    } finally {
+      setLoading(false)
+    }
+
+    // Charger régions et appellations séparément (ne bloque pas le reste)
+    try {
       const [{ data: regs }, { data: apps }] = await Promise.all([
         supabase.from('regions').select('id, nom').order('nom'),
         supabase.from('appellations').select('id, nom, region_id').order('nom'),
@@ -970,9 +977,7 @@ export default function AdminPage() {
       setRegions(regs || [])
       setAppellations(apps || [])
     } catch (e) {
-      console.error('Erreur chargement données:', e)
-    } finally {
-      setLoading(false)
+      console.error('Erreur chargement régions:', e)
     }
   }, [])
 
