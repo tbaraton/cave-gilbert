@@ -1309,7 +1309,8 @@ export default function AdminPage() {
                         { label: 'Couleur', col: 'couleur' },
                         { label: 'Millésime', col: 'millesime' },
                         { label: 'Prix', col: 'prix_vente_ttc' },
-                        { label: 'Stock', col: null },
+                        ...sitesUniques.map(s => ({ label: s, col: null })),
+                        { label: 'Total', col: null },
                         { label: 'Statut', col: 'actif' },
                         { label: '', col: null },
                       ].map(({ label, col }) => (
@@ -1340,7 +1341,17 @@ export default function AdminPage() {
                         </td>
                         <td style={{ padding: '14px 16px', fontSize: 13, color: 'rgba(232,224,213,0.6)' }}>{p.millesime || '—'}</td>
                         <td style={{ padding: '14px 16px', fontSize: 14, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{p.prix_vente_ttc}€</td>
-                        <td style={{ padding: '14px 16px' }}><StockDot qty={stockParSite.filter((s: any) => s.product_id === p.id).reduce((acc: number, s: any) => acc + (s.quantite || 0), 0)} /></td>
+                        {sitesUniques.map(site => {
+                          const ligne = stockParSite.find((s: any) => s.product_id === p.id && s.site === site)
+                          return (
+                            <td key={site} style={{ padding: '14px 16px' }}>
+                              <StockDot qty={ligne?.quantite || 0} />
+                            </td>
+                          )
+                        })}
+                        <td style={{ padding: '14px 16px' }}>
+                          <StockDot qty={stockParSite.filter((s: any) => s.product_id === p.id).reduce((acc: number, s: any) => acc + (s.quantite || 0), 0)} />
+                        </td>
                         <td style={{ padding: '14px 16px' }}>
                           <Badge label={p.actif ? 'Actif' : 'Inactif'} bg={p.actif ? '#1e2a1e' : '#2a2a2a'} color={p.actif ? '#6ec96e' : '#888'} />
                         </td>
