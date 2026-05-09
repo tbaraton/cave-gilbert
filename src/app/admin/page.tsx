@@ -1315,6 +1315,8 @@ export default function AdminPage() {
     { label: 'Fournisseurs',  href: '/admin/fournisseurs',  icon: '◈' },
     { label: 'Commandes',     href: '/admin/commandes',     icon: '◻' },
     { label: 'Transferts',    href: '/admin/transferts',    icon: '⇄' },
+    { label: 'Inventaire',    href: '/admin/inventaire',    icon: '◉' },
+    { label: 'Assistant IA',  href: '/admin/ia',            icon: '✦' },
     { label: 'Import',        href: '/admin/import',        icon: '↑' },
   ]
 
