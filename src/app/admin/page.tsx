@@ -962,6 +962,135 @@ function ModalNouveauProduitAdmin({ regions: regionsProp, appellations: appellat
   )
 }
 
+
+// ── Modal Dupliquer Produit ──────────────────────────────────
+
+function ModalDupliquer({ produit, onClose, onSaved }: {
+  produit: any
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [millesime, setMillesime] = useState(produit.millesime ? String(produit.millesime + 1) : '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const handleDupliquer = async () => {
+    setSaving(true)
+    setError('')
+    
+    // Construire le nouveau nom
+    let newNom = produit.nom
+    if (produit.millesime && millesime) {
+      newNom = produit.nom.replace(String(produit.millesime), millesime)
+    }
+    
+    const slug = newNom.toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+      + '-' + Math.random().toString(36).substring(2, 7)
+
+    const { data: newProd, error: err } = await supabase.from('products').insert({
+      nom: newNom,
+      slug,
+      nom_cuvee: produit.nom_cuvee || null,
+      contenance: produit.contenance || '75cl',
+      millesime: millesime ? parseInt(millesime) : null,
+      couleur: produit.couleur,
+      region_id: produit.region_id || null,
+      appellation_id: produit.appellation_id || null,
+      domaine_id: produit.domaine_id || null,
+      prix_achat_ht: produit.prix_achat_ht || null,
+      prix_vente_ttc: produit.prix_vente_ttc || null,
+      prix_vente_pro: produit.prix_vente_pro || null,
+      description_courte: produit.description_courte || null,
+      image_url: produit.image_url || null,
+      bio: produit.bio || false,
+      vegan: produit.vegan || false,
+      casher: produit.casher || false,
+      naturel: produit.naturel || false,
+      biodynamique: produit.biodynamique || false,
+      actif: false, // inactif par défaut pour vérification
+    }).select('id').single()
+
+    if (err) { setError(err.message); setSaving(false); return }
+
+    // Dupliquer aussi l'association fournisseur
+    if (produit.domaine_id && newProd?.id) {
+      const { data: ps } = await supabase.from('product_suppliers')
+        .select('*').eq('product_id', produit.id).eq('fournisseur_principal', true).maybeSingle()
+      if (ps) {
+        await supabase.from('product_suppliers').insert({
+          product_id: newProd.id,
+          domaine_id: ps.domaine_id,
+          prix_achat_ht: ps.prix_achat_ht,
+          conditionnement: ps.conditionnement,
+          fournisseur_principal: true,
+        })
+      }
+    }
+
+    setSaving(false)
+    onSaved()
+    onClose()
+  }
+
+  const inp = { width: '100%', background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#e8e0d5', fontSize: 14, padding: '10px 12px', boxSizing: 'border-box' as const }
+
+  return (
+    <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 }} onClick={onClose}>
+      <div style={{ background: '#18130e', border: '0.5px solid rgba(201,169,110,0.25)', borderRadius: 8, width: 420, padding: '28px 32px' }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 18, fontWeight: 300, color: '#f0e8d8', margin: 0 }}>⧉ Dupliquer le produit</h2>
+          <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.4)', fontSize: 20, cursor: 'pointer' }}>✕</button>
+        </div>
+
+        {/* Aperçu produit original */}
+        <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 4, padding: '10px 14px', marginBottom: 20 }}>
+          <div style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', textTransform: 'uppercase' as const, marginBottom: 4 }}>Produit original</div>
+          <div style={{ fontSize: 13, color: '#e8e0d5' }}>{produit.nom}</div>
+        </div>
+
+        {error && <div style={{ background: 'rgba(201,110,110,0.1)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 4, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: '#c96e6e' }}>{error}</div>}
+
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, display: 'block', marginBottom: 8 }}>
+            Nouveau millésime
+          </label>
+          <input
+            type="number"
+            value={millesime}
+            onChange={e => setMillesime(e.target.value)}
+            placeholder="Ex: 2024"
+            style={inp}
+            autoFocus
+          />
+          <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.3)', marginTop: 6 }}>
+            Laissez vide pour conserver le même millésime
+          </div>
+        </div>
+
+        {/* Aperçu du nouveau nom */}
+        {millesime && produit.millesime && (
+          <div style={{ background: 'rgba(201,169,110,0.06)', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 4, padding: '10px 14px', marginBottom: 20 }}>
+            <div style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', textTransform: 'uppercase' as const, marginBottom: 4 }}>Nouveau produit</div>
+            <div style={{ fontSize: 13, color: '#c9a96e' }}>
+              {produit.nom.replace(String(produit.millesime), millesime)}
+            </div>
+            <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.3)', marginTop: 4 }}>Créé inactif — à activer après vérification</div>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={onClose} style={{ flex: 1, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '11px', fontSize: 11, cursor: 'pointer' }}>Annuler</button>
+          <button onClick={handleDupliquer} disabled={saving} style={{ flex: 2, background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '11px', fontSize: 11, letterSpacing: 2, cursor: 'pointer', fontWeight: 500, textTransform: 'uppercase' as const, opacity: saving ? 0.7 : 1 }}>
+            {saving ? '⟳ Duplication...' : '⧉ Dupliquer'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Page principale ──────────────────────────────────────────
 
 export default function AdminPage() {
@@ -982,6 +1111,7 @@ export default function AdminPage() {
   // Modals
   const [showModalProduit, setShowModalProduit] = useState(false)
   const [showNouveauProduit, setShowNouveauProduit] = useState(false)
+  const [dupliquerProduit, setDupliquerProduit] = useState<any>(null)
   const [showModalMouvement, setShowModalMouvement] = useState(false)
   const [selectedProduit, setSelectedProduit] = useState<any>(null)
   const [search, setSearch] = useState('')
@@ -1520,12 +1650,16 @@ export default function AdminPage() {
                           <Badge label={p.actif ? 'Actif' : 'Inactif'} bg={p.actif ? '#1e2a1e' : '#2a2a2a'} color={p.actif ? '#6ec96e' : '#888'} />
                         </td>
                         <td style={{ padding: '14px 16px' }}>
-                          <button onClick={async () => {
-                            await supabase.from('products').update({ actif: !p.actif }).eq('id', p.id)
-                            loadData()
-                          }} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 3, padding: '5px 10px', fontSize: 10, cursor: 'pointer' }}>
-                            {p.actif ? 'Désactiver' : 'Activer'}
-                          </button>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button onClick={async (e) => {
+                              e.stopPropagation()
+                              await supabase.from('products').update({ actif: !p.actif }).eq('id', p.id)
+                              loadData()
+                            }} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 3, padding: '5px 10px', fontSize: 10, cursor: 'pointer' }}>
+                              {p.actif ? 'Désactiver' : 'Activer'}
+                            </button>
+                            <button onClick={(e) => { e.stopPropagation(); setDupliquerProduit(p) }} title="Dupliquer ce produit" style={{ background: 'transparent', border: '0.5px solid rgba(201,169,110,0.2)', color: 'rgba(201,169,110,0.5)', borderRadius: 3, padding: '5px 8px', fontSize: 11, cursor: 'pointer' }}>⧉</button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -1778,6 +1912,13 @@ export default function AdminPage() {
           appellations={appellations}
           onClose={() => setShowNouveauProduit(false)}
           onSaved={() => { loadData(); setShowNouveauProduit(false) }}
+        />
+      )}
+      {dupliquerProduit && (
+        <ModalDupliquer
+          produit={dupliquerProduit}
+          onClose={() => setDupliquerProduit(null)}
+          onSaved={() => { loadData(); setDupliquerProduit(null) }}
         />
       )}
     </div>
