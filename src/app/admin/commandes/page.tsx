@@ -962,6 +962,11 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
   const [popupPrix, setPopupPrix] = useState<{ item: any; newPrix: number } | null>(null)
   const [showReception, setShowReception] = useState(false)
   const [statutLocal, setStatutLocal] = useState(commande.statut)
+  const [showAnnuler, setShowAnnuler] = useState(false)
+  const [raisonAnnulation, setRaisonAnnulation] = useState('')
+  const [showSupprimer, setShowSupprimer] = useState(false)
+  const [confirmSuppr, setConfirmSuppr] = useState('')
+  const [actionLoading, setActionLoading] = useState(false)
 
   useEffect(() => {
     const load = async () => {
@@ -1032,9 +1037,88 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
         <Badge statut={statutLocal} />
       </div>
 
+      {/* Popup Annulation */}
+      {showAnnuler && (
+        <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ background: '#18130e', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 8, padding: '28px 32px', maxWidth: 460, width: '100%' }}>
+            <h3 style={{ fontFamily: 'Georgia, serif', fontSize: 18, fontWeight: 300, color: '#f0e8d8', marginBottom: 6 }}>Annuler la commande</h3>
+            <p style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)', marginBottom: 16 }}>{commande.numero} — {commande.fournisseur?.nom}</p>
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.35)', textTransform: 'uppercase' as const, display: 'block', marginBottom: 8 }}>Raison de l'annulation *</label>
+              <textarea
+                value={raisonAnnulation}
+                onChange={e => setRaisonAnnulation(e.target.value)}
+                rows={3}
+                placeholder="Ex: Rupture de stock chez le fournisseur, commande jamais arrivée..."
+                style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#e8e0d5', fontSize: 13, padding: '9px 12px', boxSizing: 'border-box' as const, resize: 'vertical' as const }}
+              />
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => { setShowAnnuler(false); setRaisonAnnulation('') }}
+                style={{ flex: 1, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '11px', fontSize: 11, cursor: 'pointer' }}>
+                Retour
+              </button>
+              <button disabled={!raisonAnnulation.trim() || actionLoading} onClick={async () => {
+                setActionLoading(true)
+                await supabase.from('supplier_orders').update({ statut: 'annulée', notes: `[Annulée] ${raisonAnnulation}` }).eq('id', commande.id)
+                setActionLoading(false)
+                setShowAnnuler(false)
+                setRaisonAnnulation('')
+                onRefresh()
+                onBack()
+              }} style={{ flex: 2, background: raisonAnnulation.trim() ? '#c96e6e' : '#333', color: raisonAnnulation.trim() ? '#fff' : '#666', border: 'none', borderRadius: 4, padding: '11px', fontSize: 11, cursor: raisonAnnulation.trim() ? 'pointer' : 'not-allowed', fontWeight: 500, letterSpacing: 1 }}>
+                {actionLoading ? '⟳ Annulation...' : 'Confirmer l'annulation'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Popup Suppression */}
+      {showSupprimer && (
+        <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ background: '#18130e', border: '0.5px solid rgba(201,110,110,0.4)', borderRadius: 8, padding: '28px 32px', maxWidth: 440, width: '100%' }}>
+            <h3 style={{ fontFamily: 'Georgia, serif', fontSize: 18, fontWeight: 300, color: '#c96e6e', marginBottom: 6 }}>⚠ Suppression définitive</h3>
+            <p style={{ fontSize: 13, color: '#e8e0d5', marginBottom: 4 }}>{commande.numero} — {commande.fournisseur?.nom}</p>
+            <p style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)', marginBottom: 20 }}>
+              Cette action est irréversible. La commande et toutes ses lignes seront définitivement supprimées.
+            </p>
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ fontSize: 11, color: 'rgba(232,224,213,0.5)', display: 'block', marginBottom: 8 }}>
+                Tapez <strong style={{ color: '#c96e6e' }}>SUPPRIMER</strong> pour confirmer :
+              </label>
+              <input
+                value={confirmSuppr}
+                onChange={e => setConfirmSuppr(e.target.value)}
+                placeholder="SUPPRIMER"
+                style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: `0.5px solid ${confirmSuppr === 'SUPPRIMER' ? 'rgba(201,110,110,0.6)' : 'rgba(255,255,255,0.12)'}`, borderRadius: 4, color: '#e8e0d5', fontSize: 14, padding: '10px 12px', boxSizing: 'border-box' as const, letterSpacing: 2, textAlign: 'center' as const }}
+              />
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => { setShowSupprimer(false); setConfirmSuppr('') }}
+                style={{ flex: 1, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '11px', fontSize: 11, cursor: 'pointer' }}>
+                Annuler
+              </button>
+              <button disabled={confirmSuppr !== 'SUPPRIMER' || actionLoading} onClick={async () => {
+                setActionLoading(true)
+                await supabase.from('supplier_order_items').delete().eq('order_id', commande.id)
+                await supabase.from('supplier_orders').delete().eq('id', commande.id)
+                setActionLoading(false)
+                setShowSupprimer(false)
+                setConfirmSuppr('')
+                onRefresh()
+                onBack()
+              }} style={{ flex: 2, background: confirmSuppr === 'SUPPRIMER' ? '#c96e6e' : '#2a1a1a', color: confirmSuppr === 'SUPPRIMER' ? '#fff' : '#666', border: 'none', borderRadius: 4, padding: '11px', fontSize: 11, cursor: confirmSuppr === 'SUPPRIMER' ? 'pointer' : 'not-allowed', fontWeight: 500, letterSpacing: 1 }}>
+                {actionLoading ? '⟳ Suppression...' : '🗑 Supprimer définitivement'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {!showReception && (
         <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' as const }}>
-          {['brouillon', 'envoyée', 'envoyée'].includes(statutLocal) && (
+          {['brouillon', 'envoyée'].includes(statutLocal) && (
             <button onClick={handleSendEmail} style={{ background: '#1e1e2a', border: '0.5px solid rgba(110,158,201,0.4)', color: '#6e9ec9', borderRadius: 4, padding: '10px 18px', fontSize: 11, cursor: 'pointer', letterSpacing: 1 }}>
               📧 Envoyer par email
             </button>
@@ -1042,21 +1126,25 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
           {statutLocal === 'brouillon' && (
             <button onClick={async () => {
               const { error } = await supabase.from('supplier_orders').update({ statut: 'envoyée' }).eq('id', commande.id)
-              if (!error) {
-                onRefresh()
-                onBack()
-              }
+              if (!error) { onRefresh(); onBack() }
             }} style={{ background: '#1e2a1e', border: '0.5px solid rgba(110,201,110,0.3)', color: '#6ec96e', borderRadius: 4, padding: '10px 18px', fontSize: 11, cursor: 'pointer', letterSpacing: 1 }}>
               ✓ Valider (téléphone / visuel)
             </button>
           )}
-          {['envoyée', 'envoyée', 'envoyée'].includes(statutLocal) && (
+          {statutLocal === 'envoyée' && (
             <button onClick={() => setShowReception(true)} style={{ background: '#1e2a1e', border: '0.5px solid rgba(110,201,110,0.4)', color: '#6ec96e', borderRadius: 4, padding: '10px 18px', fontSize: 11, cursor: 'pointer', letterSpacing: 1 }}>
               📦 Réceptionner
             </button>
           )}
-          {statutLocal === 'brouillon' && (
-            <button onClick={async () => { await supabase.from('supplier_orders').update({ statut: 'annulée' }).eq('id', commande.id); onRefresh(); onBack() }} style={{ background: 'transparent', border: '0.5px solid rgba(201,110,110,0.3)', color: '#c96e6e', borderRadius: 4, padding: '10px 14px', fontSize: 11, cursor: 'pointer' }}>Annuler</button>
+          {['brouillon', 'envoyée'].includes(statutLocal) && (
+            <button onClick={() => setShowAnnuler(true)} style={{ background: 'transparent', border: '0.5px solid rgba(201,110,110,0.3)', color: '#c96e6e', borderRadius: 4, padding: '10px 18px', fontSize: 11, cursor: 'pointer', letterSpacing: 1 }}>
+              ✕ Annuler la commande
+            </button>
+          )}
+          {statutLocal === 'reçue' && (
+            <button onClick={() => setShowSupprimer(true)} style={{ background: 'transparent', border: '0.5px solid rgba(201,110,110,0.2)', color: 'rgba(201,110,110,0.6)', borderRadius: 4, padding: '10px 18px', fontSize: 11, cursor: 'pointer', letterSpacing: 1 }}>
+              🗑 Supprimer
+            </button>
           )}
         </div>
       )}
