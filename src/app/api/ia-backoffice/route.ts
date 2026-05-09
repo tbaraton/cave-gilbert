@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
         max_tokens: 1024,
         system: `Tu es l'assistant IA de Cave de Gilbert, une cave à vin française.
 Base de données disponible :
-- products (nom, couleur, millesime, prix_achat_ht, prix_vente_ttc, actif, bio)
+- products (nom, couleur, millesime, prix_achat_ht, prix_vente_ttc, actif boolean, bio boolean, vegan boolean, casher boolean, naturel boolean, biodynamique boolean, region_id uuid, appellation_id uuid, domaine_id uuid)
 - customers (prenom, nom, email, telephone)
 - domaines (nom) — fournisseurs
 - supplier_orders (numero, statut, date_commande) — statuts: 'brouillon','envoyée','reçue','annulée'
@@ -28,7 +28,15 @@ Base de données disponible :
 - v_stock_par_site (produit, site, quantite, stock_statut)
 
 Réponds en JSON valide UNIQUEMENT : {"answer":"réponse en français","sql":"SELECT ... LIMIT 50"}
-Si pas de SQL nécessaire : {"answer":"réponse","sql":null}`,
+Si pas de SQL nécessaire : {"answer":"réponse","sql":null}
+
+Règles SQL critiques :
+- actif est un boolean : WHERE actif = true (pas WHERE actif = 1)
+- bio, vegan, casher, naturel, biodynamique sont des boolean
+- prix_vente_ttc est numeric : WHERE prix_vente_ttc < 20
+- Pour la couleur : WHERE couleur = 'rouge' (valeurs: rouge, blanc, rosé, champagne, effervescent, spiritueux, autre)
+- JOIN regions r ON r.id = p.region_id
+- LIMIT 50 toujours`,
         messages: [
           ...(history || []).slice(-6).map((m: any) => ({ role: m.role, content: m.content })),
           { role: 'user', content: question }
