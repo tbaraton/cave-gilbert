@@ -352,6 +352,243 @@ function ModalNouveauProduit({ domaines, regions, appellations, onCreated, onClo
     </div>
   )
 }
+
+// ── Sidebar ──────────────────────────────────────────────────
+
+function Sidebar({ view, setView, counts }: { view: View; setView: (v: View) => void; counts: Record<string, number> }) {
+  const items = [
+    { id: 'besoins',   label: 'Besoins',    icon: '◻', count: counts.besoins },
+    { id: 'commandes', label: 'Commandes',  icon: '◈', count: counts.commandes },
+    { id: 'reception', label: 'Réception',  icon: '📦', count: counts.reception },
+    { id: 'associer',  label: 'Assoc. fournisseurs', icon: '⬥' },
+  ]
+  return (
+    <aside style={{ width: 220, background: '#100d0a', borderRight: '0.5px solid rgba(255,255,255,0.06)', padding: '24px 0', position: 'fixed' as const, top: 0, left: 0, bottom: 0 }}>
+      <div style={{ padding: '0 20px 24px', borderBottom: '0.5px solid rgba(255,255,255,0.06)' }}>
+        <div style={{ fontFamily: 'Georgia, serif', fontSize: 15, color: '#c9a96e', letterSpacing: 3, textTransform: 'uppercase' as const, fontWeight: 300 }}>Cave de Gilbert</div>
+        <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.3)', letterSpacing: 1.5, marginTop: 3 }}>ADMINISTRATION</div>
+      </div>
+      <nav style={{ padding: '16px 0' }}>
+        {[
+          { label: 'Tableau de bord', href: '/admin', icon: '⬡' },
+          { label: 'Produits', href: '/admin', icon: '⬥' },
+          { label: 'Clients', href: '/admin/clients', icon: '◎' },
+          { label: 'Fournisseurs', href: '/admin/fournisseurs', icon: '◈' },
+        ].map(item => (
+          <a key={item.label} href={item.href} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 20px', fontSize: 12, color: 'rgba(232,224,213,0.45)', borderLeft: '2px solid transparent', textDecoration: 'none' }}>
+            <span>{item.icon}</span>{item.label}
+          </a>
+        ))}
+        <div style={{ height: '0.5px', background: 'rgba(255,255,255,0.06)', margin: '8px 0' }} />
+        <div style={{ padding: '8px 20px', fontSize: 9, letterSpacing: 2, color: 'rgba(232,224,213,0.25)', textTransform: 'uppercase' as const }}>Commandes</div>
+        {items.map(item => (
+          <button key={item.id} onClick={() => setView(item.id as View)} style={{
+            width: '100%', textAlign: 'left' as const, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '10px 20px', fontSize: 12, cursor: 'pointer',
+            background: view === item.id ? 'rgba(201,169,110,0.08)' : 'transparent',
+            color: view === item.id ? '#c9a96e' : 'rgba(232,224,213,0.45)',
+            borderLeft: `2px solid ${view === item.id ? '#c9a96e' : 'transparent'}`,
+            border: 'none', borderLeftStyle: 'solid' as const,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span>{item.icon}</span>{item.label}
+            </div>
+            {item.count !== undefined && item.count > 0 && (
+              <span style={{ background: '#c9a96e', color: '#0d0a08', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{item.count}</span>
+            )}
+          </button>
+        ))}
+      </nav>
+      <div style={{ padding: '16px 20px', borderTop: '0.5px solid rgba(255,255,255,0.06)', position: 'absolute' as const, bottom: 0, left: 0, right: 0 }}>
+        <a href="/" style={{ fontSize: 11, color: 'rgba(232,224,213,0.3)', textDecoration: 'none' }}>← Voir le site</a>
+      </div>
+    </aside>
+  )
+}
+
+// ── Vue Besoins ───────────────────────────────────────────────
+
+function VueBesoins({ onRefresh }: { onRefresh: () => void }) {
+  const [besoins, setBesoins] = useState<any[]>([])
+  const [domaines, setDomaines] = useState<any[]>([])
+  const [regions, setRegions] = useState<any[]>([])
+  const [appellations, setAppellations] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [searchRes, setSearchRes] = useState<any[]>([])
+  const [generating, setGenerating] = useState(false)
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+  const [showNouveauProduit, setShowNouveauProduit] = useState(false)
+
+  const loadBesoins = async () => {
+    setLoading(true)
+    const { data } = await supabase
+      .from('order_needs')
+      .select('*, product:products(id, nom, millesime, couleur), fournisseur:domaines(id, nom)')
+      .eq('statut', 'en_attente')
+      .order('created_at', { ascending: false })
+    setBesoins(data || [])
+    setLoading(false)
+  }
+
+  useEffect(() => {
+    loadBesoins()
+    supabase.from('domaines').select('id, nom').order('nom').then(({ data }) => setDomaines(data || []))
+    supabase.from('regions').select('id, nom').order('nom').then(({ data }) => setRegions(data || []))
+    supabase.from('appellations').select('id, nom, region_id').order('nom').then(({ data }) => setAppellations(data || []))
+  }, [])
+
+  const searchProducts = async (q: string) => {
+    setSearch(q)
+    if (q.length < 2) { setSearchRes([]); return }
+    const { data } = await supabase.from('products').select('id, nom, millesime, couleur, prix_achat_ht').ilike('nom', `%${q}%`).eq('actif', true).limit(15)
+    setSearchRes(data || [])
+  }
+
+  const addBesoin = async (product: any) => {
+    if (besoins.find(b => b.product_id === product.id)) return
+    const { data: ps } = await supabase.from('product_suppliers').select('domaine_id, prix_achat_ht, conditionnement').eq('product_id', product.id).eq('fournisseur_principal', true).single()
+    await supabase.from('order_needs').insert({
+      product_id: product.id, domaine_id: ps?.domaine_id || null,
+      quantite: ps?.conditionnement || 6, prix_achat_ht: ps?.prix_achat_ht || product.prix_achat_ht || 0, statut: 'en_attente',
+    })
+    setSearch(''); setSearchRes([]); loadBesoins()
+  }
+
+  const updateQty = async (id: string, qty: number) => {
+    await supabase.from('order_needs').update({ quantite: Math.max(1, qty) }).eq('id', id)
+    loadBesoins()
+  }
+
+  const removeBesoin = async (id: string) => {
+    await supabase.from('order_needs').delete().eq('id', id)
+    loadBesoins()
+  }
+
+  const generateCommandes = async () => {
+    setGenerating(true); setError(''); setSuccess('')
+    const parFournisseur: Record<string, any[]> = {}
+    const sansFournisseur: any[] = []
+    for (const b of besoins) {
+      if (!b.domaine_id) { sansFournisseur.push(b); continue }
+      if (!parFournisseur[b.domaine_id]) parFournisseur[b.domaine_id] = []
+      parFournisseur[b.domaine_id].push(b)
+    }
+    let nbCommandes = 0
+    for (const [domaineId, items] of Object.entries(parFournisseur)) {
+      const { data: cmd } = await supabase.from('supplier_orders').insert({ domaine_id: domaineId, statut: 'brouillon', date_commande: new Date().toISOString().split('T')[0] }).select().single()
+      if (!cmd) continue
+      await supabase.from('supplier_order_items').insert(items.map(b => ({ order_id: cmd.id, product_id: b.product_id, product_nom: b.product?.nom || '', product_millesime: b.product?.millesime || null, quantite_commandee: b.quantite, prix_achat_ht: b.prix_achat_ht || 0 })))
+      await supabase.from('order_needs').update({ statut: 'commandé', supplier_order_id: cmd.id }).in('id', items.map(b => b.id))
+      nbCommandes++
+    }
+    setGenerating(false)
+    if (nbCommandes > 0) { setSuccess(`${nbCommandes} commande${nbCommandes > 1 ? 's' : ''} générée${nbCommandes > 1 ? 's' : ''} !`); loadBesoins(); onRefresh() }
+    if (sansFournisseur.length > 0) setError(`${sansFournisseur.length} produit(s) sans fournisseur — non commandé(s)`)
+  }
+
+  const besoinsAvecFournisseur = besoins.filter(b => b.domaine_id)
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 }}>
+        <div>
+          <h1 style={{ fontFamily: 'Georgia, serif', fontSize: 26, fontWeight: 300, color: '#f0e8d8', marginBottom: 4 }}>Besoins</h1>
+          <p style={{ fontSize: 12, color: 'rgba(232,224,213,0.35)' }}>{besoins.length} produit{besoins.length > 1 ? 's' : ''} en attente</p>
+        </div>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={() => setShowNouveauProduit(true)} style={{ background: 'transparent', border: '0.5px solid rgba(201,169,110,0.4)', color: '#c9a96e', borderRadius: 4, padding: '10px 18px', fontSize: 11, letterSpacing: 1.5, cursor: 'pointer' }}>
+            + Nouveau produit
+          </button>
+          <button onClick={generateCommandes} disabled={generating || besoinsAvecFournisseur.length === 0} style={{ background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '11px 20px', fontSize: 11, letterSpacing: 2, cursor: besoinsAvecFournisseur.length === 0 ? 'not-allowed' : 'pointer', fontWeight: 500, textTransform: 'uppercase' as const, opacity: besoinsAvecFournisseur.length === 0 ? 0.5 : 1 }}>
+            {generating ? '⟳ Génération...' : `✓ Passer les commandes (${besoinsAvecFournisseur.length})`}
+          </button>
+        </div>
+      </div>
+
+      {error && <div style={{ background: 'rgba(201,110,110,0.1)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 4, padding: '12px 16px', marginBottom: 16, fontSize: 12, color: '#c96e6e' }}>{error}</div>}
+      {success && <div style={{ background: 'rgba(110,201,110,0.1)', border: '0.5px solid rgba(110,201,110,0.3)', borderRadius: 4, padding: '12px 16px', marginBottom: 16, fontSize: 12, color: '#6ec96e' }}>{success}</div>}
+
+      <div style={{ ...card, marginBottom: 20 }}>
+        <div style={lbl}>Ajouter un produit existant aux besoins</div>
+        <input value={search} onChange={e => searchProducts(e.target.value)} placeholder="Tapez le nom d'un vin..." style={inp} />
+        {searchRes.length > 0 && (
+          <div style={{ border: '0.5px solid rgba(255,255,255,0.08)', borderRadius: 4, overflow: 'hidden', marginTop: 4 }}>
+            {searchRes.map(p => (
+              <div key={p.id} onClick={() => addBesoin(p)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', cursor: 'pointer', borderBottom: '0.5px solid rgba(255,255,255,0.04)', background: besoins.find(b => b.product_id === p.id) ? 'rgba(201,169,110,0.08)' : '#18130e' }}
+                onMouseEnter={e => { if (!besoins.find(b => b.product_id === p.id)) e.currentTarget.style.background = 'rgba(255,255,255,0.03)' }}
+                onMouseLeave={e => { if (!besoins.find(b => b.product_id === p.id)) e.currentTarget.style.background = '#18130e' }}
+              >
+                <span style={{ fontSize: 13, color: '#f0e8d8' }}>{p.nom}{p.millesime ? ` ${p.millesime}` : ''}</span>
+                {besoins.find(b => b.product_id === p.id) ? <span style={{ fontSize: 10, color: '#c9a96e' }}>✓ Déjà dans les besoins</span> : <span style={{ fontSize: 10, color: 'rgba(232,224,213,0.4)' }}>+ Ajouter</span>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {loading ? <div style={{ textAlign: 'center' as const, padding: 48, color: 'rgba(232,224,213,0.3)' }}>Chargement...</div> : besoins.length === 0 ? (
+        <div style={{ ...card, textAlign: 'center' as const, padding: '48px' }}>
+          <p style={{ color: 'rgba(232,224,213,0.4)', fontSize: 14 }}>Aucun besoin en attente.</p>
+        </div>
+      ) : (
+        <div style={{ background: '#18130e', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 6, overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' as const }}>
+            <thead>
+              <tr style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
+                {['Produit', 'Fournisseur', 'Prix HT', 'Quantité', ''].map(h => (
+                  <th key={h} style={{ padding: '10px 14px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', textTransform: 'uppercase' as const, fontWeight: 400 }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {besoins.map((b, i) => (
+                <tr key={b.id} style={{ borderBottom: i < besoins.length - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none' }}>
+                  <td style={{ padding: '12px 14px' }}>
+                    <div style={{ fontSize: 13, color: '#f0e8d8' }}>{b.product?.nom}</div>
+                    {b.product?.millesime && <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>{b.product.millesime}</div>}
+                  </td>
+                  <td style={{ padding: '12px 14px', fontSize: 13, color: b.fournisseur ? '#e8e0d5' : '#c96e6e' }}>
+                    {b.fournisseur?.nom || <span style={{ fontSize: 11 }}>⚠ Non associé</span>}
+                  </td>
+                  <td style={{ padding: '12px 14px', fontSize: 13, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>
+                    {b.prix_achat_ht ? `${parseFloat(b.prix_achat_ht).toFixed(2)}€` : '—'}
+                  </td>
+                  <td style={{ padding: '12px 14px' }}>
+                    <input type="number" min={1} defaultValue={b.quantite}
+                      onBlur={e => updateQty(b.id, parseInt(e.target.value) || 1)}
+                      onKeyDown={e => { if (e.key === 'Enter') updateQty(b.id, parseInt((e.target as HTMLInputElement).value) || 1) }}
+                      style={{ width: 70, background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 3, color: '#e8e0d5', fontSize: 13, padding: '4px 8px', textAlign: 'center' as const }}
+                    />
+                  </td>
+                  <td style={{ padding: '12px 14px' }}>
+                    <button onClick={() => removeBesoin(b.id)} style={{ background: 'transparent', border: 'none', color: '#c96e6e', cursor: 'pointer', fontSize: 14 }}>✕</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {showNouveauProduit && (
+        <ModalNouveauProduit
+          domaines={domaines}
+          regions={regions}
+          appellations={appellations}
+          onCreated={async (product) => {
+            if (product) await addBesoin(product)
+            setShowNouveauProduit(false)
+          }}
+          onClose={() => setShowNouveauProduit(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+
 // ── Modal nouvelle commande directe ──────────────────────────
 
 function ModalNouvelleCommande({ domaines, onCreated, onClose }: {
