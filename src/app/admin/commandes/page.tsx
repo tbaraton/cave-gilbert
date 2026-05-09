@@ -1286,7 +1286,8 @@ function VueReception({ onRefresh }: { onRefresh: () => void }) {
   const [siteReception, setSiteReception] = useState('')
   const [qtesRecues, setQtesRecues] = useState<Record<string, number>>({})
   const [prixRecus, setPrixRecus] = useState<Record<string, number>>({})
-  const [popupPrix, setPopupPrix] = useState<{ item: any; newPrix: number } | null>(null)
+  const [popupPrix, setPopupPrix] = useState<{ item: any; newPrix: number; ttcPart: number; ttcPro: number } | null>(null)
+  const [prixVenteRecus, setPrixVenteRecus] = useState<Record<string, { ttcPart: number; ttcPro: number }>>({})
   const [searchProd, setSearchProd] = useState('')
   const [searchProdRes, setSearchProdRes] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -1385,8 +1386,9 @@ function VueReception({ onRefresh }: { onRefresh: () => void }) {
       await supabase.from('supplier_order_items').update({ quantite_recue: qty, prix_achat_ht: newPrix }).eq('id', item.id)
       // Si prix changé → mettre à jour la fiche produit
       if (Math.abs(newPrix - oldPrix) > 0.001 && item.product_id) {
-        const newTTC = Math.ceil(newPrix * 2 * 2) / 2
-        const newPro = Math.round(newPrix * 1.70 * 100) / 100
+        const confirmed = prixVenteRecus[item.id]
+        const newTTC = confirmed ? confirmed.ttcPart : Math.ceil(newPrix * 2 * 2) / 2
+        const newPro = confirmed ? confirmed.ttcPro : Math.round(newPrix * 1.70 * 100) / 100
         await supabase.from('products').update({ prix_achat_ht: newPrix, prix_vente_ttc: newTTC, prix_vente_pro: newPro }).eq('id', item.product_id)
         await supabase.from('product_suppliers').update({ prix_achat_ht: newPrix }).eq('product_id', item.product_id).eq('fournisseur_principal', true)
       }
@@ -1541,30 +1543,50 @@ function VueReception({ onRefresh }: { onRefresh: () => void }) {
                       <tr>
                         <td colSpan={5} style={{ padding: 0 }}>
                           <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 }}>
-                            <div style={{ background: '#18130e', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 8, padding: '24px 28px', maxWidth: 400, width: '100%' }}>
-                              <h3 style={{ fontFamily: 'Georgia, serif', fontSize: 16, fontWeight: 300, color: '#f0e8d8', marginBottom: 8 }}>Mise à jour des prix</h3>
+                            <div style={{ background: '#18130e', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 8, padding: '24px 28px', maxWidth: 440, width: '100%' }}>
+                              <h3 style={{ fontFamily: 'Georgia, serif', fontSize: 16, fontWeight: 300, color: '#f0e8d8', marginBottom: 4 }}>Mise à jour des prix</h3>
                               <p style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)', marginBottom: 16 }}>{popupPrix.item.product_nom}</p>
-                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 16 }}>
-                                {[
-                                  { label: 'Prix achat HT', val: `${popupPrix.newPrix.toFixed(2)}€`, color: '#e8e0d5' },
-                                  { label: 'TTC part. (×2 arr.)', val: `${(Math.ceil(popupPrix.newPrix * 2 * 2) / 2).toFixed(2)}€`, color: '#c9a96e' },
-                                  { label: 'TTC pro (×1.70)', val: `${(Math.round(popupPrix.newPrix * 1.70 * 100) / 100).toFixed(2)}€`, color: '#6e9ec9' },
-                                ].map(({ label, val, color }) => (
-                                  <div key={label} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 4, padding: '8px', textAlign: 'center' as const }}>
-                                    <div style={{ fontSize: 9, letterSpacing: 1, color: 'rgba(232,224,213,0.3)', textTransform: 'uppercase' as const, marginBottom: 4 }}>{label}</div>
-                                    <div style={{ fontSize: 15, color, fontFamily: 'Georgia, serif' }}>{val}</div>
-                                  </div>
-                                ))}
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 8 }}>
+                                <div>
+                                  <div style={{ fontSize: 9, letterSpacing: 1, color: 'rgba(232,224,213,0.3)', textTransform: 'uppercase' as const, marginBottom: 6 }}>Prix achat HT</div>
+                                  <div style={{ fontSize: 15, color: '#e8e0d5', fontFamily: 'Georgia, serif', padding: '6px 0' }}>{popupPrix.newPrix.toFixed(2)}€</div>
+                                </div>
+                                <div>
+                                  <div style={{ fontSize: 9, letterSpacing: 1, color: 'rgba(232,224,213,0.3)', textTransform: 'uppercase' as const, marginBottom: 6 }}>Prix TTC particulier</div>
+                                  <input
+                                    type="number" step="0.50"
+                                    value={popupPrix.ttcPart}
+                                    onChange={e => setPopupPrix(p => p ? { ...p, ttcPart: parseFloat(e.target.value) || 0 } : p)}
+                                    style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(201,169,110,0.4)', borderRadius: 3, color: '#c9a96e', fontSize: 14, padding: '6px 8px', textAlign: 'center' as const, fontFamily: 'Georgia, serif' }}
+                                  />
+                                  <div style={{ fontSize: 9, color: 'rgba(232,224,213,0.25)', textAlign: 'center' as const, marginTop: 3 }}>Modifiable</div>
+                                </div>
+                                <div>
+                                  <div style={{ fontSize: 9, letterSpacing: 1, color: 'rgba(232,224,213,0.3)', textTransform: 'uppercase' as const, marginBottom: 6 }}>Prix TTC pro</div>
+                                  <input
+                                    type="number" step="0.01"
+                                    value={popupPrix.ttcPro}
+                                    onChange={e => setPopupPrix(p => p ? { ...p, ttcPro: parseFloat(e.target.value) || 0 } : p)}
+                                    style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(110,158,201,0.4)', borderRadius: 3, color: '#6e9ec9', fontSize: 14, padding: '6px 8px', textAlign: 'center' as const, fontFamily: 'Georgia, serif' }}
+                                  />
+                                  <div style={{ fontSize: 9, color: 'rgba(232,224,213,0.25)', textAlign: 'center' as const, marginTop: 3 }}>Modifiable</div>
+                                </div>
                               </div>
-                              <p style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)', marginBottom: 14 }}>La fiche produit sera mise à jour lors de la validation.</p>
+                              <p style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)', marginBottom: 16 }}>
+                                Les prix seront mis à jour sur la fiche produit à la validation de la réception.
+                              </p>
                               <div style={{ display: 'flex', gap: 10 }}>
-                                <button onClick={() => { setPrixRecus(p => ({ ...p, [popupPrix.item.id]: parseFloat(popupPrix.item.prix_achat_ht || 0) })); setPopupPrix(null) }}
-                                  style={{ flex: 1, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '8px', fontSize: 11, cursor: 'pointer' }}>
+                                <button onClick={() => {
+                                  setPrixRecus(p => ({ ...p, [popupPrix.item.id]: parseFloat(popupPrix.item.prix_achat_ht || 0) }))
+                                  setPopupPrix(null)
+                                }} style={{ flex: 1, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '9px', fontSize: 11, cursor: 'pointer' }}>
                                   Annuler
                                 </button>
-                                <button onClick={() => setPopupPrix(null)}
-                                  style={{ flex: 2, background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '8px', fontSize: 11, cursor: 'pointer', fontWeight: 500 }}>
-                                  ✓ Confirmer le nouveau prix
+                                <button onClick={() => {
+                                  setPrixVenteRecus(p => ({ ...p, [popupPrix.item.id]: { ttcPart: popupPrix.ttcPart, ttcPro: popupPrix.ttcPro } }))
+                                  setPopupPrix(null)
+                                }} style={{ flex: 2, background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '9px', fontSize: 11, cursor: 'pointer', fontWeight: 500 }}>
+                                  ✓ Confirmer
                                 </button>
                               </div>
                             </div>
@@ -1592,10 +1614,20 @@ function VueReception({ onRefresh }: { onRefresh: () => void }) {
                             <input
                               type="number" step="0.01"
                               value={currentPrix}
-                              onChange={e => {
+              onChange={e => {
                                 const newVal = parseFloat(e.target.value) || 0
                                 setPrixRecus(p => ({ ...p, [item.id]: newVal }))
-                                if (Math.abs(newVal - originalPrix) > 0.001) setPopupPrix({ item, newPrix: newVal })
+                              }}
+                              onBlur={e => {
+                                const newVal = parseFloat(e.target.value) || 0
+                                if (Math.abs(newVal - originalPrix) > 0.001) {
+                                  setPopupPrix({
+                                    item,
+                                    newPrix: newVal,
+                                    ttcPart: Math.ceil(newVal * 2 * 2) / 2,
+                                    ttcPro: Math.round(newVal * 1.70 * 100) / 100,
+                                  })
+                                }
                               }}
                               style={{ width: 90, background: prixChanged ? 'rgba(201,169,110,0.08)' : 'rgba(255,255,255,0.04)', border: `0.5px solid ${prixChanged ? 'rgba(201,169,110,0.5)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 3, color: prixChanged ? '#c9a96e' : '#e8e0d5', fontSize: 13, padding: '5px 8px', textAlign: 'center' as const }}
                             />
