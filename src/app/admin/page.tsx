@@ -414,31 +414,24 @@ function ModalEditProduit({ produit, regions: regionsProp, appellations: appella
 }) {
   const [regions, setRegions] = useState<any[]>(regionsProp || [])
   const [appellations, setAppellations] = useState<any[]>(appellationsProp || [])
+  const [domaines, setDomaines] = useState<any[]>([])
 
   useEffect(() => {
     const loadAll = async () => {
-      // Charger régions si manquantes
       let regs = regionsProp || []
       let apps = appellationsProp || []
       if (regs.length === 0) {
         const { data } = await supabase.from('regions').select('id, nom').order('nom')
-        regs = data || []
-        setRegions(regs)
+        regs = data || []; setRegions(regs)
       }
       if (apps.length === 0) {
         const { data } = await supabase.from('appellations').select('id, nom, region_id').order('nom')
-        apps = data || []
-        setAppellations(apps)
+        apps = data || []; setAppellations(apps)
       }
-      // Résoudre les noms depuis les IDs
+      const { data: doms } = await supabase.from('domaines').select('id, nom').order('nom')
+      setDomaines(doms || [])
       const appNom = apps.find((a: any) => a.id === produit.appellation_id)?.nom || ''
-      // Charger le nom du domaine depuis domaine_id
-      let domaineNom = ''
-      if (produit.domaine_id) {
-        const { data } = await supabase.from('domaines').select('nom').eq('id', produit.domaine_id).single()
-        domaineNom = data?.nom || ''
-      }
-      setForm(f => ({ ...f, appellation_nom: appNom, domaine_nom: domaineNom }))
+      setForm(f => ({ ...f, appellation_nom: appNom }))
     }
     loadAll()
   }, [])
@@ -446,7 +439,7 @@ function ModalEditProduit({ produit, regions: regionsProp, appellations: appella
   const [form, setForm] = useState({
     appellation_nom: '',
     nom_cuvee: produit.nom_cuvee || '',
-    domaine_nom: '',
+    domaine_id: produit.domaine_id || '',
     contenance: produit.contenance || '75cl',
     millesime: produit.millesime?.toString() || '',
     couleur: produit.couleur || 'rouge',
@@ -482,11 +475,11 @@ function ModalEditProduit({ produit, regions: regionsProp, appellations: appella
     if (form.millesime) parts.push(form.millesime)
     if (form.contenance) parts.push(form.contenance)
     let nom = parts.join(' ')
-    if (form.domaine_nom) nom += ' - ' + form.domaine_nom
+    const domaineNom = domaines.find(d => d.id === form.domaine_id)?.nom || ''
+    if (domaineNom) nom += ' - ' + domaineNom
     return nom
   }
 
-  // Calcul auto des prix
   const handleHTChange = (ht: string) => {
     const htNum = parseFloat(ht)
     setForm(f => ({
@@ -511,6 +504,7 @@ function ModalEditProduit({ produit, regions: regionsProp, appellations: appella
       couleur: form.couleur,
       region_id: form.region_id || null,
       appellation_id: form.appellation_id || null,
+      domaine_id: form.domaine_id || null,
       prix_vente_ttc: parseFloat(form.prix_vente_ttc),
       prix_vente_pro: form.prix_vente_pro ? parseFloat(form.prix_vente_pro) : null,
       prix_achat_ht: form.prix_achat_ht ? parseFloat(form.prix_achat_ht) : null,
@@ -550,12 +544,12 @@ function ModalEditProduit({ produit, regions: regionsProp, appellations: appella
 
         {/* Aperçu nom en temps réel */}
         <NomVinPreview
-          appellation={form.appellation_nom || appsFiltrees.find(a => a.id === form.appellation_id)?.nom || ''}
+          appellation={form.appellation_nom || appsFiltrees.find((a: any) => a.id === form.appellation_id)?.nom || ''}
           cuvee={form.nom_cuvee}
           couleur={form.couleur}
           millesime={form.millesime}
           contenance={form.contenance}
-          domaine={form.domaine_nom}
+          domaine={domaines.find(d => d.id === form.domaine_id)?.nom || ''}
         />
 
         {/* Identité */}
@@ -583,8 +577,14 @@ function ModalEditProduit({ produit, regions: regionsProp, appellations: appella
             <input value={form.nom_cuvee} onChange={e => setForm(f => ({ ...f, nom_cuvee: e.target.value }))} placeholder="Laisser vide si pas de cuvée" style={{ ...inp, fontStyle: 'italic' }} />
           </div>
           <div>
-            <label style={lbl}>Nom du domaine</label>
-            <input value={form.domaine_nom} onChange={e => setForm(f => ({ ...f, domaine_nom: e.target.value }))} placeholder="Ex: Domaine Jean Foillard" style={inp} />
+            <label style={lbl}>Domaine / Fournisseur</label>
+            <select value={form.domaine_id} onChange={e => setForm(f => ({ ...f, domaine_id: e.target.value }))} style={sel}>
+              <option value="">— Choisir un domaine —</option>
+              {domaines.map(d => <option key={d.id} value={d.id} style={{ background: '#1a1408', color: '#f0e8d8' }}>{d.nom}</option>)}
+            </select>
+            <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.3)', marginTop: 4 }}>
+              Domaine introuvable ? <a href="/admin/fournisseurs" target="_blank" style={{ color: '#c9a96e', textDecoration: 'none' }}>Créer dans Fournisseurs →</a>
+            </div>
           </div>
           <div>
             <label style={lbl}>Couleur *</label>
@@ -696,21 +696,22 @@ function ModalNouveauProduitAdmin({ regions: regionsProp, appellations: appellat
 }) {
   const [regions, setRegions] = useState<any[]>(regionsProp || [])
   const [appellations, setAppellations] = useState<any[]>(appellationsProp || [])
+  const [domaines, setDomaines] = useState<any[]>([])
 
   useEffect(() => {
-    // Charger directement si les props sont vides
     if (!regionsProp || regionsProp.length === 0) {
       supabase.from('regions').select('id, nom').order('nom').then(({ data }) => setRegions(data || []))
     }
     if (!appellationsProp || appellationsProp.length === 0) {
       supabase.from('appellations').select('id, nom, region_id').order('nom').then(({ data }) => setAppellations(data || []))
     }
+    supabase.from('domaines').select('id, nom').order('nom').then(({ data }) => setDomaines(data || []))
   }, [])
 
   const [form, setForm] = useState({
     appellation_nom: '',
     nom_cuvee: '',
-    domaine_nom: '',
+    domaine_id: '',
     contenance: '75cl',
     millesime: '',
     couleur: 'rouge',
@@ -741,7 +742,8 @@ function ModalNouveauProduitAdmin({ regions: regionsProp, appellations: appellat
     if (form.millesime) parts.push(form.millesime)
     if (form.contenance) parts.push(form.contenance)
     let nom = parts.join(' ')
-    if (form.domaine_nom) nom += ' - ' + form.domaine_nom
+    const domaineNom = domaines.find(d => d.id === form.domaine_id)?.nom || ''
+    if (domaineNom) nom += ' - ' + domaineNom
     return nom
   }
 
@@ -774,6 +776,7 @@ function ModalNouveauProduitAdmin({ regions: regionsProp, appellations: appellat
       couleur: form.couleur,
       region_id: form.region_id || null,
       appellation_id: form.appellation_id || null,
+      domaine_id: form.domaine_id || null,
       prix_vente_ttc: parseFloat(form.prix_vente_ttc),
       prix_vente_pro: form.prix_vente_pro ? parseFloat(form.prix_vente_pro) : null,
       prix_achat_ht: form.prix_achat_ht ? parseFloat(form.prix_achat_ht) : null,
@@ -815,7 +818,7 @@ function ModalNouveauProduitAdmin({ regions: regionsProp, appellations: appellat
           couleur={form.couleur}
           millesime={form.millesime}
           contenance={form.contenance}
-          domaine={form.domaine_nom}
+          domaine={domaines.find(d => d.id === form.domaine_id)?.nom || ''}
         />
 
         <div style={{ fontSize: 10, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 10 }}>Identité</div>
@@ -842,8 +845,14 @@ function ModalNouveauProduitAdmin({ regions: regionsProp, appellations: appellat
             <input value={form.nom_cuvee} onChange={e => setForm(f => ({ ...f, nom_cuvee: e.target.value }))} placeholder="Laisser vide si pas de cuvée" style={{ ...inp, fontStyle: 'italic' }} />
           </div>
           <div>
-            <label style={lbl}>Nom du domaine</label>
-            <input value={form.domaine_nom} onChange={e => setForm(f => ({ ...f, domaine_nom: e.target.value }))} placeholder="Ex: Domaine Jean Foillard" style={inp} />
+            <label style={lbl}>Domaine / Fournisseur</label>
+            <select value={form.domaine_id} onChange={e => setForm(f => ({ ...f, domaine_id: e.target.value }))} style={sel}>
+              <option value="">— Choisir un domaine —</option>
+              {domaines.map(d => <option key={d.id} value={d.id} style={{ background: '#1a1408', color: '#f0e8d8' }}>{d.nom}</option>)}
+            </select>
+            <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.3)', marginTop: 4 }}>
+              Domaine introuvable ? <a href="/admin/fournisseurs" target="_blank" style={{ color: '#c9a96e', textDecoration: 'none' }}>Créer dans Fournisseurs →</a>
+            </div>
           </div>
           <div>
             <label style={lbl}>Couleur *</label>
