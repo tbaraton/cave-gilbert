@@ -1330,12 +1330,14 @@ export default function AdminPage() {
       <aside style={{ width: 220, background: '#100d0a', borderRight: '0.5px solid rgba(255,255,255,0.06)', display: 'flex', flexDirection: 'column' as const, padding: '24px 0', position: 'fixed' as const, top: 0, left: 0, bottom: 0, zIndex: 100 }}>
         <div style={{ padding: '0 20px 28px', borderBottom: '0.5px solid rgba(255,255,255,0.06)' }}>
           {/* Logo — remplacez /logo.png par votre fichier dans le dossier public/ */}
-          <img
-            src="/logo.png"
-            alt="Cave de Gilbert"
-            onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
-            style={{ width: '100%', maxHeight: 60, objectFit: 'contain', marginBottom: 10 }}
-          />
+          <a href="/" style={{ display: 'block', marginBottom: 10 }}>
+            <img
+              src="/logo.png"
+              alt="Cave de Gilbert"
+              onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+              style={{ width: '100%', maxHeight: 60, objectFit: 'contain', cursor: 'pointer' }}
+            />
+          </a>
           <div style={{ fontFamily: 'Georgia, serif', fontSize: 15, color: '#c9a96e', letterSpacing: 3, textTransform: 'uppercase' as const, fontWeight: 300 }}>Cave de Gilbert</div>
           <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.3)', letterSpacing: 1.5, marginTop: 3 }}>ADMINISTRATION</div>
         </div>
@@ -1382,9 +1384,10 @@ export default function AdminPage() {
         {/* Bouton retour pour les sous-sections */}
         {section !== 'dashboard' && (
           <button onClick={() => setSection('dashboard')} style={{
-            background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.4)',
-            fontSize: 12, cursor: 'pointer', padding: 0, marginBottom: 24,
-            display: 'flex', alignItems: 'center', gap: 6,
+            background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.1)',
+            color: 'rgba(232,224,213,0.6)', fontSize: 12, cursor: 'pointer',
+            padding: '7px 14px', marginBottom: 24, borderRadius: 4,
+            display: 'inline-flex', alignItems: 'center', gap: 6,
           }}>
             ← Tableau de bord
           </button>
