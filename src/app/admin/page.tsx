@@ -637,8 +637,8 @@ export default function AdminPage() {
         supabase.from('regions').select('id, nom').order('nom'),
         supabase.from('appellations').select('id, nom, region_id').order('nom'),
       ])
-      setRegionsList(regs || [])
-      setAppellationsList(apps || [])
+      setRegions(regs || [])
+      setAppellations(apps || [])
     } catch (e) {
       console.error('Erreur chargement données:', e)
     } finally {
