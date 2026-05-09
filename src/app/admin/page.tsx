@@ -991,6 +991,8 @@ export default function AdminPage() {
   const [filterPrixMax, setFilterPrixMax] = useState<number>(500)
   const [filterPrixMin, setFilterPrixMin] = useState<number>(0)
   const [prixMaxCatalogue, setPrixMaxCatalogue] = useState<number>(500)
+  const [filterMillesime, setFilterMillesime] = useState('')
+  const [filterCertif, setFilterCertif] = useState('')
   const [sortCol, setSortCol] = useState<string>('nom')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
 
@@ -1117,7 +1119,9 @@ export default function AdminPage() {
       (filterAppellation === '' || p.appellation_id === filterAppellation) &&
       (filterCouleur === '' || p.couleur === filterCouleur) &&
       (parseFloat(p.prix_vente_ttc || 0) >= filterPrixMin) &&
-      (parseFloat(p.prix_vente_ttc || 0) <= filterPrixMax)
+      (parseFloat(p.prix_vente_ttc || 0) <= filterPrixMax) &&
+      (filterMillesime === '' || String(p.millesime || '') === filterMillesime) &&
+      (filterCertif === '' || p[filterCertif] === true)
     )
     .sort((a, b) => {
       let va = a[sortCol] ?? ''
@@ -1401,17 +1405,56 @@ export default function AdminPage() {
               </div>
             </div>
 
+            {/* Filtres millésime + certifications */}
+            <div style={{ display: 'flex', gap: 12, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' as const }}>
+              {/* Filtre millésime */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', whiteSpace: 'nowrap' as const }}>Millésime :</span>
+                <select value={filterMillesime} onChange={e => setFilterMillesime(e.target.value)} style={{ background: '#1a1408', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#e8e0d5', fontSize: 12, padding: '6px 10px', cursor: 'pointer' }}>
+                  <option value="">Tous</option>
+                  {[...new Set(produits.map(p => p.millesime).filter(Boolean))].sort((a, b) => b - a).map(m => (
+                    <option key={m} value={String(m)}>{m}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Filtre certifications */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', whiteSpace: 'nowrap' as const }}>Certification :</span>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {[
+                    { key: '', label: 'Toutes' },
+                    { key: 'bio', label: '🌿 Bio' },
+                    { key: 'vegan', label: '🌱 Vegan' },
+                    { key: 'casher', label: '✡ Casher' },
+                    { key: 'naturel', label: '🍃 Naturel' },
+                    { key: 'biodynamique', label: '🌙 Biodynamique' },
+                  ].map(({ key, label }) => (
+                    <button key={key} onClick={() => setFilterCertif(key)} style={{
+                      background: filterCertif === key ? 'rgba(201,169,110,0.15)' : 'rgba(255,255,255,0.03)',
+                      border: `0.5px solid ${filterCertif === key ? 'rgba(201,169,110,0.5)' : 'rgba(255,255,255,0.1)'}`,
+                      color: filterCertif === key ? '#c9a96e' : 'rgba(232,224,213,0.4)',
+                      borderRadius: 20, padding: '4px 10px', fontSize: 11, cursor: 'pointer',
+                    }}>{label}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
             {/* Résumé filtres actifs + bouton effacer */}
-            {(filterRegion || filterAppellation || filterCouleur || filterPrixMin > 0 || filterPrixMax < prixMaxCatalogue) && (
+            {(filterRegion || filterAppellation || filterCouleur || filterPrixMin > 0 || filterPrixMax < prixMaxCatalogue || filterMillesime || filterCertif) && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
                 <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>
                   {produitsFiltres.length} résultat{produitsFiltres.length > 1 ? 's' : ''}
                   {filterCouleur && ` · ${filterCouleur}`}
+                  {filterMillesime && ` · ${filterMillesime}`}
+                  {filterCertif && ` · ${filterCertif}`}
                   {filterPrixMin > 0 || filterPrixMax < prixMaxCatalogue ? ` · ${filterPrixMin}€ – ${filterPrixMax}€` : ''}
                 </span>
                 <button onClick={() => {
                   setFilterRegion(''); setFilterAppellation(''); setFilterCouleur('')
                   setFilterPrixMin(0); setFilterPrixMax(prixMaxCatalogue)
+                  setFilterMillesime(''); setFilterCertif('')
                 }} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.12)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '4px 10px', fontSize: 10, cursor: 'pointer' }}>
                   ✕ Effacer les filtres
                 </button>
