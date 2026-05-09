@@ -1038,10 +1038,28 @@ export default function AdminPage() {
       setTireuses(tirs || [])
       setKegStock(kegs || [])
 
-      // Alertes : ruptures et stocks faibles
-      const alertesData = (stock || []).filter((s: any) =>
-        s.stock_statut === 'rupture' || s.stock_statut === 'alerte'
-      )
+      // Alertes : grouper par produit et sommer tous les sites
+      const stockParProduit: Record<string, any> = {}
+      ;(stock || []).forEach((s: any) => {
+        if (!stockParProduit[s.product_id]) {
+          stockParProduit[s.product_id] = {
+            product_id: s.product_id,
+            produit: s.produit,
+            millesime: s.millesime,
+            quantite: 0,
+          }
+        }
+        stockParProduit[s.product_id].quantite += s.quantite || 0
+      })
+      // Seuil d'alerte : total < 6 bouteilles = alerte, total = 0 = rupture
+      const alertesData = Object.values(stockParProduit)
+        .filter((p: any) => p.quantite <= 6)
+        .map((p: any) => ({
+          ...p,
+          site: 'Tous sites',
+          stock_statut: p.quantite === 0 ? 'rupture' : 'alerte',
+        }))
+        .sort((a: any, b: any) => a.quantite - b.quantite)
       setAlertes(alertesData)
 
     } catch (e) {
