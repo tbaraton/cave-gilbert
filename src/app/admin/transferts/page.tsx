@@ -236,11 +236,18 @@ function NouveauTransfert({ sites, onCreated, onCancel }: {
                   </td>
                   <td style={{ padding: '10px 12px', fontSize: 13, color: '#6ec96e' }}>{l.stock_source} btl</td>
                   <td style={{ padding: '10px 12px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 0, border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 3, width: 'fit-content' }}>
-                      <button onClick={() => updateQty(l.product_id, l.quantite - 1)} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.5)', width: 30, height: 34, cursor: 'pointer', fontSize: 16 }}>−</button>
-                      <span style={{ width: 36, textAlign: 'center' as const, fontSize: 14, color: '#e8e0d5' }}>{l.quantite}</span>
-                      <button onClick={() => updateQty(l.product_id, l.quantite + 1)} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.5)', width: 30, height: 34, cursor: 'pointer', fontSize: 16 }}>+</button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <input
+                        type="number" min={1} max={l.stock_source}
+                        value={l.quantite}
+                        onChange={e => updateQty(l.product_id, parseInt(e.target.value) || 1)}
+                        style={{ width: 80, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 3, color: '#e8e0d5', fontSize: 14, padding: '5px 8px', textAlign: 'center' as const }}
+                      />
+                      <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.3)' }}>/ {l.stock_source} max</span>
                     </div>
+                    {l.quantite > l.stock_source && (
+                      <div style={{ fontSize: 10, color: '#c96e6e', marginTop: 3 }}>⚠ Dépasse le stock disponible</div>
+                    )}
                   </td>
                   <td style={{ padding: '10px 12px' }}>
                     <button onClick={() => removeLigne(l.product_id)} style={{ background: 'transparent', border: 'none', color: '#c96e6e', cursor: 'pointer', fontSize: 14 }}>✕</button>
