@@ -597,38 +597,55 @@ function ModalNouvelleCommande({ domaines, onCreated, onClose }: {
   onClose: () => void
 }) {
   const [domaineId, setDomaineId] = useState('')
+  const [produitsDomaine, setProduitsDomaine] = useState<any[]>([])
+  const [loadingProduits, setLoadingProduits] = useState(false)
   const [search, setSearch] = useState('')
-  const [searchRes, setSearchRes] = useState<any[]>([])
-  const [lignes, setLignes] = useState<{ product_id: string; nom: string; millesime: number | null; quantite: number; prix_achat_ht: number }[]>([])
+  const [selected, setSelected] = useState<Record<string, number>>({}) // product_id -> quantite
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  const searchProducts = async (q: string) => {
-    setSearch(q)
-    if (q.length < 2) { setSearchRes([]); return }
-    let query = supabase.from('products').select('id, nom, millesime, prix_achat_ht').ilike('nom', `%${q}%`).eq('actif', true).limit(15)
-    if (domaineId) {
-      const { data: ps } = await supabase.from('product_suppliers').select('product_id').eq('domaine_id', domaineId).eq('fournisseur_principal', true)
-      if (ps && ps.length > 0) {
-        const ids = ps.map(p => p.product_id)
-        query = supabase.from('products').select('id, nom, millesime, prix_achat_ht').ilike('nom', `%${q}%`).in('id', ids).limit(15)
-      }
-    }
-    const { data } = await query
-    setSearchRes(data || [])
+  const loadProduitsDomaine = async (id: string) => {
+    if (!id) { setProduitsDomaine([]); return }
+    setLoadingProduits(true)
+    const { data: ps } = await supabase
+      .from('product_suppliers')
+      .select('product_id, prix_achat_ht, conditionnement')
+      .eq('domaine_id', id)
+      .eq('fournisseur_principal', true)
+    if (!ps || ps.length === 0) { setProduitsDomaine([]); setLoadingProduits(false); return }
+    const ids = ps.map(p => p.product_id)
+    const { data: prods } = await supabase
+      .from('products')
+      .select('id, nom, millesime, couleur, prix_achat_ht')
+      .in('id', ids)
+      .eq('actif', true)
+      .order('nom')
+    // Merge prix from product_suppliers
+    const psMap = Object.fromEntries(ps.map(p => [p.product_id, p]))
+    setProduitsDomaine((prods || []).map(p => ({
+      ...p,
+      prix_achat_ht: psMap[p.id]?.prix_achat_ht || p.prix_achat_ht || 0,
+      conditionnement: psMap[p.id]?.conditionnement || 6,
+    })))
+    setLoadingProduits(false)
   }
 
-  const addLigne = (p: any) => {
-    if (lignes.find(l => l.product_id === p.id)) return
-    setLignes(l => [...l, { product_id: p.id, nom: p.nom, millesime: p.millesime, quantite: 6, prix_achat_ht: p.prix_achat_ht || 0 }])
-    setSearch('')
-    setSearchRes([])
+  const toggleProduit = (produit: any) => {
+    setSelected(prev => {
+      if (prev[produit.id] !== undefined) {
+        const next = { ...prev }
+        delete next[produit.id]
+        return next
+      }
+      return { ...prev, [produit.id]: produit.conditionnement || 6 }
+    })
   }
 
   const handleCreate = async () => {
     if (!domaineId) { setError('Choisissez un fournisseur'); return }
-    if (lignes.length === 0) { setError('Ajoutez au moins un produit'); return }
+    const lignes = Object.entries(selected)
+    if (lignes.length === 0) { setError('Cochez au moins un produit'); return }
     setSaving(true)
     const { data: cmd } = await supabase.from('supplier_orders').insert({
       domaine_id: domaineId,
@@ -637,74 +654,180 @@ function ModalNouvelleCommande({ domaines, onCreated, onClose }: {
       notes,
     }).select().single()
     if (!cmd) { setError('Erreur création commande'); setSaving(false); return }
+    const prodMap = Object.fromEntries(produitsDomaine.map(p => [p.id, p]))
     await supabase.from('supplier_order_items').insert(
-      lignes.map(l => ({ order_id: cmd.id, product_id: l.product_id, product_nom: l.nom, product_millesime: l.millesime, quantite_commandee: l.quantite, prix_achat_ht: l.prix_achat_ht }))
+      lignes.map(([pid, qty]) => ({
+        order_id: cmd.id,
+        product_id: pid,
+        product_nom: prodMap[pid]?.nom || '',
+        product_millesime: prodMap[pid]?.millesime || null,
+        quantite_commandee: qty,
+        prix_achat_ht: prodMap[pid]?.prix_achat_ht || 0,
+      }))
     )
     onCreated(cmd)
   }
 
+  const filtres = produitsDomaine.filter(p =>
+    !search || p.nom.toLowerCase().includes(search.toLowerCase())
+  )
+  const nbSelectionnes = Object.keys(selected).length
+  const totalHT = Object.entries(selected).reduce((acc, [pid, qty]) => {
+    const p = produitsDomaine.find(x => x.id === pid)
+    return acc + (parseFloat(p?.prix_achat_ht || 0) * qty)
+  }, 0)
+
   return (
     <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }} onClick={onClose}>
-      <div style={{ background: '#18130e', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 8, width: '100%', maxWidth: 620, padding: '28px 32px', maxHeight: '88vh', overflowY: 'auto' as const }} onClick={e => e.stopPropagation()}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+      <div style={{ background: '#18130e', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 8, width: '100%', maxWidth: 780, padding: '28px 32px', maxHeight: '90vh', overflowY: 'auto' as const }} onClick={e => e.stopPropagation()}>
+        
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 300, color: '#f0e8d8', margin: 0 }}>Nouvelle commande</h2>
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.4)', fontSize: 20, cursor: 'pointer' }}>✕</button>
         </div>
 
         {error && <div style={{ background: 'rgba(201,110,110,0.1)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 4, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: '#c96e6e' }}>{error}</div>}
 
-        <div style={{ marginBottom: 16 }}>
+        {/* Fournisseur */}
+        <div style={{ marginBottom: 20 }}>
           <label style={lbl}>Fournisseur *</label>
-          <select value={domaineId} onChange={e => { setDomaineId(e.target.value); setSearch(''); setSearchRes([]) }} style={sel}>
+          <select value={domaineId} onChange={e => {
+            setDomaineId(e.target.value)
+            setSelected({})
+            setSearch('')
+            loadProduitsDomaine(e.target.value)
+          }} style={sel}>
             <option value="" style={{ background: '#1a1408', color: '#888' }}>— Choisir un fournisseur —</option>
             {domaines.map(d => <option key={d.id} value={d.id} style={{ background: '#1a1408', color: '#f0e8d8' }}>{d.nom}</option>)}
           </select>
         </div>
 
-        <div style={{ marginBottom: 16 }}>
-          <label style={lbl}>Ajouter des produits</label>
-          <input value={search} onChange={e => searchProducts(e.target.value)} placeholder={domaineId ? "Tapez un vin (filtrés par fournisseur)..." : "Tapez un vin..."} style={inp} />
-          {searchRes.length > 0 && (
-            <div style={{ border: '0.5px solid rgba(255,255,255,0.08)', borderRadius: 4, overflow: 'hidden', marginTop: 4 }}>
-              {searchRes.map(p => (
-                <div key={p.id} onClick={() => addLigne(p)} style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 14px', cursor: 'pointer', background: '#18130e', borderBottom: '0.5px solid rgba(255,255,255,0.04)' }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.03)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = '#18130e')}
-                >
-                  <span style={{ fontSize: 13, color: '#f0e8d8' }}>{p.nom}{p.millesime ? ` ${p.millesime}` : ''}</span>
-                  <span style={{ fontSize: 10, color: 'rgba(232,224,213,0.4)' }}>+ Ajouter</span>
-                </div>
-              ))}
+        {/* Liste produits avec cases à cocher */}
+        {domaineId && (
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <label style={lbl}>
+                Produits référencés
+                {produitsDomaine.length > 0 && <span style={{ color: 'rgba(232,224,213,0.3)', marginLeft: 8 }}>({produitsDomaine.length} références)</span>}
+              </label>
+              {nbSelectionnes > 0 && (
+                <span style={{ fontSize: 11, color: '#c9a96e' }}>{nbSelectionnes} sélectionné{nbSelectionnes > 1 ? 's' : ''}</span>
+              )}
             </div>
-          )}
-        </div>
 
-        {lignes.length > 0 && (
-          <div style={{ background: 'rgba(255,255,255,0.02)', borderRadius: 4, border: '0.5px solid rgba(255,255,255,0.06)', marginBottom: 16, overflow: 'hidden' }}>
-            {lignes.map((l, i) => (
-              <div key={l.product_id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderBottom: i < lignes.length - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none' }}>
-                <span style={{ flex: 1, fontSize: 13, color: '#f0e8d8' }}>{l.nom}{l.millesime ? ` ${l.millesime}` : ''}</span>
-                <input
-                  type="number" min={1} value={l.quantite}
-                  onChange={e => setLignes(ls => ls.map(x => x.product_id === l.product_id ? { ...x, quantite: parseInt(e.target.value) || 1 } : x))}
-                  style={{ width: 70, background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 3, color: '#e8e0d5', fontSize: 13, padding: '4px 8px', textAlign: 'center' as const }}
-                />
-                <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.3)' }}>btl</span>
-                <button onClick={() => setLignes(ls => ls.filter(x => x.product_id !== l.product_id))} style={{ background: 'transparent', border: 'none', color: '#c96e6e', cursor: 'pointer', fontSize: 14 }}>✕</button>
+            {/* Recherche dans la liste */}
+            {produitsDomaine.length > 10 && (
+              <input value={search} onChange={e => setSearch(e.target.value)}
+                placeholder="Filtrer les produits..." style={{ ...inp, marginBottom: 8 }} />
+            )}
+
+            {loadingProduits ? (
+              <div style={{ textAlign: 'center' as const, padding: 24, color: 'rgba(232,224,213,0.4)', fontSize: 13 }}>Chargement des produits...</div>
+            ) : produitsDomaine.length === 0 ? (
+              <div style={{ padding: '16px', background: 'rgba(255,255,255,0.02)', borderRadius: 4, fontSize: 12, color: 'rgba(232,224,213,0.4)', textAlign: 'center' as const }}>
+                Aucun produit associé à ce fournisseur.<br />
+                <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.3)' }}>Associez des produits via Besoins → Assoc. fournisseurs</span>
               </div>
-            ))}
+            ) : (
+              <>
+                {/* Boutons tout cocher / décocher */}
+                <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                  <button onClick={() => setSelected(Object.fromEntries(filtres.map(p => [p.id, p.conditionnement || 6])))}
+                    style={{ background: 'transparent', border: '0.5px solid rgba(201,169,110,0.3)', color: '#c9a96e', borderRadius: 3, padding: '4px 10px', fontSize: 10, cursor: 'pointer', letterSpacing: 1 }}>
+                    ✓ Tout sélectionner
+                  </button>
+                  <button onClick={() => setSelected({})}
+                    style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 3, padding: '4px 10px', fontSize: 10, cursor: 'pointer' }}>
+                    Tout décocher
+                  </button>
+                </div>
+
+                <div style={{ border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 4, overflow: 'hidden', maxHeight: 340, overflowY: 'auto' as const }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' as const }}>
+                    <thead style={{ position: 'sticky' as const, top: 0, background: '#14100c', zIndex: 1 }}>
+                      <tr style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
+                        <th style={{ width: 36, padding: '8px 12px' }}></th>
+                        <th style={{ padding: '8px 12px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', fontWeight: 400 }}>PRODUIT</th>
+                        <th style={{ padding: '8px 12px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', fontWeight: 400 }}>PRIX HT</th>
+                        <th style={{ padding: '8px 12px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', fontWeight: 400 }}>QTÉ</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtres.map((p, i) => {
+                        const checked = selected[p.id] !== undefined
+                        return (
+                          <tr key={p.id}
+                            onClick={() => toggleProduit(p)}
+                            style={{
+                              borderBottom: i < filtres.length - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none',
+                              background: checked ? 'rgba(201,169,110,0.06)' : 'transparent',
+                              cursor: 'pointer',
+                            }}
+                            onMouseEnter={e => { if (!checked) e.currentTarget.style.background = 'rgba(255,255,255,0.02)' }}
+                            onMouseLeave={e => { if (!checked) e.currentTarget.style.background = 'transparent' }}
+                          >
+                            <td style={{ padding: '10px 12px' }}>
+                              <div style={{
+                                width: 16, height: 16, borderRadius: 3,
+                                border: `1.5px solid ${checked ? '#c9a96e' : 'rgba(255,255,255,0.2)'}`,
+                                background: checked ? '#c9a96e' : 'transparent',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              }}>
+                                {checked && <span style={{ fontSize: 10, color: '#0d0a08', fontWeight: 700 }}>✓</span>}
+                              </div>
+                            </td>
+                            <td style={{ padding: '10px 12px' }}>
+                              <div style={{ fontSize: 13, color: '#f0e8d8' }}>{p.nom}</div>
+                              {p.millesime && <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>{p.millesime}</div>}
+                            </td>
+                            <td style={{ padding: '10px 12px', fontSize: 13, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>
+                              {parseFloat(p.prix_achat_ht || 0).toFixed(2)}€
+                            </td>
+                            <td style={{ padding: '10px 12px' }} onClick={e => e.stopPropagation()}>
+                              {checked ? (
+                                <input
+                                  type="number" min={1}
+                                  value={selected[p.id]}
+                                  onChange={e => setSelected(prev => ({ ...prev, [p.id]: parseInt(e.target.value) || 1 }))}
+                                  style={{ width: 65, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 3, color: '#e8e0d5', fontSize: 13, padding: '4px 8px', textAlign: 'center' as const }}
+                                />
+                              ) : (
+                                <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.25)' }}>{p.conditionnement || 6} btl</span>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Total et notes */}
+        {nbSelectionnes > 0 && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 16, marginBottom: 14, padding: '10px 14px', background: 'rgba(201,169,110,0.06)', borderRadius: 4 }}>
+            <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>{nbSelectionnes} référence{nbSelectionnes > 1 ? 's' : ''} — Total estimé :</span>
+            <span style={{ fontSize: 18, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{totalHT.toFixed(2)}€ HT</span>
           </div>
         )}
 
         <div style={{ marginBottom: 20 }}>
           <label style={lbl}>Notes (optionnel)</label>
-          <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Ex: Commande passée par téléphone le..." style={{ ...inp, resize: 'vertical' as const }} />
+          <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
+            placeholder="Ex: Commande passée par téléphone le..." style={{ ...inp, resize: 'vertical' as const }} />
         </div>
 
         <div style={{ display: 'flex', gap: 10 }}>
           <button onClick={onClose} style={{ flex: 1, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '11px', fontSize: 11, cursor: 'pointer' }}>Annuler</button>
-          <button onClick={handleCreate} disabled={saving || lignes.length === 0 || !domaineId} style={{ flex: 2, background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '11px', fontSize: 11, letterSpacing: 2, cursor: 'pointer', fontWeight: 500, textTransform: 'uppercase' as const, opacity: (lignes.length === 0 || !domaineId) ? 0.5 : 1 }}>
-            {saving ? '⟳ Création...' : `✓ Créer la commande (${lignes.length} produit${lignes.length > 1 ? 's' : ''})`}
+          <button onClick={handleCreate} disabled={saving || nbSelectionnes === 0 || !domaineId} style={{
+            flex: 2, background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4,
+            padding: '11px', fontSize: 11, letterSpacing: 2, cursor: 'pointer', fontWeight: 500,
+            textTransform: 'uppercase' as const, opacity: (nbSelectionnes === 0 || !domaineId) ? 0.5 : 1,
+          }}>
+            {saving ? '⟳ Création...' : `✓ Créer la commande (${nbSelectionnes} produit${nbSelectionnes > 1 ? 's' : ''})`}
           </button>
         </div>
       </div>
