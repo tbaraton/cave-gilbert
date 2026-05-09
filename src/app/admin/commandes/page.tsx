@@ -625,7 +625,7 @@ function ModalNouvelleCommande({ domaines, preselectedDomaineId, onCreated, onCl
     if (!ps || ps.length === 0) { setProduitsDomaine([]); setLoadingProduits(false); return }
     const ids = ps.map(p => p.product_id)
     const [{ data: prods }, { data: stockData }, { data: sitesData }] = await Promise.all([
-      supabase.from('products').select('id, nom, millesime, couleur, prix_achat_ht').in('id', ids).eq('actif', true).order('nom'),
+      supabase.from('products').select('id, nom, millesime, couleur, prix_achat_ht').in('id', ids).order('nom'),
       supabase.from('stock').select('product_id, site_id, quantite').in('product_id', ids),
       supabase.from('sites').select('id, nom, code').eq('actif', true).order('type'),
     ])
