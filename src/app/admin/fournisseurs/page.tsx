@@ -172,10 +172,10 @@ function FicheFournisseur({ fournisseur, onEdit, onBack, onCommande }: {
     const load = async () => {
       const [{ data: cmds }, { data: prods }] = await Promise.all([
         supabase.from('supplier_orders')
-          .select('*, items:supplier_order_items(id)')
+          .select('*, items:supplier_order_items(id, quantite_commandee, quantite_recue, prix_achat_ht)')
           .eq('domaine_id', fournisseur.id)
           .order('created_at', { ascending: false })
-          .limit(10),
+          .limit(20),
         supabase.from('product_suppliers')
           .select('*, product:products(id, nom, millesime, couleur, prix_achat_ht, actif)')
           .eq('domaine_id', fournisseur.id)
@@ -235,7 +235,7 @@ function FicheFournisseur({ fournisseur, onEdit, onBack, onCommande }: {
         ))}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, gridTemplateRows: 'auto' }}>
 
         {/* Coordonnées */}
         <div style={card}>
@@ -265,29 +265,59 @@ function FicheFournisseur({ fournisseur, onEdit, onBack, onCommande }: {
         </div>
 
         {/* Commandes récentes */}
-        <div style={card}>
-          <div style={{ fontSize: 10, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 16 }}>Historique commandes</div>
+        <div style={{ ...card, gridColumn: '1 / -1' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <div style={{ fontSize: 10, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const }}>Historique commandes</div>
+            <button onClick={onCommande} style={{ background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '7px 16px', fontSize: 11, cursor: 'pointer', fontWeight: 500, letterSpacing: 1 }}>
+              + Nouvelle commande
+            </button>
+          </div>
           {loading ? <Spinner /> : commandes.length === 0 ? (
             <p style={{ color: 'rgba(232,224,213,0.3)', fontSize: 13 }}>Aucune commande pour ce fournisseur.</p>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
-              {commandes.map(cmd => {
-                const s = STATUT_COLORS[cmd.statut] || { bg: '#222', color: '#888', label: cmd.statut }
-                return (
-                  <div key={cmd.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', background: 'rgba(255,255,255,0.03)', borderRadius: 4 }}>
-                    <div>
-                      <div style={{ fontFamily: 'monospace', fontSize: 12, color: '#c9a96e' }}>{cmd.numero}</div>
-                      <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)' }}>
-                        {new Date(cmd.created_at).toLocaleDateString('fr-FR')} · {cmd.items?.length || 0} réf.
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      {cmd.total_ht && <span style={{ fontFamily: 'Georgia, serif', fontSize: 14, color: '#c9a96e' }}>{parseFloat(cmd.total_ht).toFixed(0)}€</span>}
-                      <span style={{ background: s.bg, color: s.color, fontSize: 9, padding: '2px 7px', borderRadius: 3, letterSpacing: 1 }}>{s.label}</span>
-                    </div>
-                  </div>
-                )
-              })}
+            <div style={{ overflowX: 'auto' as const }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' as const }}>
+                <thead>
+                  <tr style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
+                    {['N° commande', 'Date', 'Références', 'Bouteilles', 'Montant HT', 'Statut'].map(h => (
+                      <th key={h} style={{ padding: '8px 12px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', fontWeight: 400 }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {commandes.map((cmd, i) => {
+                    const s = STATUT_COLORS[cmd.statut] || { bg: '#222', color: '#888', label: cmd.statut }
+                    const nbBouteilles = (cmd.items || []).reduce((acc: number, item: any) => acc + (item.quantite_commandee || 0), 0)
+                    const montantHT = (cmd.items || []).reduce((acc: number, item: any) => acc + ((parseFloat(item.prix_achat_ht || 0)) * (item.quantite_commandee || 0)), 0)
+                    const montantTTC = montantHT * 1.20
+                    return (
+                      <tr key={cmd.id} style={{ borderBottom: i < commandes.length - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none' }}>
+                        <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: 12, color: '#c9a96e' }}>{cmd.numero}</td>
+                        <td style={{ padding: '10px 12px', fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>
+                          {cmd.date_commande ? new Date(cmd.date_commande).toLocaleDateString('fr-FR') : new Date(cmd.created_at).toLocaleDateString('fr-FR')}
+                        </td>
+                        <td style={{ padding: '10px 12px', fontSize: 13, color: '#e8e0d5' }}>
+                          {cmd.items?.length || 0} réf.
+                        </td>
+                        <td style={{ padding: '10px 12px', fontSize: 13, color: '#e8e0d5' }}>
+                          {nbBouteilles > 0 ? `${nbBouteilles} btl` : '—'}
+                        </td>
+                        <td style={{ padding: '10px 12px', fontFamily: 'Georgia, serif', fontSize: 14, color: '#c9a96e' }}>
+                          {montantHT > 0 ? (
+                            <div>
+                              <div>{montantHT.toFixed(2)}€ HT</div>
+                              <div style={{ fontSize: 11, color: 'rgba(201,169,110,0.5)' }}>{montantTTC.toFixed(2)}€ TTC</div>
+                            </div>
+                          ) : '—'}
+                        </td>
+                        <td style={{ padding: '10px 12px' }}>
+                          <span style={{ background: s.bg, color: s.color, fontSize: 9, padding: '3px 8px', borderRadius: 3, letterSpacing: 1 }}>{s.label}</span>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
@@ -356,8 +386,8 @@ export default function AdminFournisseursPage() {
   }
 
   const handleCommande = () => {
-    // Ouvrir la page commandes avec ce fournisseur pré-sélectionné
-    window.open('/admin/commandes', '_blank')
+    // Rediriger vers commandes avec le fournisseur pré-sélectionné
+    window.location.href = `/admin/commandes?domaine=${selected?.id}`
   }
 
   const filtres = fournisseurs.filter(f =>
