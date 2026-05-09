@@ -901,13 +901,16 @@ function VueCommandes({ onSelectDetail, preselectedDomaineId, onClearPreselect }
     loadCommandes()
     supabase.from('domaines').select('id, nom').order('nom').then(({ data }) => {
       setDomaines(data || [])
-      // Ouvrir le modal directement quand les domaines sont chargés
-      if (preselectedDomaineId) {
-        setShowNouvelleCommande(true)
-        if (onClearPreselect) onClearPreselect()
-      }
     })
   }, [])
+
+  // Ouvrir le modal quand preselectedDomaineId est défini ET domaines chargés
+  useEffect(() => {
+    if (preselectedDomaineId && domaines.length > 0) {
+      setShowNouvelleCommande(true)
+      if (onClearPreselect) onClearPreselect()
+    }
+  }, [preselectedDomaineId, domaines.length])
 
   const filtered = commandes.filter(c => filterStatut === 'tous' || c.statut === filterStatut)
 
