@@ -314,7 +314,7 @@ function DetailTransfert({ transfer, onBack, onRefresh }: {
         await supabase.rpc('move_stock', {
           p_product_id: item.product_id,
           p_site_id: transfer.site_source_id,
-          p_raison: 'transfert_sortant',
+          p_raison: 'transfert_out',
           p_quantite: -qty,
           p_note: `Expédition transfert ${transfer.numero}`,
           p_order_id: null,
@@ -347,7 +347,7 @@ function DetailTransfert({ transfer, onBack, onRefresh }: {
         await supabase.rpc('move_stock', {
           p_product_id: item.product_id,
           p_site_id: transfer.site_destination_id,
-          p_raison: 'transfert_entrant',
+          p_raison: 'transfert_in',
           p_quantite: qtyRecue,
           p_note: `Réception transfert ${transfer.numero}`,
           p_order_id: null,
