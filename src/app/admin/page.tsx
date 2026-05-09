@@ -987,6 +987,10 @@ export default function AdminPage() {
   const [search, setSearch] = useState('')
   const [filterRegion, setFilterRegion] = useState('')
   const [filterAppellation, setFilterAppellation] = useState('')
+  const [filterCouleur, setFilterCouleur] = useState('')
+  const [filterPrixMax, setFilterPrixMax] = useState<number>(500)
+  const [filterPrixMin, setFilterPrixMin] = useState<number>(0)
+  const [prixMaxCatalogue, setPrixMaxCatalogue] = useState<number>(500)
   const [sortCol, setSortCol] = useState<string>('nom')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
 
@@ -1023,6 +1027,11 @@ export default function AdminPage() {
       ])
 
       setProduits(prods || [])
+      if (prods && prods.length > 0) {
+        const maxP = Math.ceil(Math.max(...prods.map((p: any) => parseFloat(p.prix_vente_ttc || 0))))
+        setPrixMaxCatalogue(maxP)
+        setFilterPrixMax(maxP)
+      }
       setStockParSite(stock || [])
       setSites(sitesData || [])
       setLocations(locs || [])
@@ -1087,7 +1096,10 @@ export default function AdminPage() {
     .filter(p =>
       p.nom?.toLowerCase().includes(search.toLowerCase()) &&
       (filterRegion === '' || p.region_id === filterRegion) &&
-      (filterAppellation === '' || p.appellation_id === filterAppellation)
+      (filterAppellation === '' || p.appellation_id === filterAppellation) &&
+      (filterCouleur === '' || p.couleur === filterCouleur) &&
+      (parseFloat(p.prix_vente_ttc || 0) >= filterPrixMin) &&
+      (parseFloat(p.prix_vente_ttc || 0) <= filterPrixMax)
     )
     .sort((a, b) => {
       let va = a[sortCol] ?? ''
@@ -1282,8 +1294,9 @@ export default function AdminPage() {
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' as const }}>
-              <input placeholder="Rechercher un vin..." value={search} onChange={e => setSearch(e.target.value)} style={{ flex: '2 1 200px', ...inputStyle, boxSizing: 'border-box' as const }} />
+            {/* Barre de recherche */}
+            <div style={{ display: 'flex', gap: 12, marginBottom: 12, flexWrap: 'wrap' as const }}>
+              <input placeholder="🔍 Rechercher un vin..." value={search} onChange={e => setSearch(e.target.value)} style={{ flex: '2 1 200px', ...inputStyle, boxSizing: 'border-box' as const }} />
               <select value={filterRegion} onChange={e => { setFilterRegion(e.target.value); setFilterAppellation('') }} style={{ flex: '1 1 150px', ...inputStyle, background: '#1a1408', cursor: 'pointer' }}>
                 <option value="">Toutes les régions</option>
                 {regions.map(r => <option key={r.id} value={r.id}>{r.nom}</option>)}
@@ -1292,10 +1305,79 @@ export default function AdminPage() {
                 <option value="">Toutes les appellations</option>
                 {(filterRegion ? appellations.filter(a => a.region_id === filterRegion) : appellations).map(a => <option key={a.id} value={a.id}>{a.nom}</option>)}
               </select>
-              {(filterRegion || filterAppellation) && (
-                <button onClick={() => { setFilterRegion(''); setFilterAppellation('') }} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.15)', color: 'rgba(232,224,213,0.5)', borderRadius: 4, padding: '9px 14px', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' as const }}>✕ Effacer</button>
-              )}
             </div>
+
+            {/* Filtres couleur + prix */}
+            <div style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' as const }}>
+              {/* Filtre couleur */}
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
+                {[
+                  { key: '', label: 'Toutes', bg: 'rgba(255,255,255,0.06)', color: '#e8e0d5' },
+                  { key: 'rouge', label: 'Rouge', bg: '#7b1e1e', color: '#f5d0d0' },
+                  { key: 'blanc', label: 'Blanc', bg: '#b8a96a', color: '#1a1408' },
+                  { key: 'rosé', label: 'Rosé', bg: '#c97b7b', color: '#1a0808' },
+                  { key: 'champagne', label: 'Champagne', bg: '#c9b06e', color: '#1a0e00' },
+                  { key: 'effervescent', label: 'Effervescent', bg: '#8888aa', color: '#f0f0ff' },
+                  { key: 'spiritueux', label: 'Spiritueux', bg: '#6e8b6e', color: '#0a1a0a' },
+                ].map(({ key, label, bg, color }) => (
+                  <button key={key} onClick={() => setFilterCouleur(key)} style={{
+                    background: filterCouleur === key ? bg : 'rgba(255,255,255,0.04)',
+                    color: filterCouleur === key ? color : 'rgba(232,224,213,0.45)',
+                    border: `0.5px solid ${filterCouleur === key ? bg : 'rgba(255,255,255,0.1)'}`,
+                    borderRadius: 20, padding: '5px 12px', fontSize: 11, cursor: 'pointer',
+                    fontWeight: filterCouleur === key ? 600 : 400,
+                    transition: 'all 0.15s',
+                  }}>{label}</button>
+                ))}
+              </div>
+
+              {/* Filtre prix */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginLeft: 'auto' }}>
+                <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', whiteSpace: 'nowrap' as const }}>Prix TTC :</span>
+                <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 4, minWidth: 200 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: 11, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{filterPrixMin}€</span>
+                    <span style={{ fontSize: 11, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{filterPrixMax}€</span>
+                  </div>
+                  <div style={{ position: 'relative' as const, height: 20, display: 'flex', alignItems: 'center' }}>
+                    <div style={{ position: 'absolute' as const, left: 0, right: 0, height: 3, background: 'rgba(255,255,255,0.08)', borderRadius: 2 }} />
+                    <div style={{
+                      position: 'absolute' as const,
+                      left: `${(filterPrixMin / prixMaxCatalogue) * 100}%`,
+                      right: `${100 - (filterPrixMax / prixMaxCatalogue) * 100}%`,
+                      height: 3, background: '#c9a96e', borderRadius: 2,
+                    }} />
+                    <input type="range" min={0} max={prixMaxCatalogue} value={filterPrixMin}
+                      onChange={e => setFilterPrixMin(Math.min(parseInt(e.target.value), filterPrixMax - 1))}
+                      style={{ position: 'absolute' as const, width: '100%', opacity: 0, cursor: 'pointer', zIndex: 2, height: 20 }}
+                    />
+                    <input type="range" min={0} max={prixMaxCatalogue} value={filterPrixMax}
+                      onChange={e => setFilterPrixMax(Math.max(parseInt(e.target.value), filterPrixMin + 1))}
+                      style={{ position: 'absolute' as const, width: '100%', opacity: 0, cursor: 'pointer', zIndex: 3, height: 20 }}
+                    />
+                  </div>
+                  <style>{`input[type=range]::-webkit-slider-thumb { width: 14px; height: 14px; border-radius: 50%; background: #c9a96e; cursor: pointer; -webkit-appearance: none; }`}</style>
+                </div>
+                <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.3)', whiteSpace: 'nowrap' as const }}>max {prixMaxCatalogue}€</span>
+              </div>
+            </div>
+
+            {/* Résumé filtres actifs + bouton effacer */}
+            {(filterRegion || filterAppellation || filterCouleur || filterPrixMin > 0 || filterPrixMax < prixMaxCatalogue) && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>
+                  {produitsFiltres.length} résultat{produitsFiltres.length > 1 ? 's' : ''}
+                  {filterCouleur && ` · ${filterCouleur}`}
+                  {filterPrixMin > 0 || filterPrixMax < prixMaxCatalogue ? ` · ${filterPrixMin}€ – ${filterPrixMax}€` : ''}
+                </span>
+                <button onClick={() => {
+                  setFilterRegion(''); setFilterAppellation(''); setFilterCouleur('')
+                  setFilterPrixMin(0); setFilterPrixMax(prixMaxCatalogue)
+                }} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.12)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '4px 10px', fontSize: 10, cursor: 'pointer' }}>
+                  ✕ Effacer les filtres
+                </button>
+              </div>
+            )}
 
             {loading ? <Spinner /> : produits.length === 0 ? (
               <Empty message="Aucun produit dans la base. Cliquez sur « Ajouter par IA » pour commencer." />
