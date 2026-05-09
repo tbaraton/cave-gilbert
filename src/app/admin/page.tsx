@@ -365,8 +365,10 @@ function ModalMouvement({ produits, sites, onClose, onSaved }: {
 
 // ── Modal Édition Produit ────────────────────────────────────
 
-function ModalEditProduit({ produit, onClose, onSaved }: {
+function ModalEditProduit({ produit, regions, appellations, onClose, onSaved }: {
   produit: any
+  regions: any[]
+  appellations: any[]
   onClose: () => void
   onSaved: () => void
 }) {
@@ -374,6 +376,8 @@ function ModalEditProduit({ produit, onClose, onSaved }: {
     nom: produit.nom || '',
     millesime: produit.millesime?.toString() || '',
     couleur: produit.couleur || 'rouge',
+    region_id: produit.region_id || '',
+    appellation_id: produit.appellation_id || '',
     prix_vente_ttc: produit.prix_vente_ttc?.toString() || '',
     prix_vente_pro: produit.prix_vente_pro?.toString() || '',
     prix_achat_ht: produit.prix_achat_ht?.toString() || '',
@@ -386,8 +390,19 @@ function ModalEditProduit({ produit, onClose, onSaved }: {
     biodynamique: produit.biodynamique || false,
     actif: produit.actif !== false,
   })
+  const [regions, setRegions] = useState<any[]>([])
+  const [appellations, setAppellations] = useState<any[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+
+  useEffect(() => {
+    supabase.from('regions').select('id, nom').order('nom').then(({ data }) => setRegions(data || []))
+    supabase.from('appellations').select('id, nom, region_id').order('nom').then(({ data }) => setAppellations(data || []))
+  }, [])
+
+  const appsFiltrees = form.region_id
+    ? appellations.filter(a => a.region_id === form.region_id)
+    : appellations
 
   const handleSave = async () => {
     if (!form.nom.trim()) { setError('Le nom est obligatoire'); return }
@@ -398,6 +413,8 @@ function ModalEditProduit({ produit, onClose, onSaved }: {
       nom: form.nom.trim(),
       millesime: form.millesime ? parseInt(form.millesime) : null,
       couleur: form.couleur,
+      region_id: form.region_id || null,
+      appellation_id: form.appellation_id || null,
       prix_vente_ttc: parseFloat(form.prix_vente_ttc),
       prix_vente_pro: form.prix_vente_pro ? parseFloat(form.prix_vente_pro) : null,
       prix_achat_ht: form.prix_achat_ht ? parseFloat(form.prix_achat_ht) : null,
@@ -417,7 +434,7 @@ function ModalEditProduit({ produit, onClose, onSaved }: {
 
   const inp = { width: '100%', background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#e8e0d5', fontSize: 13, padding: '9px 12px', boxSizing: 'border-box' as const }
   const lbl = { fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, display: 'block', marginBottom: 6 }
-  const sel = { ...inp, background: '#1a1408', border: '0.5px solid rgba(201,169,110,0.3)', cursor: 'pointer' }
+  const sel = { ...inp, background: '#1a1408', border: '0.5px solid rgba(201,169,110,0.2)', cursor: 'pointer' }
 
   const CERTIFS = [
     { key: 'bio', label: '🌿 Bio' },
@@ -429,7 +446,7 @@ function ModalEditProduit({ produit, onClose, onSaved }: {
 
   return (
     <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }} onClick={onClose}>
-      <div style={{ background: '#18130e', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 8, width: '100%', maxWidth: 640, padding: '28px 32px', maxHeight: '90vh', overflowY: 'auto' as const }} onClick={e => e.stopPropagation()}>
+      <div style={{ background: '#18130e', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 8, width: '100%', maxWidth: 680, padding: '28px 32px', maxHeight: '92vh', overflowY: 'auto' as const }} onClick={e => e.stopPropagation()}>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
           <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 300, color: '#f0e8d8', margin: 0 }}>Modifier le produit</h2>
@@ -438,6 +455,8 @@ function ModalEditProduit({ produit, onClose, onSaved }: {
 
         {error && <div style={{ background: 'rgba(201,110,110,0.1)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 4, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: '#c96e6e' }}>{error}</div>}
 
+        {/* Identité */}
+        <div style={{ fontSize: 10, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 10 }}>Identité</div>
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 12, marginBottom: 14 }}>
           <div style={{ gridColumn: '1 / -1' }}>
             <label style={lbl}>Nom *</label>
@@ -457,47 +476,70 @@ function ModalEditProduit({ produit, onClose, onSaved }: {
           </div>
         </div>
 
+        {/* Région & Appellation */}
+        <div style={{ fontSize: 10, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 10 }}>Région & Appellation</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 12, marginBottom: 14 }}>
+          <div>
+            <label style={lbl}>Région viticole</label>
+            <select value={form.region_id} onChange={e => setForm(f => ({ ...f, region_id: e.target.value, appellation_id: '' }))} style={sel}>
+              <option value="" style={{ background: '#1a1408', color: '#888' }}>— Choisir —</option>
+              {regions.map(r => <option key={r.id} value={r.id} style={{ background: '#1a1408', color: '#f0e8d8' }}>{r.nom}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={lbl}>Appellation {form.region_id && <span style={{ color: 'rgba(232,224,213,0.3)' }}>({appsFiltrees.length} disponibles)</span>}</label>
+            <select value={form.appellation_id} onChange={e => setForm(f => ({ ...f, appellation_id: e.target.value }))} style={sel}>
+              <option value="" style={{ background: '#1a1408', color: '#888' }}>— Choisir —</option>
+              {appsFiltrees.map(a => <option key={a.id} value={a.id} style={{ background: '#1a1408', color: '#f0e8d8' }}>{a.nom}</option>)}
+            </select>
+          </div>
+        </div>
+
+        {/* Prix */}
+        <div style={{ fontSize: 10, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 10 }}>Prix</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 14 }}>
           <div>
             <label style={lbl}>Prix achat HT (€)</label>
             <input type="number" step="0.01" value={form.prix_achat_ht} onChange={e => setForm(f => ({ ...f, prix_achat_ht: e.target.value }))} placeholder="0.00" style={inp} />
           </div>
           <div>
-            <label style={lbl}>Prix vente TTC particulier (€) *</label>
+            <label style={lbl}>Prix TTC particulier (€) *</label>
             <input type="number" step="0.50" value={form.prix_vente_ttc} onChange={e => setForm(f => ({ ...f, prix_vente_ttc: e.target.value }))} placeholder="0.00" style={inp} />
           </div>
           <div>
-            <label style={lbl}>Prix vente TTC pro (€)</label>
+            <label style={lbl}>Prix TTC pro (€)</label>
             <input type="number" step="0.50" value={form.prix_vente_pro} onChange={e => setForm(f => ({ ...f, prix_vente_pro: e.target.value }))} placeholder="0.00" style={inp} />
           </div>
         </div>
 
-        <div style={{ marginBottom: 14 }}>
+        {/* Description & Photo */}
+        <div style={{ fontSize: 10, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 10 }}>Description & Photo</div>
+        <div style={{ marginBottom: 12 }}>
           <label style={lbl}>Description courte</label>
-          <textarea value={form.description_courte} onChange={e => setForm(f => ({ ...f, description_courte: e.target.value }))} rows={2}
-            style={{ ...inp, resize: 'vertical' as const }} />
+          <textarea value={form.description_courte} onChange={e => setForm(f => ({ ...f, description_courte: e.target.value }))} rows={2} style={{ ...inp, resize: 'vertical' as const }} />
         </div>
-
         <div style={{ marginBottom: 14 }}>
           <label style={lbl}>URL photo</label>
           <input value={form.image_url} onChange={e => setForm(f => ({ ...f, image_url: e.target.value }))} placeholder="https://..." style={inp} />
+          {form.image_url && (
+            <img src={form.image_url} alt="" style={{ height: 50, marginTop: 8, borderRadius: 4, objectFit: 'contain' as const, background: '#100d0a', padding: 4 }} onError={e => (e.currentTarget.style.display = 'none')} />
+          )}
         </div>
 
-        <div style={{ marginBottom: 16 }}>
-          <label style={lbl}>Certifications</label>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
-            {CERTIFS.map(({ key, label }) => {
-              const active = (form as any)[key]
-              return (
-                <button key={key} onClick={() => setForm(f => ({ ...f, [key]: !active }))} style={{
-                  background: active ? 'rgba(201,169,110,0.15)' : 'rgba(255,255,255,0.03)',
-                  border: `0.5px solid ${active ? 'rgba(201,169,110,0.5)' : 'rgba(255,255,255,0.1)'}`,
-                  color: active ? '#c9a96e' : 'rgba(232,224,213,0.4)',
-                  borderRadius: 20, padding: '5px 12px', fontSize: 12, cursor: 'pointer',
-                }}>{label}</button>
-              )
-            })}
-          </div>
+        {/* Certifications */}
+        <div style={{ fontSize: 10, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 10 }}>Certifications</div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const, marginBottom: 16 }}>
+          {CERTIFS.map(({ key, label }) => {
+            const active = (form as any)[key]
+            return (
+              <button key={key} onClick={() => setForm(f => ({ ...f, [key]: !(f as any)[key] }))} style={{
+                background: active ? 'rgba(201,169,110,0.15)' : 'rgba(255,255,255,0.03)',
+                border: `0.5px solid ${active ? 'rgba(201,169,110,0.5)' : 'rgba(255,255,255,0.1)'}`,
+                color: active ? '#c9a96e' : 'rgba(232,224,213,0.4)',
+                borderRadius: 20, padding: '5px 12px', fontSize: 12, cursor: 'pointer',
+              }}>{label}</button>
+            )
+          })}
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24 }}>
@@ -538,6 +580,8 @@ export default function AdminPage() {
   const [tireuses, setTireuses] = useState<any[]>([])
   const [kegStock, setKegStock] = useState<any[]>([])
   const [alertes, setAlertes] = useState<any[]>([])
+  const [regions, setRegions] = useState<any[]>([])
+  const [appellations, setAppellations] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
   // Modals
@@ -545,6 +589,10 @@ export default function AdminPage() {
   const [showModalMouvement, setShowModalMouvement] = useState(false)
   const [selectedProduit, setSelectedProduit] = useState<any>(null)
   const [search, setSearch] = useState('')
+  const [filterRegion, setFilterRegion] = useState('')
+  const [filterAppellation, setFilterAppellation] = useState('')
+  const [regionsList, setRegionsList] = useState<any[]>([])
+  const [appellationsList, setAppellationsList] = useState<any[]>([])
   const [sortCol, setSortCol] = useState<string>('nom')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
 
@@ -568,7 +616,7 @@ export default function AdminPage() {
         { data: tirs },
         { data: kegs },
       ] = await Promise.all([
-        supabase.from('products').select('id, nom, millesime, couleur, prix_vente_ttc, actif, bio, ia_generated, domaine_id, slug').eq('actif', true).order('nom').limit(5000),
+        supabase.from('products').select('id, nom, millesime, couleur, prix_vente_ttc, prix_vente_pro, prix_achat_ht, actif, bio, vegan, casher, naturel, biodynamique, ia_generated, domaine_id, slug, region_id, appellation_id, description_courte, image_url').eq('actif', true).order('nom').limit(5000),
         supabase.from('v_stock_par_site').select('*'),
         supabase.from('sites').select('*').eq('actif', true).order('nom'),
         supabase.from('beer_rentals').select(`
@@ -592,6 +640,14 @@ export default function AdminPage() {
         s.stock_statut === 'rupture' || s.stock_statut === 'alerte'
       )
       setAlertes(alertesData)
+
+      // Charger régions et appellations pour les filtres
+      const [{ data: regs }, { data: apps }] = await Promise.all([
+        supabase.from('regions').select('id, nom').order('nom'),
+        supabase.from('appellations').select('id, nom, region_id').order('nom'),
+      ])
+      setRegionsList(regs || [])
+      setAppellationsList(apps || [])
     } catch (e) {
       console.error('Erreur chargement données:', e)
     } finally {
@@ -624,8 +680,16 @@ export default function AdminPage() {
     return { ...p, parSite }
   })
 
+  const appellationsFiltered = filterRegion
+    ? appellations.filter(a => a.region_id === filterRegion)
+    : appellations
+
   const produitsFiltres = produits
-    .filter(p => p.nom?.toLowerCase().includes(search.toLowerCase()))
+    .filter(p =>
+      p.nom?.toLowerCase().includes(search.toLowerCase()) &&
+      (filterRegion === '' || p.region_id === filterRegion) &&
+      (filterAppellation === '' || p.appellation_id === filterAppellation)
+    )
     .sort((a, b) => {
       let va = a[sortCol] ?? ''
       let vb = b[sortCol] ?? ''
@@ -814,7 +878,20 @@ export default function AdminPage() {
               </button>
             </div>
 
-            <input placeholder="Rechercher un vin ou un domaine..." value={search} onChange={e => setSearch(e.target.value)} style={{ width: '100%', ...inputStyle, marginBottom: 20, boxSizing: 'border-box' as const }} />
+            <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' as const }}>
+              <input placeholder="Rechercher un vin..." value={search} onChange={e => setSearch(e.target.value)} style={{ flex: '2 1 200px', ...inputStyle, boxSizing: 'border-box' as const }} />
+              <select value={filterRegion} onChange={e => { setFilterRegion(e.target.value); setFilterAppellation('') }} style={{ flex: '1 1 150px', ...inputStyle, background: '#1a1408', cursor: 'pointer' }}>
+                <option value="">Toutes les régions</option>
+                {regions.map(r => <option key={r.id} value={r.id}>{r.nom}</option>)}
+              </select>
+              <select value={filterAppellation} onChange={e => setFilterAppellation(e.target.value)} style={{ flex: '1 1 180px', ...inputStyle, background: '#1a1408', cursor: 'pointer' }}>
+                <option value="">Toutes les appellations</option>
+                {(filterRegion ? appellations.filter(a => a.region_id === filterRegion) : appellations).map(a => <option key={a.id} value={a.id}>{a.nom}</option>)}
+              </select>
+              {(filterRegion || filterAppellation) && (
+                <button onClick={() => { setFilterRegion(''); setFilterAppellation('') }} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.15)', color: 'rgba(232,224,213,0.5)', borderRadius: 4, padding: '9px 14px', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' as const }}>✕ Effacer</button>
+              )}
+            </div>
 
             {loading ? <Spinner /> : produits.length === 0 ? (
               <Empty message="Aucun produit dans la base. Cliquez sur « Ajouter par IA » pour commencer." />
@@ -1108,7 +1185,13 @@ export default function AdminPage() {
         <ModalMouvement produits={produits} sites={sites} onClose={() => setShowModalMouvement(false)} onSaved={loadData} />
       )}
       {selectedProduit && (
-        <ModalEditProduit produit={selectedProduit} onClose={() => setSelectedProduit(null)} onSaved={() => { loadData(); setSelectedProduit(null) }} />
+        <ModalEditProduit
+          produit={selectedProduit}
+          regions={regions}
+          appellations={appellations}
+          onClose={() => setSelectedProduit(null)}
+          onSaved={() => { loadData(); setSelectedProduit(null) }}
+        />
       )}
     </div>
   )
