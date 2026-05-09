@@ -654,6 +654,241 @@ function ModalEditProduit({ produit, regions, appellations, onClose, onSaved }: 
   )
 }
 
+
+// ── Modal Nouveau Produit (admin catalogue) ──────────────────
+
+function ModalNouveauProduitAdmin({ regions, appellations, onClose, onSaved }: {
+  regions: any[]
+  appellations: any[]
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [form, setForm] = useState({
+    appellation_nom: '',
+    nom_cuvee: '',
+    domaine_nom: '',
+    contenance: '75cl',
+    millesime: '',
+    couleur: 'rouge',
+    region_id: '',
+    appellation_id: '',
+    prix_achat_ht: '',
+    coeff_particulier: '2',
+    prix_vente_ttc: '',
+    coeff_pro: '1.70',
+    prix_vente_pro: '',
+    description_courte: '',
+    image_url: '',
+    bio: false, vegan: false, casher: false, naturel: false, biodynamique: false,
+    actif: true,
+  })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const appsFiltrees = form.region_id
+    ? appellations.filter((a: any) => a.region_id === form.region_id)
+    : appellations
+
+  const buildNom = () => {
+    const parts = []
+    if (form.appellation_nom) parts.push(form.appellation_nom)
+    if (form.nom_cuvee) parts.push(form.nom_cuvee)
+    if (form.couleur) parts.push(form.couleur.charAt(0).toUpperCase() + form.couleur.slice(1))
+    if (form.millesime) parts.push(form.millesime)
+    if (form.contenance) parts.push(form.contenance)
+    let nom = parts.join(' ')
+    if (form.domaine_nom) nom += ' - ' + form.domaine_nom
+    return nom
+  }
+
+  const handleHTChange = (ht: string) => {
+    const htNum = parseFloat(ht)
+    setForm(f => ({
+      ...f,
+      prix_achat_ht: ht,
+      prix_vente_ttc: !isNaN(htNum) && htNum > 0 ? arrondir50(htNum * parseFloat(f.coeff_particulier)).toFixed(2) : f.prix_vente_ttc,
+      prix_vente_pro: !isNaN(htNum) && htNum > 0 ? (htNum * parseFloat(f.coeff_pro)).toFixed(2) : f.prix_vente_pro,
+    }))
+  }
+
+  const handleSave = async () => {
+    const nomFinal = buildNom()
+    if (!nomFinal.trim()) { setError("Remplissez au moins l'appellation"); return }
+    if (!form.prix_vente_ttc) { setError('Le prix TTC est obligatoire'); return }
+    setSaving(true)
+    setError('')
+    const slug = nomFinal.toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+      + '-' + Math.random().toString(36).substring(2, 7)
+    const { error: err } = await supabase.from('products').insert({
+      nom: nomFinal,
+      slug,
+      nom_cuvee: form.nom_cuvee || null,
+      contenance: form.contenance || '75cl',
+      millesime: form.millesime ? parseInt(form.millesime) : null,
+      couleur: form.couleur,
+      region_id: form.region_id || null,
+      appellation_id: form.appellation_id || null,
+      prix_vente_ttc: parseFloat(form.prix_vente_ttc),
+      prix_vente_pro: form.prix_vente_pro ? parseFloat(form.prix_vente_pro) : null,
+      prix_achat_ht: form.prix_achat_ht ? parseFloat(form.prix_achat_ht) : null,
+      description_courte: form.description_courte || null,
+      image_url: form.image_url || null,
+      bio: form.bio, vegan: form.vegan, casher: form.casher,
+      naturel: form.naturel, biodynamique: form.biodynamique,
+      actif: form.actif,
+    })
+    if (err) { setError(err.message); setSaving(false); return }
+    setSaving(false)
+    onSaved()
+    onClose()
+  }
+
+  const inp = { width: '100%', background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#e8e0d5', fontSize: 13, padding: '9px 12px', boxSizing: 'border-box' as const }
+  const lbl = { fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, display: 'block', marginBottom: 6 }
+  const sel = { ...inp, background: '#1a1408', border: '0.5px solid rgba(201,169,110,0.2)', cursor: 'pointer' }
+  const CERTIFS = [
+    { key: 'bio', label: '🌿 Bio' }, { key: 'vegan', label: '🌱 Vegan' },
+    { key: 'casher', label: '✡ Casher' }, { key: 'naturel', label: '🍃 Naturel' },
+    { key: 'biodynamique', label: '🌙 Biodynamique' },
+  ]
+
+  return (
+    <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }} onClick={onClose}>
+      <div style={{ background: '#18130e', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 8, width: '100%', maxWidth: 700, padding: '28px 32px', maxHeight: '92vh', overflowY: 'auto' as const }} onClick={e => e.stopPropagation()}>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 300, color: '#f0e8d8', margin: 0 }}>Nouveau produit</h2>
+          <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.4)', fontSize: 20, cursor: 'pointer' }}>✕</button>
+        </div>
+
+        {error && <div style={{ background: 'rgba(201,110,110,0.1)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 4, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: '#c96e6e' }}>{error}</div>}
+
+        <NomVinPreview
+          appellation={form.appellation_nom}
+          cuvee={form.nom_cuvee}
+          couleur={form.couleur}
+          millesime={form.millesime}
+          contenance={form.contenance}
+          domaine={form.domaine_nom}
+        />
+
+        <div style={{ fontSize: 10, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 10 }}>Identité</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+          <div>
+            <label style={lbl}>Région viticole</label>
+            <select value={form.region_id} onChange={e => setForm(f => ({ ...f, region_id: e.target.value, appellation_id: '', appellation_nom: '' }))} style={sel}>
+              <option value="">— Choisir —</option>
+              {regions.map(r => <option key={r.id} value={r.id}>{r.nom}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={lbl}>Appellation *</label>
+            <select value={form.appellation_id} onChange={e => {
+              const app = appsFiltrees.find((a: any) => a.id === e.target.value)
+              setForm(f => ({ ...f, appellation_id: e.target.value, appellation_nom: app?.nom || '' }))
+            }} style={sel}>
+              <option value="">— Choisir —</option>
+              {appsFiltrees.map((a: any) => <option key={a.id} value={a.id}>{a.nom}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={lbl}>Nom de la cuvée</label>
+            <input value={form.nom_cuvee} onChange={e => setForm(f => ({ ...f, nom_cuvee: e.target.value }))} placeholder="Laisser vide si pas de cuvée" style={{ ...inp, fontStyle: 'italic' }} />
+          </div>
+          <div>
+            <label style={lbl}>Nom du domaine</label>
+            <input value={form.domaine_nom} onChange={e => setForm(f => ({ ...f, domaine_nom: e.target.value }))} placeholder="Ex: Domaine Jean Foillard" style={inp} />
+          </div>
+          <div>
+            <label style={lbl}>Couleur *</label>
+            <select value={form.couleur} onChange={e => setForm(f => ({ ...f, couleur: e.target.value }))} style={{ ...sel, color: COULEUR_COLOR[form.couleur] || '#e8e0d5', fontWeight: 600 }}>
+              {Object.entries(COULEUR_STYLE).map(([k, v]) => (
+                <option key={k} value={k} style={{ background: '#1a1408', color: COULEUR_COLOR[k] || '#f0e8d8', fontWeight: 600 }}>{v.label}</option>
+              ))}
+            </select>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div>
+              <label style={lbl}>Millésime</label>
+              <input type="number" value={form.millesime} onChange={e => setForm(f => ({ ...f, millesime: e.target.value }))} placeholder="2022" style={inp} />
+            </div>
+            <div>
+              <label style={lbl}>Contenance</label>
+              <input value={form.contenance} onChange={e => setForm(f => ({ ...f, contenance: e.target.value }))} placeholder="75cl" style={inp} />
+            </div>
+          </div>
+        </div>
+
+        <div style={{ fontSize: 10, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 10 }}>Prix</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr', gap: 10, marginBottom: 6 }}>
+          <div>
+            <label style={lbl}>Prix achat HT (€)</label>
+            <input type="number" step="0.01" value={form.prix_achat_ht} onChange={e => handleHTChange(e.target.value)} placeholder="0.00" style={inp} />
+          </div>
+          <div>
+            <label style={lbl}>Coeff. part.</label>
+            <input type="number" step="0.01" value={form.coeff_particulier} onChange={e => setForm(f => ({ ...f, coeff_particulier: e.target.value }))} style={{ ...inp, color: '#c9b06e' }} />
+          </div>
+          <div>
+            <label style={lbl}>Prix TTC part. (€) *</label>
+            <input type="number" step="0.50" value={form.prix_vente_ttc} onChange={e => setForm(f => ({ ...f, prix_vente_ttc: e.target.value }))} placeholder="0.00" style={inp} />
+          </div>
+          <div>
+            <label style={lbl}>Coeff. pro</label>
+            <input type="number" step="0.01" value={form.coeff_pro} onChange={e => setForm(f => ({ ...f, coeff_pro: e.target.value }))} style={{ ...inp, color: '#c9b06e' }} />
+          </div>
+          <div>
+            <label style={lbl}>Prix TTC pro (€)</label>
+            <input type="number" step="0.01" value={form.prix_vente_pro} onChange={e => setForm(f => ({ ...f, prix_vente_pro: e.target.value }))} placeholder="0.00" style={inp} />
+          </div>
+        </div>
+        {form.prix_achat_ht && parseFloat(form.prix_achat_ht) > 0 && (
+          <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)', marginBottom: 14 }}>
+            {form.prix_achat_ht}€ HT × {form.coeff_particulier} = <strong style={{ color: '#c9a96e' }}>{arrondir50(parseFloat(form.prix_achat_ht) * parseFloat(form.coeff_particulier)).toFixed(2)}€</strong> part.
+            {' · '}× {form.coeff_pro} = <strong style={{ color: '#c9a96e' }}>{(parseFloat(form.prix_achat_ht) * parseFloat(form.coeff_pro)).toFixed(2)}€</strong> pro
+          </div>
+        )}
+
+        <div style={{ marginBottom: 12 }}>
+          <label style={lbl}>URL photo</label>
+          <input value={form.image_url} onChange={e => setForm(f => ({ ...f, image_url: e.target.value }))} placeholder="https://..." style={inp} />
+        </div>
+
+        <div style={{ fontSize: 10, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 10 }}>Certifications</div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const, marginBottom: 16 }}>
+          {CERTIFS.map(({ key, label }) => {
+            const active = (form as any)[key]
+            return (
+              <button key={key} onClick={() => setForm(f => ({ ...f, [key]: !(f as any)[key] }))} style={{
+                background: active ? 'rgba(201,169,110,0.15)' : 'rgba(255,255,255,0.03)',
+                border: `0.5px solid ${active ? 'rgba(201,169,110,0.5)' : 'rgba(255,255,255,0.1)'}`,
+                color: active ? '#c9a96e' : 'rgba(232,224,213,0.4)',
+                borderRadius: 20, padding: '5px 12px', fontSize: 12, cursor: 'pointer',
+              }}>{label}</button>
+            )
+          })}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24 }}>
+          <div onClick={() => setForm(f => ({ ...f, actif: !f.actif }))} style={{ width: 14, height: 14, borderRadius: 2, border: `0.5px solid ${form.actif ? '#c9a96e' : 'rgba(255,255,255,0.2)'}`, background: form.actif ? '#c9a96e' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+            {form.actif && <span style={{ fontSize: 9, color: '#0d0a08', fontWeight: 700 }}>✓</span>}
+          </div>
+          <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)', cursor: 'pointer' }} onClick={() => setForm(f => ({ ...f, actif: !f.actif }))}>Produit actif (visible en boutique)</span>
+        </div>
+
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={onClose} style={{ flex: 1, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '11px', fontSize: 11, cursor: 'pointer' }}>Annuler</button>
+          <button onClick={handleSave} disabled={saving} style={{ flex: 2, background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '11px', fontSize: 11, letterSpacing: 2, cursor: 'pointer', fontWeight: 500, textTransform: 'uppercase' as const, opacity: saving ? 0.7 : 1 }}>
+            {saving ? '⟳ Création...' : '✓ Créer le produit'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Page principale ──────────────────────────────────────────
 
 export default function AdminPage() {
@@ -673,6 +908,7 @@ export default function AdminPage() {
 
   // Modals
   const [showModalProduit, setShowModalProduit] = useState(false)
+  const [showNouveauProduit, setShowNouveauProduit] = useState(false)
   const [showModalMouvement, setShowModalMouvement] = useState(false)
   const [selectedProduit, setSelectedProduit] = useState<any>(null)
   const [search, setSearch] = useState('')
@@ -958,9 +1194,14 @@ export default function AdminPage() {
                 <h1 style={{ fontFamily: 'Georgia, serif', fontSize: 28, fontWeight: 300, color: '#f0e8d8', marginBottom: 4 }}>Catalogue</h1>
                 <p style={{ fontSize: 12, color: 'rgba(232,224,213,0.35)' }}>{produits.length} référence{produits.length > 1 ? 's' : ''}</p>
               </div>
-              <button onClick={() => setShowModalProduit(true)} style={{ background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '11px 20px', fontSize: 11, letterSpacing: 2, cursor: 'pointer', fontWeight: 500, textTransform: 'uppercase' as const }}>
-                ✦ Ajouter par IA
-              </button>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={() => setShowNouveauProduit(true)} style={{ background: 'transparent', border: '0.5px solid rgba(201,169,110,0.4)', color: '#c9a96e', borderRadius: 4, padding: '11px 20px', fontSize: 11, letterSpacing: 2, cursor: 'pointer', fontWeight: 500, textTransform: 'uppercase' as const }}>
+                  + Nouveau produit
+                </button>
+                <button onClick={() => setShowModalProduit(true)} style={{ background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '11px 20px', fontSize: 11, letterSpacing: 2, cursor: 'pointer', fontWeight: 500, textTransform: 'uppercase' as const }}>
+                  ✦ Ajouter par IA
+                </button>
+              </div>
             </div>
 
             <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' as const }}>
@@ -1276,6 +1517,14 @@ export default function AdminPage() {
           appellations={appellations}
           onClose={() => setSelectedProduit(null)}
           onSaved={() => { loadData(); setSelectedProduit(null) }}
+        />
+      )}
+      {showNouveauProduit && (
+        <ModalNouveauProduitAdmin
+          regions={regions}
+          appellations={appellations}
+          onClose={() => setShowNouveauProduit(false)}
+          onSaved={() => { loadData(); setShowNouveauProduit(false) }}
         />
       )}
     </div>
