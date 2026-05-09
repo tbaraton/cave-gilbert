@@ -1067,7 +1067,7 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
                 onRefresh()
                 onBack()
               }} style={{ flex: 2, background: raisonAnnulation.trim() ? '#c96e6e' : '#333', color: raisonAnnulation.trim() ? '#fff' : '#666', border: 'none', borderRadius: 4, padding: '11px', fontSize: 11, cursor: raisonAnnulation.trim() ? 'pointer' : 'not-allowed', fontWeight: 500, letterSpacing: 1 }}>
-                {actionLoading ? '⟳ Annulation...' : 'Confirmer l'annulation'}
+                {actionLoading ? '⟳ Annulation...' : "Confirmer l'annulation"}
               </button>
             </div>
           </div>
