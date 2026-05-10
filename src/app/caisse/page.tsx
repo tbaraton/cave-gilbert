@@ -2051,3 +2051,4 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
     </div>
   )
 }
+// v2
