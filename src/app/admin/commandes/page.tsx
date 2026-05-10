@@ -983,6 +983,206 @@ function VueCommandes({ onSelectDetail, preselectedDomaineId, onClearPreselect }
 }
 
 
+
+// ── Modal Édition Produit depuis Commande ────────────────────
+
+function ModalEditProduitCommande({ produit, regions, appellations, domaines, onClose, onSaved }: {
+  produit: any
+  regions: any[]
+  appellations: any[]
+  domaines: any[]
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [form, setForm] = useState({
+    appellation_nom: '',
+    appellation_id: produit.appellation_id || '',
+    region_id: produit.region_id || '',
+    nom_cuvee: produit.nom_cuvee || '',
+    domaine_id: produit.domaine_id || '',
+    contenance: produit.contenance || '75cl',
+    millesime: produit.millesime ? String(produit.millesime) : '',
+    couleur: produit.couleur || 'rouge',
+    prix_achat_ht: produit.prix_achat_ht ? String(produit.prix_achat_ht) : '',
+    coeff_part: '2',
+    prix_vente_ttc: produit.prix_vente_ttc ? String(produit.prix_vente_ttc) : '',
+    coeff_pro: '1.70',
+    prix_vente_pro: produit.prix_vente_pro ? String(produit.prix_vente_pro) : '',
+    bio: produit.bio || false, vegan: produit.vegan || false,
+    casher: produit.casher || false, naturel: produit.naturel || false,
+    biodynamique: produit.biodynamique || false, actif: produit.actif !== false,
+  })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    const app = appellations.find(a => a.id === produit.appellation_id)
+    if (app) setForm(f => ({ ...f, appellation_nom: app.nom }))
+  }, [appellations])
+
+  const appsFiltrees = form.region_id ? appellations.filter(a => a.region_id === form.region_id) : appellations
+  const arrondir50 = (n: number) => Math.ceil(n * 2) / 2
+
+  const buildNom = () => {
+    const parts = []
+    if (form.appellation_nom) parts.push(form.appellation_nom)
+    if (form.nom_cuvee) parts.push(form.nom_cuvee)
+    if (form.couleur) parts.push(form.couleur.charAt(0).toUpperCase() + form.couleur.slice(1))
+    if (form.millesime) parts.push(form.millesime)
+    if (form.contenance) parts.push(form.contenance)
+    let nom = parts.join(' ')
+    const dom = domaines.find(d => d.id === form.domaine_id)
+    if (dom) nom += ' - ' + dom.nom
+    return nom || produit.nom
+  }
+
+  const handleHTChange = (ht: string) => {
+    const n = parseFloat(ht)
+    setForm(f => ({
+      ...f, prix_achat_ht: ht,
+      prix_vente_ttc: !isNaN(n) && n > 0 ? arrondir50(n * parseFloat(f.coeff_part)).toFixed(2) : f.prix_vente_ttc,
+      prix_vente_pro: !isNaN(n) && n > 0 ? (n * parseFloat(f.coeff_pro)).toFixed(2) : f.prix_vente_pro,
+    }))
+  }
+
+  const handleSave = async () => {
+    setSaving(true); setError('')
+    const nomFinal = buildNom()
+    const { error: err } = await supabase.from('products').update({
+      nom: nomFinal,
+      nom_cuvee: form.nom_cuvee || null,
+      contenance: form.contenance || '75cl',
+      millesime: form.millesime ? parseInt(form.millesime) : null,
+      couleur: form.couleur,
+      region_id: form.region_id || null,
+      appellation_id: form.appellation_id || null,
+      domaine_id: form.domaine_id || null,
+      prix_achat_ht: form.prix_achat_ht ? parseFloat(form.prix_achat_ht) : null,
+      prix_vente_ttc: parseFloat(form.prix_vente_ttc) || null,
+      prix_vente_pro: form.prix_vente_pro ? parseFloat(form.prix_vente_pro) : null,
+      bio: form.bio, vegan: form.vegan, casher: form.casher,
+      naturel: form.naturel, biodynamique: form.biodynamique, actif: form.actif,
+    }).eq('id', produit.id)
+    if (err) { setError(err.message); setSaving(false); return }
+    if (form.domaine_id) {
+      await supabase.from('product_suppliers').upsert({
+        product_id: produit.id, domaine_id: form.domaine_id,
+        prix_achat_ht: form.prix_achat_ht ? parseFloat(form.prix_achat_ht) : null,
+        conditionnement: 6, fournisseur_principal: true,
+      }, { onConflict: 'product_id,domaine_id' })
+    }
+    setSaving(false); onSaved()
+  }
+
+  const inp = { width: '100%', background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#e8e0d5', fontSize: 13, padding: '9px 12px', boxSizing: 'border-box' as const }
+  const lbl = { fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, display: 'block', marginBottom: 6 }
+  const sel = { ...inp, background: '#1a1408', border: '0.5px solid rgba(201,169,110,0.2)', cursor: 'pointer' }
+  const COULEUR_COLOR: Record<string, string> = { rouge:'#e07070', blanc:'#c9b06e', rosé:'#e8a0b0', champagne:'#c0c0d8', effervescent:'#c0c0d8', spiritueux:'#8ec98e', autre:'#888' }
+  const CERTIFS = [{ key:'bio', label:'🌿 Bio' },{ key:'vegan', label:'🌱 Vegan' },{ key:'casher', label:'✡ Casher' },{ key:'naturel', label:'🍃 Naturel' },{ key:'biodynamique', label:'🌙 Biodynamique' }]
+
+  return (
+    <div style={{ position:'fixed' as const, inset:0, background:'rgba(0,0,0,0.9)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:3000, padding:20 }} onClick={onClose}>
+      <div style={{ background:'#18130e', border:'0.5px solid rgba(201,169,110,0.2)', borderRadius:8, width:'100%', maxWidth:700, padding:'28px 32px', maxHeight:'92vh', overflowY:'auto' as const }} onClick={e => e.stopPropagation()}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+          <h2 style={{ fontFamily:'Georgia, serif', fontSize:18, fontWeight:300, color:'#f0e8d8', margin:0 }}>Fiche produit — {produit.nom}</h2>
+          <button onClick={onClose} style={{ background:'transparent', border:'none', color:'rgba(232,224,213,0.4)', fontSize:20, cursor:'pointer' }}>✕</button>
+        </div>
+        {error && <div style={{ background:'rgba(201,110,110,0.1)', border:'0.5px solid rgba(201,110,110,0.3)', borderRadius:4, padding:'10px 14px', marginBottom:16, fontSize:12, color:'#c96e6e' }}>{error}</div>}
+
+        {/* Aperçu nom */}
+        <div style={{ background:'rgba(255,255,255,0.03)', border:'0.5px solid rgba(201,169,110,0.15)', borderRadius:4, padding:'10px 14px', marginBottom:20 }}>
+          <div style={{ fontSize:10, color:'rgba(232,224,213,0.3)', letterSpacing:1.5, marginBottom:4 }}>APERÇU DU NOM</div>
+          <div style={{ fontSize:14, color:'#f0e8d8', fontFamily:'Georgia, serif' }}>{buildNom()}</div>
+        </div>
+
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:14 }}>
+          <div>
+            <label style={lbl}>Région</label>
+            <select value={form.region_id} onChange={e => setForm(f => ({ ...f, region_id:e.target.value, appellation_id:'', appellation_nom:'' }))} style={sel}>
+              <option value="">— Choisir —</option>
+              {regions.map(r => <option key={r.id} value={r.id}>{r.nom}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={lbl}>Appellation</label>
+            <select value={form.appellation_id} onChange={e => {
+              const app = appsFiltrees.find(a => a.id === e.target.value)
+              setForm(f => ({ ...f, appellation_id:e.target.value, appellation_nom:app?.nom||'' }))
+            }} style={sel}>
+              <option value="">— Choisir —</option>
+              {appsFiltrees.map(a => <option key={a.id} value={a.id}>{a.nom}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={lbl}>Nom de la cuvée</label>
+            <input value={form.nom_cuvee} onChange={e => setForm(f => ({ ...f, nom_cuvee:e.target.value }))} placeholder="Laisser vide si pas de cuvée" style={{ ...inp, fontStyle:'italic' }} />
+          </div>
+          <div>
+            <label style={lbl}>Domaine / Fournisseur</label>
+            <select value={form.domaine_id} onChange={e => setForm(f => ({ ...f, domaine_id:e.target.value }))} style={sel}>
+              <option value="">— Choisir —</option>
+              {domaines.map(d => <option key={d.id} value={d.id}>{d.nom}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={lbl}>Couleur</label>
+            <select value={form.couleur} onChange={e => setForm(f => ({ ...f, couleur:e.target.value }))} style={{ ...sel, color: COULEUR_COLOR[form.couleur]||'#e8e0d5', fontWeight:600 }}>
+              {['rouge','blanc','rosé','champagne','effervescent','spiritueux','autre'].map(c => (
+                <option key={c} value={c} style={{ background:'#1a1408', color:COULEUR_COLOR[c]||'#f0e8d8' }}>{c.charAt(0).toUpperCase()+c.slice(1)}</option>
+              ))}
+            </select>
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+            <div>
+              <label style={lbl}>Millésime</label>
+              <input type="number" value={form.millesime} onChange={e => setForm(f => ({ ...f, millesime:e.target.value }))} placeholder="2022" style={inp} />
+            </div>
+            <div>
+              <label style={lbl}>Contenance</label>
+              <input value={form.contenance} onChange={e => setForm(f => ({ ...f, contenance:e.target.value }))} placeholder="75cl" style={inp} />
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr 1fr', gap:10, marginBottom:8 }}>
+          <div><label style={lbl}>Prix achat HT</label><input type="number" step="0.01" value={form.prix_achat_ht} onChange={e => handleHTChange(e.target.value)} style={inp} /></div>
+          <div><label style={lbl}>Coeff. part.</label><input type="number" step="0.01" value={form.coeff_part} onChange={e => setForm(f => ({ ...f, coeff_part:e.target.value }))} style={{ ...inp, color:'#c9b06e' }} /></div>
+          <div><label style={lbl}>Prix TTC part.</label><input type="number" step="0.50" value={form.prix_vente_ttc} onChange={e => setForm(f => ({ ...f, prix_vente_ttc:e.target.value }))} style={inp} /></div>
+          <div><label style={lbl}>Coeff. pro</label><input type="number" step="0.01" value={form.coeff_pro} onChange={e => setForm(f => ({ ...f, coeff_pro:e.target.value }))} style={{ ...inp, color:'#c9b06e' }} /></div>
+          <div><label style={lbl}>Prix TTC pro</label><input type="number" step="0.01" value={form.prix_vente_pro} onChange={e => setForm(f => ({ ...f, prix_vente_pro:e.target.value }))} style={inp} /></div>
+        </div>
+        {form.prix_achat_ht && parseFloat(form.prix_achat_ht) > 0 && (
+          <div style={{ fontSize:11, color:'rgba(232,224,213,0.35)', marginBottom:14 }}>
+            {form.prix_achat_ht}€ × {form.coeff_part} = <strong style={{ color:'#c9a96e' }}>{arrondir50(parseFloat(form.prix_achat_ht)*parseFloat(form.coeff_part)).toFixed(2)}€</strong> part.
+            {' · '}× {form.coeff_pro} = <strong style={{ color:'#c9a96e' }}>{(parseFloat(form.prix_achat_ht)*parseFloat(form.coeff_pro)).toFixed(2)}€</strong> pro
+          </div>
+        )}
+
+        <div style={{ display:'flex', gap:8, flexWrap:'wrap' as const, marginBottom:16 }}>
+          {CERTIFS.map(({ key, label }) => {
+            const active = (form as any)[key]
+            return <button key={key} onClick={() => setForm(f => ({ ...f, [key]: !(f as any)[key] }))} style={{ background: active?'rgba(201,169,110,0.15)':'rgba(255,255,255,0.03)', border:`0.5px solid ${active?'rgba(201,169,110,0.5)':'rgba(255,255,255,0.1)'}`, color:active?'#c9a96e':'rgba(232,224,213,0.4)', borderRadius:20, padding:'5px 12px', fontSize:12, cursor:'pointer' }}>{label}</button>
+          })}
+        </div>
+
+        <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:20 }}>
+          <div onClick={() => setForm(f => ({ ...f, actif:!f.actif }))} style={{ width:14, height:14, borderRadius:2, border:`0.5px solid ${form.actif?'#c9a96e':'rgba(255,255,255,0.2)'}`, background:form.actif?'#c9a96e':'transparent', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer' }}>
+            {form.actif && <span style={{ fontSize:9, color:'#0d0a08', fontWeight:700 }}>✓</span>}
+          </div>
+          <span style={{ fontSize:12, color:'rgba(232,224,213,0.5)', cursor:'pointer' }} onClick={() => setForm(f => ({ ...f, actif:!f.actif }))}>Produit actif</span>
+        </div>
+
+        <div style={{ display:'flex', gap:10 }}>
+          <button onClick={onClose} style={{ flex:1, background:'transparent', border:'0.5px solid rgba(255,255,255,0.1)', color:'rgba(232,224,213,0.4)', borderRadius:4, padding:'11px', fontSize:11, cursor:'pointer' }}>Annuler</button>
+          <button onClick={handleSave} disabled={saving} style={{ flex:2, background:'#c9a96e', color:'#0d0a08', border:'none', borderRadius:4, padding:'11px', fontSize:11, letterSpacing:2, cursor:'pointer', fontWeight:500, textTransform:'uppercase' as const, opacity:saving?0.7:1 }}>
+            {saving ? '⟳ Enregistrement...' : '✓ Enregistrer'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Modal Dupliquer Produit (depuis commande) ─────────────────
 
 function ModalDupliquerCommande({ produit, commandeId, onCreated, onClose }: {
@@ -1144,18 +1344,25 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
   const [editPrix, setEditPrix] = useState<Record<string, number>>({})
   const [showNouveauProduit, setShowNouveauProduit] = useState(false)
   const [showDupliquer, setShowDupliquer] = useState<any>(null)
+  const [editingProduit, setEditingProduit] = useState<any>(null)
   const [regions, setRegions] = useState<any[]>([])
   const [appellations, setAppellations] = useState<any[]>([])
   const [domaines, setDomaines] = useState<any[]>([])
 
   useEffect(() => {
     const load = async () => {
-      const [{ data: itemsData }, { data: sitesData }] = await Promise.all([
+      const [{ data: itemsData }, { data: sitesData }, { data: regsData }, { data: appsData }, { data: domsData }] = await Promise.all([
         supabase.from('supplier_order_items').select('*, product:products(id, nom, millesime)').eq('order_id', commande.id),
         supabase.from('sites').select('*').eq('actif', true).order('type'),
+        supabase.from('regions').select('id, nom').order('nom'),
+        supabase.from('appellations').select('id, nom, region_id').order('nom'),
+        supabase.from('domaines').select('id, nom').order('nom'),
       ])
       setItems(itemsData || [])
       setSites(sitesData || [])
+      setRegions(regsData || [])
+      setAppellations(appsData || [])
+      setDomaines(domsData || [])
       const entrepot = sitesData?.find(s => s.type === 'entrepot')
       setSiteReception(entrepot?.id || sitesData?.[0]?.id || '')
       const init: Record<string, number> = {}
@@ -1457,7 +1664,15 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
                   <td style={{ padding: '11px 14px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <div>
-                        <div style={{ fontSize: 13, color: '#f0e8d8' }}>{item.product_nom}</div>
+                        <div
+                          onClick={async () => {
+                            if (!item.product_id) return
+                            const { data: prod } = await supabase.from('products').select('*').eq('id', item.product_id).single()
+                            if (prod) setEditingProduit(prod)
+                          }}
+                          style={{ fontSize: 13, color: '#f0e8d8', cursor: 'pointer', textDecoration: 'underline', textDecorationColor: 'rgba(201,169,110,0.3)' }}
+                          title="Ouvrir la fiche produit"
+                        >{item.product_nom}</div>
                         {item.product_millesime && <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>{item.product_millesime}</div>}
                       </div>
                       {statutLocal === 'brouillon' && item.product_id && (
@@ -1559,6 +1774,23 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
             setShowDupliquer(null)
           }}
           onClose={() => setShowDupliquer(null)}
+        />
+      )}
+
+      {/* Modal édition fiche produit */}
+      {editingProduit && (
+        <ModalEditProduitCommande
+          produit={editingProduit}
+          regions={regions}
+          appellations={appellations}
+          domaines={domaines}
+          onClose={() => setEditingProduit(null)}
+          onSaved={async () => {
+            // Refresh item names if changed
+            const { data } = await supabase.from('supplier_order_items').select('*').eq('order_id', commande.id)
+            setItems(data || [])
+            setEditingProduit(null)
+          }}
         />
       )}
     </div>
