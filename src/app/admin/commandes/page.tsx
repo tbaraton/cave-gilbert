@@ -618,11 +618,22 @@ function ModalNouvelleCommande({ domaines, preselectedDomaineId, onCreated, onCl
   const [error, setError] = useState('')
   const [internalDomaines, setInternalDomaines] = useState<any[]>([])
 
-  // Charger les domaines en interne si la prop est vide
+  // Charger les domaines et pré-sélectionner immédiatement
   useEffect(() => {
-    if (!domaines || domaines.length === 0) {
-      supabase.from('domaines').select('id, nom').order('nom').then(({ data }) => setInternalDomaines(data || []))
+    const load = async () => {
+      let list = domaines && domaines.length > 0 ? domaines : []
+      if (list.length === 0) {
+        const { data } = await supabase.from('domaines').select('id, nom').order('nom')
+        list = data || []
+        setInternalDomaines(list)
+      }
+      // Pré-sélectionner et charger les produits dès que la liste est prête
+      if (preselectedDomaineId && list.length > 0) {
+        setDomaineId(preselectedDomaineId)
+        loadProduitsDomaine(preselectedDomaineId)
+      }
     }
+    load()
   }, [])
 
   const allDomaines = domaines && domaines.length > 0 ? domaines : internalDomaines
@@ -659,14 +670,7 @@ function ModalNouvelleCommande({ domaines, preselectedDomaineId, onCreated, onCl
     setLoadingProduits(false)
   }
 
-  // Quand domaines se charge, forcer la sélection si pré-sélectionné
-  useEffect(() => {
-    const list = domaines && domaines.length > 0 ? domaines : internalDomaines
-    if (preselectedDomaineId && list.length > 0 && domaineId !== preselectedDomaineId) {
-      setDomaineId(preselectedDomaineId)
-      loadProduitsDomaine(preselectedDomaineId)
-    }
-  }, [domaines, internalDomaines])
+
 
   const toggleProduit = (produit: any) => {
     setSelected(prev => {
