@@ -826,7 +826,7 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
   // Onglet produits
   const [onglet, setOnglet] = useState<'caisse' | 'gestion'>('caisse')
   const [ligneEditId, setLigneEditId] = useState<string | null>(null)
-  const [ligneCommentId, setLigneCommentId] = useState<string | null>(null)
+  const [ligneCommentIds, setLigneCommentIds] = useState<Set<string>>(new Set())
   const [showNouveauClient, setShowNouveauClient] = useState(false)
   const [editingClient, setEditingClient] = useState<Client | null>(null)
   const [showHistorique, setShowHistorique] = useState(false)
@@ -1242,11 +1242,11 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
                     {/* Boutons modifier nom + commentaire */}
                     <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 4 }}>
                       <button onClick={() => setLigneEditId(ligneEditId === l.id ? null : l.id)} title="Modifier le nom" style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 6, color: 'rgba(232,224,213,0.4)', padding: '4px 8px', fontSize: 12, cursor: 'pointer' }}>✎</button>
-                      <button onClick={() => setLigneCommentId(ligneCommentId === l.id ? null : l.id)} title="Commentaire" style={{ background: l.commentaire ? 'rgba(201,169,110,0.1)' : 'transparent', border: `0.5px solid ${l.commentaire ? 'rgba(201,169,110,0.3)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 6, color: l.commentaire ? '#c9a96e' : 'rgba(232,224,213,0.4)', padding: '4px 8px', fontSize: 12, cursor: 'pointer' }}>💬</button>
+                      <button onClick={() => setLigneCommentIds(prev => { const n = new Set(prev); n.has(l.id) ? n.delete(l.id) : n.add(l.id); return n })} title="Commentaire" style={{ background: l.commentaire ? 'rgba(201,169,110,0.1)' : 'transparent', border: `0.5px solid ${l.commentaire ? 'rgba(201,169,110,0.3)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 6, color: l.commentaire ? '#c9a96e' : 'rgba(232,224,213,0.4)', padding: '4px 8px', fontSize: 12, cursor: 'pointer' }}>💬</button>
                     </div>
                   </div>
                   {/* Commentaire expand */}
-                  {ligneCommentId === l.id && (
+                  {ligneCommentIds.has(l.id) && (
                     <div style={{ marginTop: 10 }}>
                       <textarea value={l.commentaire || ''} onChange={e => updateLigne(l.id, 'commentaire', e.target.value)}
                         placeholder="Commentaire sur cet article..."
@@ -1611,7 +1611,7 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
   const [showFermeture, setShowFermeture] = useState(false)
   const [espacesFermeture, setEspacesFermeture] = useState('')
   const [ligneEditId, setLigneEditId] = useState<string | null>(null)
-  const [ligneCommentId, setLigneCommentId] = useState<string | null>(null)
+  const [ligneCommentIds, setLigneCommentIds] = useState<Set<string>>(new Set())
   const [showNouveauClient, setShowNouveauClient] = useState(false)
   const [editingClient, setEditingClient] = useState<Client | null>(null)
   const [showGestion, setShowGestion] = useState(false)
@@ -1757,11 +1757,15 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
 
         {/* Panneau Gestion */}
         {showGestion && (
-          <div style={{ background: '#0f0c09', borderBottom: '0.5px solid rgba(201,169,110,0.2)', padding: '16px', display: 'flex', gap: 20, flexWrap: 'wrap' as const }}>
-            {/* Note globale */}
-            <div style={{ flex: '1 1 300px' }}>
+          <div style={{ background: '#0f0c09', borderBottom: '0.5px solid rgba(201,169,110,0.2)', padding: '16px', display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' as const }}>
+            {/* Historique */}
+            <button onClick={() => { setShowHistorique(true); setShowGestion(false) }} style={{ background: 'rgba(201,169,110,0.08)', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 8, padding: '10px 18px', color: '#c9a96e', fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' as const }}>
+              📋 Historique des ventes
+            </button>
+            {/* Intitulé personnalisé */}
+            <div style={{ flex: 1, minWidth: 280 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: noteGlobaleActive ? 10 : 0 }}>
-                <div style={{ fontSize: 12, color: '#c9a96e', letterSpacing: 1 }}>📋 INTITULÉ PERSONNALISÉ</div>
+                <div style={{ fontSize: 12, color: '#c9a96e', letterSpacing: 1 }}>📝 INTITULÉ PERSONNALISÉ</div>
                 <button onClick={() => { setNoteGlobaleActive(!noteGlobaleActive); if (noteGlobaleActive) setNoteGlobale('') }}
                   style={{ background: noteGlobaleActive ? 'rgba(201,110,110,0.1)' : 'rgba(201,169,110,0.1)', border: `0.5px solid ${noteGlobaleActive ? 'rgba(201,110,110,0.3)' : 'rgba(201,169,110,0.3)'}`, color: noteGlobaleActive ? '#c96e6e' : '#c9a96e', borderRadius: 4, padding: '3px 10px', fontSize: 11, cursor: 'pointer' }}>
                   {noteGlobaleActive ? '✕ Désactiver' : '+ Activer'}
@@ -1774,24 +1778,6 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
                     style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 6, color: '#f0e8d8', fontSize: 14, padding: '9px 12px', boxSizing: 'border-box' as const }} />
                 </div>
               )}
-            </div>
-            {/* Historique */}
-            <div style={{ flex: '0 0 auto' }}>
-              <button onClick={() => setShowHistorique(true)} style={{ background: 'rgba(201,169,110,0.08)', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 8, padding: '10px 18px', color: '#c9a96e', fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' as const }}>
-                📋 Historique des ventes
-              </button>
-            </div>
-
-            {/* Modifier nom article */}
-            <div style={{ flex: '1 1 300px' }}>
-              <div style={{ fontSize: 12, color: '#c9a96e', letterSpacing: 1, marginBottom: 8 }}>✎ MODIFIER NOM D'ARTICLE</div>
-              {lignes.length === 0 ? <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.3)' }}>Aucun article</div> : lignes.map(l => (
-                <div key={l.id} style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
-                  <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', alignSelf: 'center', minWidth: 60, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{l.nom}</span>
-                  <input value={l.nom_modifie || l.nom} onChange={e => updateLigne(l.id, 'nom_modifie', e.target.value)}
-                    style={{ flex: 1, background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 4, color: '#f0e8d8', fontSize: 13, padding: '6px 10px' }} />
-                </div>
-              ))}
             </div>
           </div>
         )}
@@ -1834,7 +1820,7 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
                         ? <input value={l.nom_modifie || l.nom} onChange={e => updateLigne(l.id, 'nom_modifie', e.target.value)} onBlur={() => setLigneEditId(null)} autoFocus style={{ background: 'rgba(255,255,255,0.08)', border: '0.5px solid #c9a96e', borderRadius: 4, color: '#f0e8d8', fontSize: 13, padding: '4px 8px', width: '100%' }} />
                         : <div style={{ fontSize: 14 }}>{l.nom_modifie || l.nom}{l.millesime ? ` ${l.millesime}` : ''}</div>
                       }
-                      {ligneCommentId === l.id && <textarea value={l.commentaire || ''} onChange={e => updateLigne(l.id, 'commentaire', e.target.value)} placeholder="Commentaire..." rows={1} style={{ width: '100%', marginTop: 6, background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 6, color: '#e8e0d5', fontSize: 12, padding: '6px', boxSizing: 'border-box' as const, resize: 'vertical' as const }} />}
+                      {ligneCommentIds.has(l.id) && <textarea value={l.commentaire || ''} onChange={e => updateLigne(l.id, 'commentaire', e.target.value)} placeholder="Commentaire..." rows={1} style={{ width: '100%', marginTop: 6, background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 6, color: '#e8e0d5', fontSize: 12, padding: '6px', boxSizing: 'border-box' as const, resize: 'vertical' as const }} />}
                     </td>
                     <td style={{ padding: '10px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -1857,7 +1843,7 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
                     <td style={{ padding: '10px', fontSize: 15, color: '#f0e8d8', fontFamily: 'Georgia, serif', fontWeight: 600 }}>{fmt(l.total)}</td>
                     <td style={{ padding: '10px' }}>
                       <button onClick={() => setLigneEditId(ligneEditId === l.id ? null : l.id)} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 4, color: 'rgba(232,224,213,0.4)', padding: '3px 7px', fontSize: 11, cursor: 'pointer', marginRight: 4 }}>✎</button>
-                      <button onClick={() => setLigneCommentId(ligneCommentId === l.id ? null : l.id)} style={{ background: l.commentaire ? 'rgba(201,169,110,0.1)' : 'transparent', border: `0.5px solid ${l.commentaire ? 'rgba(201,169,110,0.3)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 4, color: l.commentaire ? '#c9a96e' : 'rgba(232,224,213,0.4)', padding: '3px 7px', fontSize: 11, cursor: 'pointer', marginRight: 4 }}>💬</button>
+                      <button onClick={() => setLigneCommentIds(prev => { const n = new Set(prev); n.has(l.id) ? n.delete(l.id) : n.add(l.id); return n })} style={{ background: l.commentaire ? 'rgba(201,169,110,0.1)' : 'transparent', border: `0.5px solid ${l.commentaire ? 'rgba(201,169,110,0.3)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 4, color: l.commentaire ? '#c9a96e' : 'rgba(232,224,213,0.4)', padding: '3px 7px', fontSize: 11, cursor: 'pointer', marginRight: 4 }}>💬</button>
                       <button onClick={() => setLignes(prev => prev.filter(x => x.id !== l.id))} style={{ background: 'transparent', border: 'none', color: '#c96e6e', cursor: 'pointer', fontSize: 16 }}>✕</button>
                     </td>
                   </tr>
