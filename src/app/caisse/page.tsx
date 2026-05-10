@@ -1106,7 +1106,7 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
 export default function CaissePage() {
   const [user, setUser] = useState<User | null>(null)
   const [session, setSession] = useState<Session | null>(null)
-  const [isMobile, setIsMobile] = useState(false)
+  const [isMobile, setIsMobile] = useState<boolean | null>(null)
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -1115,6 +1115,7 @@ export default function CaissePage() {
     return () => window.removeEventListener('resize', check)
   }, [])
 
+  if (isMobile === null) return null // attendre la détection
   if (!user) return <EcranLogin onLogin={setUser} />
   if (!session) return <EcranOuverture user={user} onOuvrir={setSession} />
   if (isMobile) return <CaissePrincipale user={user} session={session} onFermer={() => { setSession(null); setUser(null) }} />
