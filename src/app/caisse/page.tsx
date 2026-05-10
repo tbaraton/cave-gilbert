@@ -14,7 +14,7 @@ type Session = { id: string; user_id: string; site_id: string; statut: string; e
 type Client = { id: string; prenom: string; nom: string; raison_sociale: string; est_societe: boolean; tarif_pro: boolean; remise_pct: number; email: string; telephone: string }
 type Ligne = { id: string; product_id: string; nom: string; nom_modifie?: string; millesime: number; qte: number; prix_unit: number; remise_pct: number; total: number; commentaire?: string }
 type Paiement = { mode: string; montant: number; label: string }
-type VenteEnAttente = { id: string; client: Client | null; lignes: Ligne[]; typeDoc: string; remise: string; remiseType: 'pct' | 'eur'; label: string }
+type VenteEnAttente = { id: string; client: Client | null; lignes: Ligne[]; typeDoc: string; remise: string; remiseType: 'pct' | 'eur'; label: string; noteGlobale: string; noteGlobaleActive: boolean }
 
 const COULEURS: Record<string, string> = { rouge: '#e07070', blanc: '#c9b06e', rosé: '#e8a0b0', champagne: '#d4c88a', effervescent: '#a0b0e0', autre: '#888' }
 const fmt = (n: number) => n.toFixed(2) + '€'
@@ -457,6 +457,8 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
   const [espacesFermeture, setEspacesFermeture] = useState('')
   const [showDevisEmail, setShowDevisEmail] = useState(false)
   const [devisEmail, setDevisEmail] = useState('')
+  const [noteGlobale, setNoteGlobale] = useState('')
+  const [noteGlobaleActive, setNoteGlobaleActive] = useState(false)
   const searchTimer = useRef<any>(null)
   const searchProduitTimer = useRef<any>(null)
 
@@ -557,18 +559,20 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
   const mettreEnAttente = () => {
     if (attentes.length >= 4) return
     const label = client ? (client.est_societe ? client.raison_sociale : `${client.prenom} ${client.nom}`) : `Vente ${attentes.length + 1}`
-    setAttentes(prev => [...prev, { id: Math.random().toString(36).slice(2), client, lignes, typeDoc, remise, remiseType, label }])
+    setAttentes(prev => [...prev, { id: Math.random().toString(36).slice(2), client, lignes, typeDoc, remise, remiseType, label, noteGlobale, noteGlobaleActive }])
     resetVente()
   }
 
   const reprendreAttente = (a: VenteEnAttente) => {
     setClient(a.client); setLignes(a.lignes); setTypeDoc(a.typeDoc); setRemise(a.remise); setRemiseType(a.remiseType)
+    setNoteGlobale(a.noteGlobale); setNoteGlobaleActive(a.noteGlobaleActive)
     setAttentes(prev => prev.filter(x => x.id !== a.id))
     setEtape('produits')
   }
 
   const resetVente = () => {
     setClient(null); setLignes([]); setTypeDoc('ticket'); setRemise(''); setRemiseType('pct')
+    setNoteGlobale(''); setNoteGlobaleActive(false)
     setSearchClient(''); setClientsFound([]); setEtape('client')
   }
 
@@ -585,6 +589,7 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
       total_ht: totalNet / 1.20, total_ttc: totalNet,
       remise_globale_pct: remiseType === 'pct' ? parseFloat(remise) || 0 : 0,
       remise_globale_eur: remiseType === 'eur' ? parseFloat(remise) || 0 : 0,
+      notes: noteGlobaleActive && noteGlobale ? noteGlobale : null,
     }).select('id').single()
 
     if (vente) {
@@ -902,6 +907,37 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
       {onglet === 'gestion' && (
         <div style={{ flex: 1, padding: '16px', overflowY: 'auto' as const }}>
           <div style={{ fontSize: 13, color: 'rgba(232,224,213,0.4)', marginBottom: 16 }}>Sélectionnez une ligne dans la caisse pour modifier son nom.</div>
+
+          {/* Note globale */}
+          <div style={{ background: '#18130e', borderRadius: 12, padding: '16px', marginBottom: 16, border: `0.5px solid ${noteGlobaleActive ? 'rgba(201,169,110,0.3)' : 'rgba(255,255,255,0.07)'}` }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: noteGlobaleActive ? 14 : 0 }}>
+              <div>
+                <div style={{ fontSize: 13, color: noteGlobaleActive ? '#c9a96e' : 'rgba(232,224,213,0.6)', letterSpacing: 1 }}>📋 INTITULÉ PERSONNALISÉ</div>
+                {!noteGlobaleActive && <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.3)', marginTop: 4 }}>Remplace le détail des lignes sur la note</div>}
+              </div>
+              <button onClick={() => { setNoteGlobaleActive(!noteGlobaleActive); if (noteGlobaleActive) setNoteGlobale('') }}
+                style={{ background: noteGlobaleActive ? 'rgba(201,110,110,0.1)' : 'rgba(201,169,110,0.1)', border: `0.5px solid ${noteGlobaleActive ? 'rgba(201,110,110,0.3)' : 'rgba(201,169,110,0.3)'}`, color: noteGlobaleActive ? '#c96e6e' : '#c9a96e', borderRadius: 6, padding: '6px 12px', fontSize: 11, cursor: 'pointer' }}>
+                {noteGlobaleActive ? '✕ Désactiver' : '+ Activer'}
+              </button>
+            </div>
+            {noteGlobaleActive && (
+              <div>
+                <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', marginBottom: 8 }}>
+                  Le stock se décrémente normalement — seul l'intitulé change sur la note
+                </div>
+                <textarea value={noteGlobale} onChange={e => setNoteGlobale(e.target.value)} rows={3}
+                  placeholder="Ex: 10 coffrets clients — 10€/coffret"
+                  style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 8, color: '#f0e8d8', fontSize: 14, padding: '12px', boxSizing: 'border-box' as const, resize: 'vertical' as const }} />
+                {noteGlobaleActive && noteGlobale && (
+                  <div style={{ marginTop: 10, background: 'rgba(201,169,110,0.06)', borderRadius: 6, padding: '10px 14px', fontSize: 13 }}>
+                    <div style={{ color: 'rgba(232,224,213,0.4)', fontSize: 11, marginBottom: 4 }}>APERÇU SUR LA NOTE</div>
+                    <div style={{ color: '#f0e8d8' }}>{noteGlobale}</div>
+                    <div style={{ color: '#c9a96e', fontFamily: 'Georgia, serif', marginTop: 4 }}>{fmt(totalNet)}</div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
 
           {/* Modifier nom article */}
           <div style={{ background: '#18130e', borderRadius: 12, padding: '16px', marginBottom: 16, border: '0.5px solid rgba(255,255,255,0.07)' }}>
