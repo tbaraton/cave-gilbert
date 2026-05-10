@@ -142,21 +142,25 @@ function EcranOuverture({ user, onOuvrir }: { user: User; onOuvrir: (s: Session)
 
 
 // ── Modal Nouveau/Edit Client (Caisse) ───────────────────────
-function ModalClientForm({ client, onClose, onSaved }: { client?: Client; onClose: () => void; onSaved: (c: Client) => void }) {
+function ModalClientForm({ client, onClose, onSaved }: { client?: any; onClose: () => void; onSaved: (c: any) => void }) {
   const isNew = !client?.id
   const [form, setForm] = useState({
     prenom: client?.prenom || '',
     nom: client?.nom || '',
     email: client?.email || '',
     telephone: client?.telephone || '',
-    adresse: (client as any)?.adresse || '',
-    code_postal: (client as any)?.code_postal || '',
-    ville: (client as any)?.ville || '',
-    pays: (client as any)?.pays || 'France',
+    adresse: client?.adresse || '',
+    code_postal: client?.code_postal || '',
+    ville: client?.ville || '',
+    pays: client?.pays || 'France',
     est_societe: client?.est_societe || false,
     raison_sociale: client?.raison_sociale || '',
+    siret: client?.siret || '',
     tarif_pro: client?.tarif_pro || false,
-    notes: (client as any)?.notes || '',
+    remise_pct: client?.remise_pct ? String(client.remise_pct) : '',
+    remise_raison: client?.remise_raison || '',
+    notes: client?.notes || '',
+    newsletter: client?.newsletter || false,
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -183,26 +187,39 @@ function ModalClientForm({ client, onClose, onSaved }: { client?: Client; onClos
     if (!form.code_postal.trim()) { setError('Le code postal est obligatoire'); return }
     if (!form.ville.trim()) { setError('La ville est obligatoire'); return }
     setSaving(true); setError('')
-    const payload = { ...form, pays: form.pays || 'France', raison_sociale: form.est_societe ? form.raison_sociale : null, tarif_pro: form.tarif_pro }
-    const { data, error: err } = isNew
-      ? await supabase.from('customers').insert(payload).select('id, prenom, nom, raison_sociale, est_societe, tarif_pro, remise_pct, email, telephone').single()
-      : await supabase.from('customers').update(payload).eq('id', client!.id).select('id, prenom, nom, raison_sociale, est_societe, tarif_pro, remise_pct, email, telephone').single()
+    const payload = {
+      prenom: form.prenom, nom: form.nom, email: form.email || null,
+      telephone: form.telephone || null, adresse: form.adresse || null,
+      code_postal: form.code_postal || null, ville: form.ville || null,
+      pays: form.pays || 'France', est_societe: form.est_societe,
+      raison_sociale: form.est_societe ? form.raison_sociale : null,
+      siret: form.est_societe ? form.siret : null,
+      tarif_pro: form.tarif_pro,
+      remise_pct: form.remise_pct ? parseFloat(form.remise_pct) : 0,
+      remise_raison: form.remise_raison || null,
+      notes: form.notes || null, newsletter: form.newsletter,
+    }
+    const SELECT_FIELDS = 'id, prenom, nom, raison_sociale, est_societe, tarif_pro, remise_pct, remise_raison, email, telephone, adresse, code_postal, ville, pays, siret, notes, newsletter'
+    let data: any = null, err: any = null
+    if (isNew) {
+      const res = await supabase.from('customers').insert(payload).select(SELECT_FIELDS).single()
+      data = res.data; err = res.error
+    } else {
+      const res = await supabase.from('customers').update(payload).eq('id', client.id).select(SELECT_FIELDS).single()
+      data = res.data; err = res.error
+    }
     if (err) { setError(err.message); setSaving(false); return }
-    onSaved(data as Client)
+    if (!data) { setError('Erreur lors de la sauvegarde'); setSaving(false); return }
+    onSaved(data)
   }
 
   const handleSaveDemande = async () => {
-    const clientId = client?.id || (client as any)?.id
-    if (!demande.titre.trim() || !clientId) {
-      alert('Impossible de sauvegarder : client non identifié')
-      return
-    }
+    const clientId = client?.id
+    if (!demande.titre.trim() || !clientId) { alert('Impossible de sauvegarder : client non identifié'); return }
     const { error } = await supabase.from('customer_requests').insert({
-      customer_id: clientId,
-      titre: demande.titre,
+      customer_id: clientId, titre: demande.titre,
       description: demande.description || null,
-      date_limite: demande.date_limite || null,
-      statut: 'en_attente'
+      date_limite: demande.date_limite || null, statut: 'en_attente'
     })
     if (error) { alert('Erreur: ' + error.message); return }
     setDemande({ titre: '', description: '', date_limite: '' })
@@ -212,128 +229,168 @@ function ModalClientForm({ client, onClose, onSaved }: { client?: Client; onClos
 
   const inp = { width: '100%', background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.15)', borderRadius: 10, color: '#f0e8d8', fontSize: 15, padding: '14px', boxSizing: 'border-box' as const }
   const lbl = { fontSize: 11, color: 'rgba(232,224,213,0.4)', letterSpacing: 1, display: 'block' as const, marginBottom: 6 }
+  const section = (title: string) => <div style={{ fontSize: 11, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 12, marginTop: 4 }}>{title}</div>
 
   return (
-    <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.9)', zIndex: 500, overflowY: 'auto' as const }}>
-      <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column' as const, background: '#0d0a08', fontFamily: "'DM Sans', system-ui, sans-serif", color: '#e8e0d5' }}>
-        {/* Header */}
-        <div style={{ padding: '14px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', gap: 12, background: '#0d0a08', position: 'sticky' as const, top: 0, zIndex: 10 }}>
-          <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: '#c9a96e', fontSize: 22, cursor: 'pointer' }}>←</button>
-          <div style={{ fontFamily: 'Georgia, serif', fontSize: 17, color: '#f0e8d8' }}>{isNew ? 'Nouveau client' : 'Modifier le client'}</div>
+    <div style={{ position: 'fixed' as const, inset: 0, background: '#0d0a08', zIndex: 500, overflowY: 'auto' as const, fontFamily: "'DM Sans', system-ui, sans-serif", color: '#e8e0d5' }}>
+      {/* Header */}
+      <div style={{ padding: '14px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', gap: 12, background: '#0d0a08', position: 'sticky' as const, top: 0, zIndex: 10 }}>
+        <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: '#c9a96e', fontSize: 22, cursor: 'pointer' }}>←</button>
+        <div style={{ fontFamily: 'Georgia, serif', fontSize: 17, color: '#f0e8d8' }}>{isNew ? 'Nouveau client' : 'Modifier le client'}</div>
+      </div>
+
+      <div style={{ padding: '20px 16px 120px' }}>
+        {error && <div style={{ background: 'rgba(201,110,110,0.15)', border: '0.5px solid rgba(201,110,110,0.4)', borderRadius: 8, padding: '12px', marginBottom: 16, fontSize: 14, color: '#c96e6e' }}>{error}</div>}
+
+        {/* Société toggle */}
+        <div onClick={() => setForm(f => ({ ...f, est_societe: !f.est_societe }))}
+          style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', background: form.est_societe ? 'rgba(201,169,110,0.08)' : 'rgba(255,255,255,0.03)', borderRadius: 10, border: `0.5px solid ${form.est_societe ? 'rgba(201,169,110,0.3)' : 'rgba(255,255,255,0.08)'}`, cursor: 'pointer', marginBottom: 20 }}>
+          <div style={{ width: 22, height: 22, borderRadius: 4, border: `2px solid ${form.est_societe ? '#c9a96e' : 'rgba(255,255,255,0.3)'}`, background: form.est_societe ? '#c9a96e' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            {form.est_societe && <span style={{ fontSize: 13, color: '#0d0a08', fontWeight: 700 }}>✓</span>}
+          </div>
+          <div>
+            <div style={{ fontSize: 15, color: '#f0e8d8' }}>Client Société / Professionnel</div>
+            <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>Cochez pour afficher les champs entreprise</div>
+          </div>
         </div>
 
-        <div style={{ flex: 1, padding: '20px 16px', overflowY: 'auto' as const }}>
-          {error && <div style={{ background: 'rgba(201,110,110,0.15)', border: '0.5px solid rgba(201,110,110,0.4)', borderRadius: 8, padding: '12px', marginBottom: 16, fontSize: 14, color: '#c96e6e' }}>{error}</div>}
-
-          {/* Société toggle */}
-          <div onClick={() => setForm(f => ({ ...f, est_societe: !f.est_societe }))} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', background: form.est_societe ? 'rgba(201,169,110,0.08)' : 'rgba(255,255,255,0.03)', borderRadius: 10, border: `0.5px solid ${form.est_societe ? 'rgba(201,169,110,0.3)' : 'rgba(255,255,255,0.08)'}`, cursor: 'pointer', marginBottom: 20 }}>
-            <div style={{ width: 22, height: 22, borderRadius: 4, border: `2px solid ${form.est_societe ? '#c9a96e' : 'rgba(255,255,255,0.3)'}`, background: form.est_societe ? '#c9a96e' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              {form.est_societe && <span style={{ fontSize: 13, color: '#0d0a08', fontWeight: 700 }}>✓</span>}
-            </div>
-            <div>
-              <div style={{ fontSize: 15, color: '#f0e8d8' }}>Client Société / Professionnel</div>
-              <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>Cochez pour afficher les champs entreprise</div>
-            </div>
-          </div>
-
-          {form.est_societe && (
-            <div style={{ marginBottom: 16 }}>
-              <label style={lbl}>Raison sociale *</label>
-              <input value={form.raison_sociale} onChange={e => setForm(f => ({ ...f, raison_sociale: e.target.value }))} style={inp} placeholder="Nom de la société" />
-              <div style={{ marginTop: 12 }}>
-                <label style={lbl}>Tarif applicable</label>
-                <div style={{ display: 'flex', gap: 10 }}>
-                  {[{ v: false, l: 'Particulier TTC' }, { v: true, l: 'Tarif professionnel' }].map(({ v, l }) => (
-                    <button key={String(v)} onClick={() => setForm(f => ({ ...f, tarif_pro: v }))} style={{ flex: 1, background: form.tarif_pro === v ? 'rgba(201,169,110,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${form.tarif_pro === v ? '#c9a96e' : 'rgba(255,255,255,0.1)'}`, color: form.tarif_pro === v ? '#c9a96e' : 'rgba(232,224,213,0.4)', borderRadius: 8, padding: '12px', fontSize: 14, cursor: 'pointer' }}>{l}</button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
-            <div>
-              <label style={lbl}>Prénom {!form.est_societe && '*'}</label>
-              <input value={form.prenom} onChange={e => setForm(f => ({ ...f, prenom: e.target.value }))} style={inp} autoCapitalize="words" />
-            </div>
-            <div>
-              <label style={lbl}>Nom {!form.est_societe && '*'}</label>
-              <input value={form.nom} onChange={e => setForm(f => ({ ...f, nom: e.target.value }))} style={inp} autoCapitalize="words" />
-            </div>
-          </div>
-
-          <div style={{ marginBottom: 14 }}>
-            <label style={lbl}>Email *</label>
-            <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} style={inp} inputMode="email" />
-          </div>
-          <div style={{ marginBottom: 14 }}>
-            <label style={lbl}>Téléphone</label>
-            <input type="tel" value={form.telephone} onChange={e => setForm(f => ({ ...f, telephone: e.target.value }))} style={inp} inputMode="tel" />
-          </div>
-          <div style={{ marginBottom: 14 }}>
-            <label style={lbl}>Adresse</label>
-            <input value={form.adresse} onChange={e => setForm(f => ({ ...f, adresse: e.target.value }))} style={inp} />
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
-            <div>
-              <label style={lbl}>Code postal *</label>
-              <input value={form.code_postal} onChange={e => { setForm(f => ({ ...f, code_postal: e.target.value })); lookupCP(e.target.value) }} style={inp} inputMode="numeric" maxLength={5} />
-            </div>
-            <div>
-              <label style={lbl}>Ville *</label>
-              {villesSugg.length > 1 ? (
-                <select value={form.ville} onChange={e => setForm(f => ({ ...f, ville: e.target.value }))} style={{ ...inp, background: '#1a1408', cursor: 'pointer' }}>
-                  <option value="">— Choisir —</option>
-                  {villesSugg.map(v => <option key={v} value={v}>{v}</option>)}
-                </select>
-              ) : (
-                <input value={form.ville} onChange={e => setForm(f => ({ ...f, ville: e.target.value }))} style={inp} />
-              )}
-            </div>
-          </div>
+        {/* Entreprise */}
+        {form.est_societe && (
           <div style={{ marginBottom: 20 }}>
-            <label style={lbl}>Notes internes</label>
-            <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} style={{ ...inp, resize: 'vertical' as const }} placeholder="Préférences, informations..." />
+            {section('Entreprise')}
+            <div style={{ marginBottom: 12 }}>
+              <label style={lbl}>Raison sociale *</label>
+              <input value={form.raison_sociale} onChange={e => setForm(f => ({ ...f, raison_sociale: e.target.value }))} style={inp} />
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={lbl}>SIRET</label>
+              <input value={form.siret} onChange={e => setForm(f => ({ ...f, siret: e.target.value }))} style={inp} inputMode="numeric" />
+            </div>
+            <div>
+              <label style={lbl}>Tarif applicable</label>
+              <div style={{ display: 'flex', gap: 10 }}>
+                {[{ v: false, l: 'Particulier TTC' }, { v: true, l: 'Tarif professionnel' }].map(({ v, l }) => (
+                  <button key={String(v)} onClick={() => setForm(f => ({ ...f, tarif_pro: v }))}
+                    style={{ flex: 1, background: form.tarif_pro === v ? 'rgba(201,169,110,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${form.tarif_pro === v ? '#c9a96e' : 'rgba(255,255,255,0.1)'}`, color: form.tarif_pro === v ? '#c9a96e' : 'rgba(232,224,213,0.4)', borderRadius: 8, padding: '12px', fontSize: 14, cursor: 'pointer' }}>{l}</button>
+                ))}
+              </div>
+              {form.tarif_pro && <div style={{ fontSize: 11, color: '#c9b06e', marginTop: 6 }}>⚠ Tarif pro = pas de programme fidélité</div>}
+            </div>
           </div>
+        )}
 
-          {/* Demande client (seulement en édition) */}
-          {!isNew && (
-            <div style={{ background: '#18130e', borderRadius: 12, padding: '16px', border: '0.5px solid rgba(255,255,255,0.07)', marginBottom: 20 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: showDemande ? 14 : 0 }}>
-                <div style={{ fontSize: 14, color: '#c9a96e' }}>📋 Ajouter une demande</div>
-                <button onClick={() => setShowDemande(!showDemande)} style={{ background: 'transparent', border: '0.5px solid rgba(201,169,110,0.3)', color: '#c9a96e', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: 'pointer' }}>
-                  {showDemande ? 'Annuler' : '+ Nouvelle'}
+        {/* Identité */}
+        {section('Identité')}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+          <div>
+            <label style={lbl}>Prénom {!form.est_societe && '*'}</label>
+            <input value={form.prenom} onChange={e => setForm(f => ({ ...f, prenom: e.target.value }))} style={inp} autoCapitalize="words" />
+          </div>
+          <div>
+            <label style={lbl}>Nom {!form.est_societe && '*'}</label>
+            <input value={form.nom} onChange={e => setForm(f => ({ ...f, nom: e.target.value }))} style={inp} autoCapitalize="words" />
+          </div>
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <label style={lbl}>Email *</label>
+          <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} style={inp} inputMode="email" />
+        </div>
+        <div style={{ marginBottom: 20 }}>
+          <label style={lbl}>Téléphone</label>
+          <input type="tel" value={form.telephone} onChange={e => setForm(f => ({ ...f, telephone: e.target.value }))} style={inp} inputMode="tel" />
+        </div>
+
+        {/* Adresse */}
+        {section('Adresse')}
+        <div style={{ marginBottom: 12 }}>
+          <label style={lbl}>Adresse</label>
+          <input value={form.adresse} onChange={e => setForm(f => ({ ...f, adresse: e.target.value }))} style={inp} />
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
+          <div>
+            <label style={lbl}>Code postal *</label>
+            <input value={form.code_postal} onChange={e => { setForm(f => ({ ...f, code_postal: e.target.value })); lookupCP(e.target.value) }} style={inp} inputMode="numeric" maxLength={5} />
+          </div>
+          <div>
+            <label style={lbl}>Ville *</label>
+            {villesSugg.length > 1 ? (
+              <select value={form.ville} onChange={e => setForm(f => ({ ...f, ville: e.target.value }))} style={{ ...inp, background: '#1a1408', cursor: 'pointer' }}>
+                <option value="">— Choisir —</option>
+                {villesSugg.map(v => <option key={v} value={v}>{v}</option>)}
+              </select>
+            ) : (
+              <input value={form.ville} onChange={e => setForm(f => ({ ...f, ville: e.target.value }))} style={inp} />
+            )}
+          </div>
+        </div>
+
+        {/* Remise permanente */}
+        {section('Remise permanente')}
+        <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: 12, marginBottom: 20 }}>
+          <div>
+            <label style={lbl}>Remise (%)</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <input type="number" step="0.5" min={0} max={100} value={form.remise_pct} onChange={e => setForm(f => ({ ...f, remise_pct: e.target.value }))} placeholder="0" style={{ ...inp }} inputMode="decimal" />
+              <span style={{ color: '#c9a96e', flexShrink: 0 }}>%</span>
+            </div>
+          </div>
+          <div>
+            <label style={lbl}>Raison</label>
+            <input value={form.remise_raison} onChange={e => setForm(f => ({ ...f, remise_raison: e.target.value }))} placeholder="Ex: Commerçant local..." style={inp} />
+          </div>
+        </div>
+
+        {/* Notes + newsletter */}
+        <div style={{ marginBottom: 16 }}>
+          <label style={lbl}>Notes internes</label>
+          <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={3} style={{ ...inp, resize: 'vertical' as const }} placeholder="Préférences, informations utiles..." />
+        </div>
+        <div onClick={() => setForm(f => ({ ...f, newsletter: !f.newsletter }))} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', marginBottom: 24 }}>
+          <div style={{ width: 18, height: 18, borderRadius: 3, border: `0.5px solid ${form.newsletter ? '#c9a96e' : 'rgba(255,255,255,0.2)'}`, background: form.newsletter ? '#c9a96e' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {form.newsletter && <span style={{ fontSize: 11, color: '#0d0a08', fontWeight: 700 }}>✓</span>}
+          </div>
+          <span style={{ fontSize: 14, color: 'rgba(232,224,213,0.6)' }}>Abonné newsletter</span>
+        </div>
+
+        {/* Demande client (édition uniquement) */}
+        {!isNew && (
+          <div style={{ background: '#18130e', borderRadius: 12, padding: '16px', border: '0.5px solid rgba(255,255,255,0.07)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: showDemande ? 16 : 0 }}>
+              <div style={{ fontSize: 14, color: '#c9a96e' }}>📋 Ajouter une demande</div>
+              <button onClick={() => setShowDemande(!showDemande)} style={{ background: 'transparent', border: '0.5px solid rgba(201,169,110,0.3)', color: '#c9a96e', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: 'pointer' }}>
+                {showDemande ? 'Annuler' : '+ Nouvelle'}
+              </button>
+            </div>
+            {showDemande && (
+              <div>
+                <div style={{ marginBottom: 10 }}>
+                  <label style={lbl}>Objet / Titre *</label>
+                  <input value={demande.titre} onChange={e => setDemande(d => ({ ...d, titre: e.target.value }))} style={inp} placeholder="Ex: Recherche Pommard 2019..." />
+                </div>
+                <div style={{ marginBottom: 10 }}>
+                  <label style={lbl}>Description</label>
+                  <input value={demande.description} onChange={e => setDemande(d => ({ ...d, description: e.target.value }))} style={inp} placeholder="Détails..." />
+                </div>
+                <div style={{ marginBottom: 14 }}>
+                  <label style={lbl}>Date limite</label>
+                  <input type="date" value={demande.date_limite} onChange={e => setDemande(d => ({ ...d, date_limite: e.target.value }))} style={inp} />
+                </div>
+                <button onClick={handleSaveDemande} disabled={!demande.titre.trim()}
+                  style={{ width: '100%', background: demande.titre.trim() ? '#c9a96e' : '#2a2a1e', color: demande.titre.trim() ? '#0d0a08' : '#555', border: 'none', borderRadius: 8, padding: '14px', fontSize: 15, cursor: demande.titre.trim() ? 'pointer' : 'not-allowed', fontWeight: 600 }}>
+                  ✓ Enregistrer la demande
                 </button>
               </div>
-              {showDemande && (
-                <div>
-                  <div style={{ marginBottom: 10 }}>
-                    <label style={lbl}>Objet / Titre *</label>
-                    <input value={demande.titre} onChange={e => setDemande(d => ({ ...d, titre: e.target.value }))} style={inp} placeholder="Ex: Recherche Pommard 2019..." />
-                  </div>
-                  <div style={{ marginBottom: 10 }}>
-                    <label style={lbl}>Description</label>
-                    <input value={demande.description} onChange={e => setDemande(d => ({ ...d, description: e.target.value }))} style={inp} placeholder="Détails..." />
-                  </div>
-                  <div style={{ marginBottom: 14 }}>
-                    <label style={lbl}>Date limite de réponse</label>
-                    <input type="date" value={demande.date_limite} onChange={e => setDemande(d => ({ ...d, date_limite: e.target.value }))} style={inp} />
-                  </div>
-                  <button onClick={handleSaveDemande} disabled={!demande.titre.trim()} style={{ width: '100%', background: demande.titre.trim() ? '#c9a96e' : '#2a2a1e', color: demande.titre.trim() ? '#0d0a08' : '#555', border: 'none', borderRadius: 8, padding: '14px', fontSize: 15, cursor: demande.titre.trim() ? 'pointer' : 'not-allowed', fontWeight: 600 }}>
-                    ✓ Enregistrer la demande
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
+      </div>
 
-        {/* Bouton save sticky en bas */}
-        <div style={{ padding: '16px 16px 32px', borderTop: '0.5px solid rgba(255,255,255,0.07)', background: '#0d0a08' }}>
-          <button onClick={handleSave} disabled={saving} style={{ width: '100%', background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 12, padding: '18px', fontSize: 16, cursor: 'pointer', fontWeight: 700, letterSpacing: 1, touchAction: 'manipulation' }}>
-            {saving ? '⟳ Enregistrement...' : isNew ? '✓ Créer le client' : '✓ Enregistrer les modifications'}
-          </button>
-        </div>
+      {/* Bouton save sticky */}
+      <div style={{ position: 'fixed' as const, bottom: 0, left: 0, right: 0, padding: '16px 16px 32px', background: '#0d0a08', borderTop: '0.5px solid rgba(255,255,255,0.07)' }}>
+        <button onClick={handleSave} disabled={saving}
+          style={{ width: '100%', background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 12, padding: '18px', fontSize: 16, cursor: 'pointer', fontWeight: 700, letterSpacing: 1, touchAction: 'manipulation' }}>
+          {saving ? '⟳ Enregistrement...' : isNew ? '✓ Créer le client' : '✓ Enregistrer les modifications'}
+        </button>
       </div>
     </div>
   )
