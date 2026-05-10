@@ -10,7 +10,7 @@ const supabase = createClient(
 
 // ── Types ─────────────────────────────────────────────────────
 type User = { id: string; nom: string; prenom: string; email: string; pin: string; role: string }
-type Session = { id: string; user_id: string; site_id: string; statut: string; especes_ouverture: number }
+type Session = { id: string; user_id: string; site_id: string; statut: string; especes_ouverture: number; site_nom?: string }
 type Client = { id: string; prenom: string; nom: string; raison_sociale: string; est_societe: boolean; tarif_pro: boolean; remise_pct: number; email: string; telephone: string }
 type Ligne = { id: string; product_id: string; nom: string; nom_modifie?: string; millesime: number; qte: number; prix_unit: number; remise_pct: number; total: number; commentaire?: string }
 type Paiement = { mode: string; montant: number; label: string }
@@ -18,6 +18,13 @@ type VenteEnAttente = { id: string; client: Client | null; lignes: Ligne[]; type
 
 const COULEURS: Record<string, string> = { rouge: '#e07070', blanc: '#c9b06e', rosé: '#e8a0b0', champagne: '#d4c88a', effervescent: '#a0b0e0', autre: '#888' }
 const fmt = (n: number) => n.toFixed(2) + '€'
+
+
+const getLogoForSite = (siteName: string) => {
+  const name = siteName?.toLowerCase() || ''
+  if (name.includes('petite cave')) return '/logo-petite-cave.png'
+  return '/logo.png'
+}
 
 // ── Login ─────────────────────────────────────────────────────
 function EcranLogin({ onLogin }: { onLogin: (u: User) => void }) {
@@ -47,6 +54,7 @@ function EcranLogin({ onLogin }: { onLogin: (u: User) => void }) {
     <div style={{ minHeight: '100dvh', background: '#0d0a08', display: 'flex', flexDirection: 'column' as const, alignItems: 'center', justifyContent: 'center', padding: 24, fontFamily: "'DM Sans', system-ui, sans-serif" }}>
       <div style={{ width: '100%', maxWidth: 360 }}>
         <div style={{ textAlign: 'center' as const, marginBottom: 36 }}>
+          <img src="/logo.png" alt="Cave de Gilbert" style={{ maxHeight: 64, maxWidth: '80%', objectFit: 'contain', marginBottom: 12 }} onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
           <div style={{ fontFamily: 'Georgia, serif', fontSize: 22, color: '#c9a96e', letterSpacing: 3, textTransform: 'uppercase' as const }}>Cave de Gilbert</div>
           <div style={{ fontSize: 13, color: 'rgba(232,224,213,0.4)', marginTop: 4 }}>Caisse</div>
         </div>
@@ -97,7 +105,10 @@ function EcranOuverture({ user, onOuvrir }: { user: User; onOuvrir: (s: Session)
 
       // Ensuite vérifier session existante
       const { data: session } = await supabase.from('caisse_sessions').select('*').eq('user_id', user.id).eq('statut', 'ouverte').maybeSingle()
-      if (session) onOuvrir(session)
+      if (session) {
+        const siteName = sitesData?.find((s: any) => s.id === session.site_id)?.nom || ''
+        onOuvrir({ ...session, site_nom: siteName })
+      }
     }
     load()
   }, [])
@@ -111,7 +122,10 @@ function EcranOuverture({ user, onOuvrir }: { user: User; onOuvrir: (s: Session)
       fond_caisse_ouverture: parseFloat(especes) || 0,
       statut: 'ouverte',
     }).select('*').single()
-    if (data) onOuvrir(data)
+    if (data) {
+      const siteName = sites.find(s => s.id === siteId)?.nom || ''
+      onOuvrir({ ...data, site_nom: siteName })
+    }
     setLoading(false)
   }
 
@@ -124,6 +138,9 @@ function EcranOuverture({ user, onOuvrir }: { user: User; onOuvrir: (s: Session)
   return (
     <div style={{ minHeight: '100dvh', background: '#0d0a08', display: 'flex', flexDirection: 'column' as const, alignItems: 'center', justifyContent: 'center', padding: 24, fontFamily: "'DM Sans', system-ui, sans-serif" }}>
       <div style={{ width: '100%', maxWidth: 400, background: '#18130e', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 16, padding: '32px 28px' }}>
+        <div style={{ textAlign: 'center' as const, marginBottom: 20 }}>
+          <img src={getLogoForSite(sites.find(s => s.id === siteId)?.nom || '')} alt="Logo" style={{ maxHeight: 56, maxWidth: '70%', objectFit: 'contain' }} onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
+        </div>
         <div style={{ fontFamily: 'Georgia, serif', fontSize: 20, color: '#f0e8d8', marginBottom: 4 }}>Ouverture de caisse</div>
         <div style={{ fontSize: 14, color: 'rgba(232,224,213,0.4)', marginBottom: 28 }}>Bonjour {user.prenom} !</div>
 
@@ -1022,6 +1039,7 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
   if (etape === 'client' && !alertesClient) return (
     <div style={container}>
       <div style={header}>
+        <img src={getLogoForSite(session.site_nom || '')} alt="Logo" style={{ height: 32, maxWidth: 80, objectFit: 'contain' }} onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 16, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>Cave de Gilbert</div>
           <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>{user.prenom} — Étape 1/4</div>
@@ -1741,6 +1759,7 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column' as const, overflow: 'hidden', borderRight: '0.5px solid rgba(255,255,255,0.07)' }}>
         {/* Header */}
         <div style={{ padding: '12px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <img src={getLogoForSite(session.site_nom || '')} alt="Logo" style={{ height: 28, maxWidth: 70, objectFit: 'contain' }} onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
           <div style={{ fontFamily: 'Georgia, serif', fontSize: 15, color: '#c9a96e' }}>Cave de Gilbert</div>
           <div style={{ flex: 1 }} />
           <select value={vendeur.id} onChange={e => { const v = vendeurs.find(u => u.id === e.target.value); if (v) setVendeur(v) }} style={{ background: '#1a1408', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 4, color: '#c9a96e', fontSize: 12, padding: '5px 8px', cursor: 'pointer' }}>
