@@ -158,11 +158,12 @@ function FormFournisseur({ fournisseur, onSaved, onCancel }: {
 
 // ── Fiche fournisseur ─────────────────────────────────────────
 
-function FicheFournisseur({ fournisseur, onEdit, onBack, onCommande }: {
+function FicheFournisseur({ fournisseur, onEdit, onBack, onCommande, onDeleted }: {
   fournisseur: any
   onEdit: () => void
   onBack: () => void
   onCommande: () => void
+  onDeleted: () => void
 }) {
   const [commandes, setCommandes] = useState<any[]>([])
   const [produits, setProduits] = useState<any[]>([])
