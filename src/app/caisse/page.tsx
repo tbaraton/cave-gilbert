@@ -12,7 +12,7 @@ const supabase = createClient(
 type User = { id: string; nom: string; prenom: string; email: string; pin: string; role: string }
 type Session = { id: string; user_id: string; site_id: string; statut: string; especes_ouverture: number; site_nom?: string }
 type Client = { id: string; prenom: string; nom: string; raison_sociale: string; est_societe: boolean; tarif_pro: boolean; remise_pct: number; email: string; telephone: string }
-type Ligne = { id: string; product_id: string; nom: string; nom_modifie?: string; millesime: number; qte: number; prix_unit: number; remise_pct: number; total: number; commentaire?: string; domaine_nom?: string }
+type Ligne = { id: string; product_id: string; nom: string; nom_modifie?: string; millesime: number; qte: number; prix_unit: number; remise_pct: number; total: number; commentaire?: string; domaine_nom?: string; tva_pct?: number; is_divers?: boolean }
 type Paiement = { mode: string; montant: number; label: string }
 type VenteEnAttente = { id: string; client: Client | null; lignes: Ligne[]; typeDoc: string; remise: string; remiseType: 'pct' | 'eur'; label: string; noteGlobale: string; noteGlobaleActive: boolean }
 
@@ -926,6 +926,11 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
   const [editingClient, setEditingClient] = useState<Client | null>(null)
   const [showHistorique, setShowHistorique] = useState(false)
   const [showAchatsClient, setShowAchatsClient] = useState(false)
+  const [showDivers, setShowDivers] = useState(false)
+  const [diversNom, setDiversNom] = useState('')
+  const [diversPrix, setDiversPrix] = useState('')
+  const [diversTva, setDiversTva] = useState<5.5 | 20>(20)
+  const [diversQte, setDiversQte] = useState('1')
 
   // UI
   const [paiements, setPaiements] = useState<Paiement[]>([])
@@ -1081,6 +1086,29 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
     setPaiements([]); setModeCourant('cb'); setMontantSaisi('')
   }
 
+  const addArticleDivers = () => {
+    if (!diversNom.trim() || !diversPrix) return
+    const prix = parseFloat(diversPrix)
+    const qte = parseInt(diversQte) || 1
+    // Prix saisi TTC, on calcule selon TVA
+    const coeff = diversTva === 5.5 ? 1.055 : 1.20
+    setLignes(prev => [...prev, {
+      id: Math.random().toString(36).slice(2),
+      product_id: `divers-${Date.now()}`,
+      nom: diversNom.trim(),
+      millesime: 0,
+      qte,
+      prix_unit: prix,
+      remise_pct: 0,
+      total: prix * qte,
+      domaine_nom: `TVA ${diversTva}%`,
+      tva_pct: diversTva,
+      is_divers: true,
+    }])
+    setDiversNom(''); setDiversPrix(''); setDiversQte('1'); setShowDivers(false)
+    setEtape('produits')
+  }
+
   const handleAddFromHistorique = (lignesHist: any[]) => {
     const newLignes = lignesHist.map(l => ({
       id: Math.random().toString(36).slice(2),
@@ -1136,7 +1164,9 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
       })))
       await supabase.from('vente_paiements').insert(paiements.map(p => ({ vente_id: vente.id, mode: p.mode, montant: p.montant })))
       for (const l of lignes) {
-        await supabase.rpc('move_stock', { p_product_id: l.product_id, p_site_id: session.site_id, p_raison: 'vente', p_quantite: l.qte, p_note: `Vente ${numero}`, p_order_id: null, p_transfer_id: null })
+        if (!l.is_divers) {
+          await supabase.rpc('move_stock', { p_product_id: l.product_id, p_site_id: session.site_id, p_raison: 'vente', p_quantite: l.qte, p_note: `Vente ${numero}`, p_order_id: null, p_transfer_id: null })
+        }
       }
       // Fidélité
       if (client && !client.tarif_pro && statutPaiement === 'regle') {
@@ -1348,6 +1378,44 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
           <div style={{ padding: '12px 16px', position: 'relative' as const }}>
             <input type="text" placeholder="🔍 Ajouter un produit..." value={searchProduit} onChange={e => handleSearchProduit(e.target.value)} autoFocus
               style={{ width: '100%', background: 'rgba(255,255,255,0.07)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 10, color: '#f0e8d8', fontSize: 16, padding: '14px', boxSizing: 'border-box' as const, outline: 'none' }} />
+            {/* Bouton article divers */}
+            <button onClick={() => setShowDivers(!showDivers)} style={{ marginTop: 8, background: showDivers ? 'rgba(201,169,110,0.1)' : 'rgba(255,255,255,0.04)', border: `0.5px solid ${showDivers ? 'rgba(201,169,110,0.3)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 8, color: showDivers ? '#c9a96e' : 'rgba(232,224,213,0.4)', padding: '8px 14px', fontSize: 13, cursor: 'pointer', width: '100%', textAlign: 'left' as const }}>
+              ＋ Article divers (hors catalogue)
+            </button>
+
+            {/* Formulaire article divers */}
+            {showDivers && (
+              <div style={{ marginTop: 8, background: '#18130e', borderRadius: 10, padding: '14px', border: '0.5px solid rgba(201,169,110,0.2)' }}>
+                <div style={{ fontSize: 12, color: '#c9a96e', letterSpacing: 1, marginBottom: 10 }}>ARTICLE DIVERS</div>
+                <input value={diversNom} onChange={e => setDiversNom(e.target.value)} placeholder="Désignation (ex: Chips artisanales)"
+                  style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.15)', borderRadius: 8, color: '#f0e8d8', fontSize: 15, padding: '12px', boxSizing: 'border-box' as const, marginBottom: 10 }} />
+                <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', marginBottom: 6 }}>PRIX TTC (€)</div>
+                    <input type="number" step="0.01" value={diversPrix} onChange={e => setDiversPrix(e.target.value)} placeholder="0.00" inputMode="decimal"
+                      style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.15)', borderRadius: 8, color: '#f0e8d8', fontSize: 16, padding: '12px', boxSizing: 'border-box' as const }} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', marginBottom: 6 }}>QUANTITÉ</div>
+                    <input type="number" min="1" value={diversQte} onChange={e => setDiversQte(e.target.value)} inputMode="numeric"
+                      style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.15)', borderRadius: 8, color: '#f0e8d8', fontSize: 16, padding: '12px', boxSizing: 'border-box' as const }} />
+                  </div>
+                </div>
+                <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', marginBottom: 8 }}>TAUX DE TVA</div>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+                  {([20, 5.5] as const).map(tva => (
+                    <button key={tva} onClick={() => setDiversTva(tva)} style={{ flex: 1, background: diversTva === tva ? 'rgba(201,169,110,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${diversTva === tva ? '#c9a96e' : 'rgba(255,255,255,0.1)'}`, color: diversTva === tva ? '#c9a96e' : 'rgba(232,224,213,0.5)', borderRadius: 8, padding: '12px', fontSize: 14, cursor: 'pointer' }}>
+                      {tva}% {tva === 5.5 ? '— Épicerie' : '— Standard'}
+                    </button>
+                  ))}
+                </div>
+                <button onClick={addArticleDivers} disabled={!diversNom.trim() || !diversPrix}
+                  style={{ width: '100%', background: diversNom.trim() && diversPrix ? '#c9a96e' : '#2a2a1e', color: diversNom.trim() && diversPrix ? '#0d0a08' : '#555', border: 'none', borderRadius: 10, padding: '14px', fontSize: 15, cursor: diversNom.trim() && diversPrix ? 'pointer' : 'not-allowed', fontWeight: 700, touchAction: 'manipulation' }}>
+                  ＋ Ajouter au panier
+                </button>
+              </div>
+            )}
+
             {produits.length > 0 && (
               <div style={{ position: 'absolute' as const, left: 16, right: 16, top: '100%', background: '#1a1408', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 10, zIndex: 50, maxHeight: 280, overflowY: 'auto' as const }}>
                 {produits.map(p => (
@@ -1799,6 +1867,11 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
   const [noteGlobaleActive, setNoteGlobaleActive] = useState(false)
   const [showHistorique, setShowHistorique] = useState(false)
   const [showAchatsClient, setShowAchatsClient] = useState(false)
+  const [showDivers, setShowDivers] = useState(false)
+  const [diversNom, setDiversNom] = useState('')
+  const [diversPrix, setDiversPrix] = useState('')
+  const [diversTva, setDiversTva] = useState<5.5 | 20>(20)
+  const [diversQte, setDiversQte] = useState('1')
   const [derniereVente, setDerniereVente] = useState<any>(null)
   const [showEmailVente, setShowEmailVente] = useState(false)
   const [emailVente, setEmailVente] = useState('')
@@ -1893,6 +1966,14 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
 
   const resetVente = () => { setClient(null); setLignes([]); setTypeDoc('ticket'); setRemise(''); setRemiseType('pct'); setPaiements([]); setSearchClient(''); setClientsFound([]); setNoteGlobale(''); setNoteGlobaleActive(false); setDerniereVente(null); setShowEmailVente(false); setEmailVente('') }
 
+  const addArticleDivers = () => {
+    if (!diversNom.trim() || !diversPrix) return
+    const prix = parseFloat(diversPrix)
+    const qte = parseInt(diversQte) || 1
+    setLignes(prev => [...prev, { id: Math.random().toString(36).slice(2), product_id: `divers-${Date.now()}`, nom: diversNom.trim(), millesime: 0, qte, prix_unit: prix, remise_pct: 0, total: prix * qte, domaine_nom: `TVA ${diversTva}%`, tva_pct: diversTva, is_divers: true }])
+    setDiversNom(''); setDiversPrix(''); setDiversQte('1'); setShowDivers(false)
+  }
+
   const handleAddFromHistorique = (lignesHist: any[]) => {
     setLignes(prev => [...prev, ...lignesHist.map(l => ({ id: Math.random().toString(36).slice(2), product_id: l.product_id, nom: l.nom_produit, millesime: l.millesime, qte: l.quantite, prix_unit: parseFloat(l.prix_unitaire_ttc), remise_pct: l.remise_pct || 0, total: parseFloat(l.total_ttc) }))])
   }
@@ -1923,7 +2004,7 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
     if (v) {
       await supabase.from('vente_lignes').insert(lignes.map(l=>({vente_id:v.id,product_id:l.product_id,nom_produit:l.nom_modifie||l.nom,millesime:l.millesime,quantite:l.qte,prix_unitaire_ttc:l.prix_unit,remise_pct:l.remise_pct,total_ttc:l.total})))
       await supabase.from('vente_paiements').insert(paiements.map(p=>({vente_id:v.id,mode:p.mode,montant:p.montant})))
-      for (const l of lignes) await supabase.rpc('move_stock',{p_product_id:l.product_id,p_site_id:session.site_id,p_raison:'vente',p_quantite:l.qte,p_note:`Vente ${numero}`,p_order_id:null,p_transfer_id:null})
+      for (const l of lignes) { if (!l.is_divers) await supabase.rpc('move_stock',{p_product_id:l.product_id,p_site_id:session.site_id,p_raison:'vente',p_quantite:l.qte,p_note:`Vente ${numero}`,p_order_id:null,p_transfer_id:null}) }
       if (client&&!client.tarif_pro&&sp==='regle') await supabase.from('loyalty_points').insert({customer_id:client.id,points:Math.floor(totalNet),raison:`Vente ${numero}`})
     }
     setDerniereVente({numero,total:totalNet,lignes:[...lignes],paiements:[...paiements]})
@@ -1961,7 +2042,19 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
         )}
         <div style={{padding:'12px 16px',position:'relative' as const}}>
           <input ref={searchRef} type="text" placeholder="🔍 Rechercher un produit..." value={searchProduit} onChange={e=>{setSearchProduit(e.target.value);clearTimeout(prodTimer.current);prodTimer.current=setTimeout(()=>searchProduits(e.target.value),200)}} style={{width:'100%',background:'rgba(255,255,255,0.06)',border:'0.5px solid rgba(201,169,110,0.35)',borderRadius:8,color:'#f0e8d8',fontSize:16,padding:'12px 16px',boxSizing:'border-box' as const,outline:'none'}}/>
-          {produits.length>0&&(
+          {/* Article divers desktop */}
+        <div style={{marginTop:8,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap' as const}}>
+          <button onClick={()=>setShowDivers(!showDivers)} style={{background:showDivers?'rgba(201,169,110,0.1)':'rgba(255,255,255,0.04)',border:`0.5px solid ${showDivers?'rgba(201,169,110,0.3)':'rgba(255,255,255,0.1)'}`,borderRadius:6,color:showDivers?'#c9a96e':'rgba(232,224,213,0.4)',padding:'6px 12px',fontSize:12,cursor:'pointer'}}>＋ Article divers</button>
+          {showDivers && <>
+            <input value={diversNom} onChange={e=>setDiversNom(e.target.value)} placeholder="Désignation" style={{flex:2,minWidth:160,background:'rgba(255,255,255,0.06)',border:'0.5px solid rgba(201,169,110,0.3)',borderRadius:6,color:'#f0e8d8',fontSize:13,padding:'6px 10px'}}/>
+            <input type="number" step="0.01" value={diversPrix} onChange={e=>setDiversPrix(e.target.value)} placeholder="Prix TTC" inputMode="decimal" style={{width:90,background:'rgba(255,255,255,0.06)',border:'0.5px solid rgba(255,255,255,0.15)',borderRadius:6,color:'#f0e8d8',fontSize:13,padding:'6px 10px'}}/>
+            <input type="number" min="1" value={diversQte} onChange={e=>setDiversQte(e.target.value)} placeholder="Qté" style={{width:55,background:'rgba(255,255,255,0.06)',border:'0.5px solid rgba(255,255,255,0.15)',borderRadius:6,color:'#f0e8d8',fontSize:13,padding:'6px 10px'}}/>
+            {([20,5.5] as const).map(tva=>(<button key={tva} onClick={()=>setDiversTva(tva)} style={{background:diversTva===tva?'rgba(201,169,110,0.15)':'rgba(255,255,255,0.04)',border:`1px solid ${diversTva===tva?'#c9a96e':'rgba(255,255,255,0.1)'}`,color:diversTva===tva?'#c9a96e':'rgba(232,224,213,0.5)',borderRadius:6,padding:'5px 10px',fontSize:12,cursor:'pointer'}}>{tva}%{tva===5.5?' Épicerie':''}</button>))}
+            <button onClick={addArticleDivers} disabled={!diversNom.trim()||!diversPrix} style={{background:diversNom.trim()&&diversPrix?'#c9a96e':'#2a2a1e',color:diversNom.trim()&&diversPrix?'#0d0a08':'#555',border:'none',borderRadius:6,padding:'6px 14px',fontSize:13,cursor:'pointer',fontWeight:700}}>＋ Ajouter</button>
+          </>}
+        </div>
+
+        {produits.length>0&&(
             <div style={{position:'absolute' as const,left:16,right:16,top:'100%',background:'#1a1408',border:'0.5px solid rgba(201,169,110,0.2)',borderRadius:8,zIndex:50,maxHeight:320,overflowY:'auto' as const}}>
               {produits.map((p:any)=>(
                 <button key={p.id} onClick={()=>addProduit(p)} style={{width:'100%',background:'transparent',border:'none',borderBottom:'0.5px solid rgba(255,255,255,0.05)',color:'#e8e0d5',padding:'11px 16px',cursor:'pointer',textAlign:'left' as const,display:'flex',justifyContent:'space-between',alignItems:'center'}} onMouseEnter={e=>(e.currentTarget.style.background='rgba(201,169,110,0.07)')} onMouseLeave={e=>(e.currentTarget.style.background='transparent')}>
