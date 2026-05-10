@@ -811,8 +811,387 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
 export default function CaissePage() {
   const [user, setUser] = useState<User | null>(null)
   const [session, setSession] = useState<Session | null>(null)
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   if (!user) return <EcranLogin onLogin={setUser} />
   if (!session) return <EcranOuverture user={user} onOuvrir={setSession} />
-  return <CaissePrincipale user={user} session={session} onFermer={() => { setSession(null); setUser(null) }} />
+  if (isMobile) return <CaissePrincipale user={user} session={session} onFermer={() => { setSession(null); setUser(null) }} />
+  return <CaisseDesktop user={user} session={session} onFermer={() => { setSession(null); setUser(null) }} />
+}
+
+// ── Caisse Desktop ────────────────────────────────────────────
+function CaisseDesktop({ user, session, onFermer }: { user: User; session: Session; onFermer: () => void }) {
+  const [client, setClient] = useState<Client | null>(null)
+  const [lignes, setLignes] = useState<Ligne[]>([])
+  const [typeDoc, setTypeDoc] = useState('ticket')
+  const [remise, setRemise] = useState('')
+  const [remiseType, setRemiseType] = useState<'pct' | 'eur'>('pct')
+  const [vendeur, setVendeur] = useState(user)
+  const [vendeurs, setVendeurs] = useState<User[]>([])
+  const [attentes, setAttentes] = useState<VenteEnAttente[]>([])
+  const [searchClient, setSearchClient] = useState('')
+  const [clientsFound, setClientsFound] = useState<Client[]>([])
+  const [showClientPanel, setShowClientPanel] = useState(false)
+  const [alertesClient, setAlertesClient] = useState<any>(null)
+  const [searchProduit, setSearchProduit] = useState('')
+  const [produits, setProduits] = useState<any[]>([])
+  const [showPaiement, setShowPaiement] = useState(false)
+  const [paiements, setPaiements] = useState<Paiement[]>([])
+  const [modeCourant, setModeCourant] = useState('cb')
+  const [montantSaisi, setMontantSaisi] = useState('')
+  const [venteOk, setVenteOk] = useState(false)
+  const [showFermeture, setShowFermeture] = useState(false)
+  const [espacesFermeture, setEspacesFermeture] = useState('')
+  const [ligneEditId, setLigneEditId] = useState<string | null>(null)
+  const [ligneCommentId, setLigneCommentId] = useState<string | null>(null)
+  const searchTimer = useRef<any>(null)
+  const prodTimer = useRef<any>(null)
+  const searchRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    supabase.from('users').select('*').eq('actif', true).then(({ data }) => setVendeurs(data || []))
+  }, [])
+
+  const totalBrut = lignes.reduce((a, l) => a + l.total, 0)
+  const remiseVal = remise ? (remiseType === 'pct' ? totalBrut * parseFloat(remise) / 100 : parseFloat(remise)) : 0
+  const totalNet = Math.max(0, totalBrut - remiseVal)
+  const totalPaye = paiements.reduce((a, p) => a + p.montant, 0)
+  const resteAPayer = Math.max(0, totalNet - totalPaye)
+  const monnaie = totalPaye > totalNet ? totalPaye - totalNet : 0
+  const canValider = totalPaye >= totalNet || paiements.some(p => p.mode === 'non_regle')
+
+  const searchClients = async (q: string) => {
+    if (!q.trim()) { setClientsFound([]); return }
+    const { data } = await supabase.from('customers').select('id, prenom, nom, raison_sociale, est_societe, tarif_pro, remise_pct, email, telephone').or(`nom.ilike.%${q}%,prenom.ilike.%${q}%,raison_sociale.ilike.%${q}%,email.ilike.%${q}%`).limit(8)
+    setClientsFound(data || [])
+  }
+
+  const selectClient = async (c: Client | null) => {
+    if (!c) { setClient(null); setShowClientPanel(false); return }
+    const [{ data: bons }, { data: demandes }, { data: factures }] = await Promise.all([
+      supabase.from('loyalty_vouchers').select('*').eq('customer_id', c.id).eq('utilise', false),
+      supabase.from('customer_requests').select('*').eq('customer_id', c.id).eq('statut', 'en_attente'),
+      supabase.from('ventes').select('id, numero, total_ttc').eq('customer_id', c.id).eq('statut_paiement', 'non_regle').eq('statut', 'validee'),
+    ])
+    const a = { bons: bons || [], demandes: demandes || [], factures: factures || [] }
+    if (a.bons.length || a.demandes.length || a.factures.length) setAlertesClient({ client: c, ...a })
+    else { setClient(c); setShowClientPanel(false) }
+  }
+
+  const searchProduits = async (q: string) => {
+    if (!q.trim()) { setProduits([]); return }
+    const { data } = await supabase.from('products').select('id, nom, millesime, couleur, prix_vente_ttc, prix_vente_pro').ilike('nom', `%${q}%`).eq('actif', true).limit(12)
+    if (data?.length) {
+      const ids = data.map((p: any) => p.id)
+      const { data: st } = await supabase.from('stock').select('product_id, quantite').eq('site_id', session.site_id).in('product_id', ids)
+      const sm = Object.fromEntries((st || []).map((s: any) => [s.product_id, s.quantite || 0]))
+      setProduits(data.map((p: any) => ({ ...p, stock: sm[p.id] || 0 })))
+    } else setProduits([])
+  }
+
+  const addProduit = (p: any) => {
+    const prix = (client?.tarif_pro ? p.prix_vente_pro : p.prix_vente_ttc) || p.prix_vente_ttc
+    const rp = client?.remise_pct || 0
+    const ex = lignes.find(l => l.product_id === p.id)
+    if (ex) setLignes(prev => prev.map(l => l.product_id === p.id ? { ...l, qte: l.qte + 1, total: (l.qte + 1) * l.prix_unit * (1 - l.remise_pct / 100) } : l))
+    else setLignes(prev => [...prev, { id: Math.random().toString(36).slice(2), product_id: p.id, nom: p.nom, millesime: p.millesime, qte: 1, prix_unit: prix, remise_pct: rp, total: prix * (1 - rp / 100) }])
+    setSearchProduit(''); setProduits([]); searchRef.current?.focus()
+  }
+
+  const updateLigne = (id: string, field: string, val: any) => {
+    setLignes(prev => prev.map(l => {
+      if (l.id !== id) return l
+      const u = { ...l, [field]: val }
+      if (field === 'qte' || field === 'remise_pct') u.total = u.qte * u.prix_unit * (1 - u.remise_pct / 100)
+      return u
+    }))
+  }
+
+  const mettreEnAttente = () => {
+    if (attentes.length >= 4) return
+    const label = client ? (client.est_societe ? client.raison_sociale : `${client.prenom} ${client.nom}`) : `Vente ${attentes.length + 1}`
+    setAttentes(prev => [...prev, { id: Math.random().toString(36).slice(2), client, lignes, typeDoc, remise, remiseType, label }])
+    resetVente()
+  }
+
+  const reprendreAttente = (a: VenteEnAttente) => {
+    setClient(a.client); setLignes(a.lignes); setTypeDoc(a.typeDoc); setRemise(a.remise); setRemiseType(a.remiseType)
+    setAttentes(prev => prev.filter(x => x.id !== a.id))
+  }
+
+  const resetVente = () => { setClient(null); setLignes([]); setTypeDoc('ticket'); setRemise(''); setRemiseType('pct'); setPaiements([]); setSearchClient(''); setClientsFound([]) }
+
+  const addPaiement = () => {
+    const montant = modeCourant === 'non_regle' ? resteAPayer : (parseFloat(montantSaisi) || resteAPayer)
+    if (montant <= 0) return
+    const labels: Record<string, string> = { cb: 'CB', especes: 'Espèces', virement: 'Virement', bon_achat: "Bon d'achat", non_regle: 'Non réglé' }
+    setPaiements(prev => [...prev, { mode: modeCourant, montant, label: labels[modeCourant] }])
+    setMontantSaisi('')
+  }
+
+  const handleValider = async () => {
+    const numero = `VTE-${new Date().getFullYear()}${String(new Date().getMonth()+1).padStart(2,'0')}${String(new Date().getDate()).padStart(2,'0')}-${String(Math.floor(Math.random()*9999)).padStart(4,'0')}`
+    const sp = paiements.some(p => p.mode === 'non_regle') ? 'non_regle' : totalNet <= totalPaye ? 'regle' : 'partiel'
+    const { data: v } = await supabase.from('ventes').insert({ numero, session_id: session.id, user_id: vendeur.id, customer_id: client?.id || null, site_id: session.site_id, type_doc: typeDoc, statut: 'validee', statut_paiement: sp, total_ht: totalNet / 1.20, total_ttc: totalNet, remise_globale_pct: remiseType === 'pct' ? parseFloat(remise) || 0 : 0, remise_globale_eur: remiseType === 'eur' ? parseFloat(remise) || 0 : 0 }).select('id').single()
+    if (v) {
+      await supabase.from('vente_lignes').insert(lignes.map(l => ({ vente_id: v.id, product_id: l.product_id, nom_produit: l.nom_modifie || l.nom, millesime: l.millesime, quantite: l.qte, prix_unitaire_ttc: l.prix_unit, remise_pct: l.remise_pct, total_ttc: l.total })))
+      await supabase.from('vente_paiements').insert(paiements.map(p => ({ vente_id: v.id, mode: p.mode, montant: p.montant })))
+      for (const l of lignes) await supabase.rpc('move_stock', { p_product_id: l.product_id, p_site_id: session.site_id, p_raison: 'vente', p_quantite: l.qte, p_note: `Vente ${numero}`, p_order_id: null, p_transfer_id: null })
+      if (client && !client.tarif_pro && sp === 'regle') await supabase.from('loyalty_points').insert({ customer_id: client.id, points: Math.floor(totalNet), raison: `Vente ${numero}` })
+    }
+    setShowPaiement(false); setVenteOk(true)
+    setTimeout(() => { setVenteOk(false); resetVente() }, 2000)
+  }
+
+  const DOCS = ['ticket','devis','commande','bl','facture']
+  const MODES = [{ id: 'cb', label: '💳 CB', c: '#6e9ec9' }, { id: 'especes', label: '💶 Espèces', c: '#6ec96e' }, { id: 'virement', label: '🏦 Virement', c: '#c9b06e' }, { id: 'bon_achat', label: '🎟 Bon', c: '#c9a96e' }, { id: 'non_regle', label: '📋 Non réglé', c: '#c96e6e' }]
+
+  return (
+    <div style={{ display: 'flex', height: '100vh', background: '#0d0a08', fontFamily: "'DM Sans', system-ui, sans-serif", color: '#e8e0d5', overflow: 'hidden' }}>
+
+      {/* ── Colonne gauche : produits ── */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column' as const, overflow: 'hidden', borderRight: '0.5px solid rgba(255,255,255,0.07)' }}>
+        {/* Header */}
+        <div style={{ padding: '12px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ fontFamily: 'Georgia, serif', fontSize: 15, color: '#c9a96e' }}>Cave de Gilbert</div>
+          <div style={{ flex: 1 }} />
+          <select value={vendeur.id} onChange={e => { const v = vendeurs.find(u => u.id === e.target.value); if (v) setVendeur(v) }} style={{ background: '#1a1408', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 4, color: '#c9a96e', fontSize: 12, padding: '5px 8px', cursor: 'pointer' }}>
+            {vendeurs.map(v => <option key={v.id} value={v.id}>{v.prenom} {v.nom}</option>)}
+          </select>
+          {attentes.length > 0 && attentes.map(a => (
+            <button key={a.id} onClick={() => reprendreAttente(a)} style={{ background: 'rgba(201,169,110,0.1)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 6, color: '#c9a96e', padding: '5px 10px', fontSize: 11, cursor: 'pointer' }}>
+              ⏸ {a.label}
+            </button>
+          ))}
+          <button onClick={() => setShowFermeture(true)} style={{ background: 'transparent', border: '0.5px solid rgba(201,110,110,0.3)', color: '#c96e6e', borderRadius: 4, padding: '6px 12px', fontSize: 11, cursor: 'pointer' }}>Fermer</button>
+        </div>
+
+        {/* Recherche produit */}
+        <div style={{ padding: '12px 16px', position: 'relative' as const }}>
+          <input ref={searchRef} type="text" placeholder="🔍 Rechercher un produit..." value={searchProduit}
+            onChange={e => { setSearchProduit(e.target.value); clearTimeout(prodTimer.current); prodTimer.current = setTimeout(() => searchProduits(e.target.value), 200) }}
+            style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(201,169,110,0.35)', borderRadius: 8, color: '#f0e8d8', fontSize: 16, padding: '12px 16px', boxSizing: 'border-box' as const, outline: 'none' }} />
+          {produits.length > 0 && (
+            <div style={{ position: 'absolute' as const, left: 16, right: 16, top: '100%', background: '#1a1408', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 8, zIndex: 50, maxHeight: 320, overflowY: 'auto' as const }}>
+              {produits.map((p: any) => (
+                <button key={p.id} onClick={() => addProduit(p)} style={{ width: '100%', background: 'transparent', border: 'none', borderBottom: '0.5px solid rgba(255,255,255,0.05)', color: '#e8e0d5', padding: '11px 16px', cursor: 'pointer', textAlign: 'left' as const, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(201,169,110,0.07)')} onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                  <div><span style={{ color: COULEURS[p.couleur] || '#888', marginRight: 8 }}>●</span>{p.nom}{p.millesime ? ` ${p.millesime}` : ''}</div>
+                  <div style={{ textAlign: 'right' as const }}>
+                    <div style={{ color: '#c9a96e', fontFamily: 'Georgia, serif', fontSize: 15 }}>{((client?.tarif_pro ? p.prix_vente_pro : p.prix_vente_ttc) || p.prix_vente_ttc).toFixed(2)}€</div>
+                    <div style={{ fontSize: 11, color: p.stock <= 0 ? '#c96e6e' : 'rgba(232,224,213,0.4)' }}>stk: {p.stock}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Lignes */}
+        <div style={{ flex: 1, overflowY: 'auto' as const, padding: '0 16px' }}>
+          {lignes.length === 0 ? (
+            <div style={{ textAlign: 'center' as const, padding: '60px', color: 'rgba(232,224,213,0.2)', fontSize: 14 }}>Recherchez un produit pour l'ajouter</div>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse' as const }}>
+              <thead><tr style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
+                {['Produit', 'Qté', 'Prix', 'Rem.%', 'Total', ''].map(h => <th key={h} style={{ padding: '8px 10px', textAlign: 'left' as const, fontSize: 10, color: 'rgba(232,224,213,0.3)', fontWeight: 400, letterSpacing: 1.5 }}>{h}</th>)}
+              </tr></thead>
+              <tbody>
+                {lignes.map(l => (
+                  <tr key={l.id} style={{ borderBottom: '0.5px solid rgba(255,255,255,0.04)' }}>
+                    <td style={{ padding: '10px' }}>
+                      {ligneEditId === l.id
+                        ? <input value={l.nom_modifie || l.nom} onChange={e => updateLigne(l.id, 'nom_modifie', e.target.value)} onBlur={() => setLigneEditId(null)} autoFocus style={{ background: 'rgba(255,255,255,0.08)', border: '0.5px solid #c9a96e', borderRadius: 4, color: '#f0e8d8', fontSize: 13, padding: '4px 8px', width: '100%' }} />
+                        : <div style={{ fontSize: 14 }}>{l.nom_modifie || l.nom}{l.millesime ? ` ${l.millesime}` : ''}</div>
+                      }
+                      {ligneCommentId === l.id && <textarea value={l.commentaire || ''} onChange={e => updateLigne(l.id, 'commentaire', e.target.value)} placeholder="Commentaire..." rows={1} style={{ width: '100%', marginTop: 6, background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 6, color: '#e8e0d5', fontSize: 12, padding: '6px', boxSizing: 'border-box' as const, resize: 'vertical' as const }} />}
+                    </td>
+                    <td style={{ padding: '10px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <button onClick={() => updateLigne(l.id, 'qte', Math.max(1, l.qte - 1))} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: '#e8e0d5', width: 26, height: 26, borderRadius: 4, cursor: 'pointer', fontSize: 16 }}>−</button>
+                        <span style={{ width: 24, textAlign: 'center' as const, fontSize: 15 }}>{l.qte}</span>
+                        <button onClick={() => updateLigne(l.id, 'qte', l.qte + 1)} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: '#e8e0d5', width: 26, height: 26, borderRadius: 4, cursor: 'pointer', fontSize: 16 }}>+</button>
+                      </div>
+                    </td>
+                    <td style={{ padding: '10px', fontSize: 13, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{l.prix_unit.toFixed(2)}€</td>
+                    <td style={{ padding: '10px' }}>
+                      <input type="number" min={0} max={100} value={l.remise_pct || ''} placeholder="0" onChange={e => updateLigne(l.id, 'remise_pct', parseFloat(e.target.value) || 0)} style={{ width: 50, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 4, color: '#e8e0d5', fontSize: 13, padding: '4px 6px', textAlign: 'center' as const }} />
+                    </td>
+                    <td style={{ padding: '10px', fontSize: 15, color: '#f0e8d8', fontFamily: 'Georgia, serif', fontWeight: 600 }}>{fmt(l.total)}</td>
+                    <td style={{ padding: '10px' }}>
+                      <button onClick={() => setLigneEditId(ligneEditId === l.id ? null : l.id)} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 4, color: 'rgba(232,224,213,0.4)', padding: '3px 7px', fontSize: 11, cursor: 'pointer', marginRight: 4 }}>✎</button>
+                      <button onClick={() => setLigneCommentId(ligneCommentId === l.id ? null : l.id)} style={{ background: l.commentaire ? 'rgba(201,169,110,0.1)' : 'transparent', border: `0.5px solid ${l.commentaire ? 'rgba(201,169,110,0.3)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 4, color: l.commentaire ? '#c9a96e' : 'rgba(232,224,213,0.4)', padding: '3px 7px', fontSize: 11, cursor: 'pointer', marginRight: 4 }}>💬</button>
+                      <button onClick={() => setLignes(prev => prev.filter(x => x.id !== l.id))} style={{ background: 'transparent', border: 'none', color: '#c96e6e', cursor: 'pointer', fontSize: 16 }}>✕</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+
+      {/* ── Colonne droite : client + paiement ── */}
+      <div style={{ width: 360, display: 'flex', flexDirection: 'column' as const, background: '#100d0a' }}>
+        {/* Client */}
+        <div style={{ padding: '12px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', position: 'relative' as const }}>
+          <button onClick={() => setShowClientPanel(!showClientPanel)} style={{ width: '100%', background: client ? 'rgba(201,169,110,0.08)' : 'rgba(255,255,255,0.04)', border: `1px solid ${client ? 'rgba(201,169,110,0.3)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 8, padding: '12px', cursor: 'pointer', textAlign: 'left' as const }}>
+            {client ? (
+              <div>
+                <div style={{ fontSize: 12, color: '#c9a96e', marginBottom: 2 }}>👤 Client</div>
+                <div style={{ fontSize: 15, color: '#f0e8d8' }}>{client.est_societe ? client.raison_sociale : `${client.prenom} ${client.nom}`}</div>
+                <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+                  {client.tarif_pro && <span style={{ fontSize: 10, background: '#2a2a1e', color: '#c9b06e', padding: '2px 6px', borderRadius: 3 }}>PRO</span>}
+                  {client.remise_pct > 0 && <span style={{ fontSize: 10, background: '#2a1e2a', color: '#c96ec9', padding: '2px 6px', borderRadius: 3 }}>-{client.remise_pct}%</span>}
+                </div>
+              </div>
+            ) : <div style={{ fontSize: 14, color: 'rgba(232,224,213,0.4)', textAlign: 'center' as const }}>👤 Sélectionner un client</div>}
+          </button>
+          {showClientPanel && (
+            <div style={{ position: 'absolute' as const, top: '100%', left: 0, right: 0, background: '#1a1408', border: '0.5px solid rgba(201,169,110,0.2)', zIndex: 50, padding: '12px' }}>
+              <input autoFocus type="text" placeholder="Rechercher..." value={searchClient}
+                onChange={e => { setSearchClient(e.target.value); clearTimeout(searchTimer.current); searchTimer.current = setTimeout(() => searchClients(e.target.value), 300) }}
+                style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 6, color: '#f0e8d8', fontSize: 14, padding: '10px', boxSizing: 'border-box' as const, marginBottom: 8 }} />
+              <button onClick={() => selectClient(null)} style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.08)', borderRadius: 6, color: 'rgba(232,224,213,0.5)', padding: '10px', fontSize: 13, cursor: 'pointer', marginBottom: 6, textAlign: 'left' as const }}>👤 Client anonyme</button>
+              {clientsFound.map(c => (
+                <button key={c.id} onClick={() => selectClient(c)} style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.08)', borderRadius: 6, color: '#e8e0d5', padding: '10px', fontSize: 13, cursor: 'pointer', marginBottom: 6, textAlign: 'left' as const }}>
+                  <div>{c.est_societe ? c.raison_sociale : `${c.prenom} ${c.nom}`}</div>
+                  <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>{c.email}</div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Type document */}
+        <div style={{ padding: '10px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {DOCS.map(d => (
+              <button key={d} onClick={() => setTypeDoc(d)} style={{ flex: 1, background: typeDoc === d ? 'rgba(201,169,110,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${typeDoc === d ? '#c9a96e' : 'rgba(255,255,255,0.08)'}`, color: typeDoc === d ? '#c9a96e' : 'rgba(232,224,213,0.5)', borderRadius: 6, padding: '8px 4px', fontSize: 11, cursor: 'pointer' }}>
+                {d === 'ticket' ? '🧾' : d === 'devis' ? '📄' : d === 'commande' ? '📦' : d === 'bl' ? '🚚' : '💼'} {d.toUpperCase()}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Remise + totaux */}
+        <div style={{ padding: '12px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center' }}>
+            <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', borderRadius: 4, overflow: 'hidden' }}>
+              {[{ v: 'pct', l: '%' }, { v: 'eur', l: '€' }].map(({ v, l }) => (
+                <button key={v} onClick={() => setRemiseType(v as any)} style={{ background: remiseType === v ? 'rgba(201,169,110,0.2)' : 'transparent', border: 'none', color: remiseType === v ? '#c9a96e' : 'rgba(232,224,213,0.4)', padding: '7px 12px', fontSize: 13, cursor: 'pointer' }}>{l}</button>
+              ))}
+            </div>
+            <input type="number" step="0.01" placeholder="Remise" value={remise} onChange={e => setRemise(e.target.value)} style={{ flex: 1, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 4, color: '#e8e0d5', fontSize: 14, padding: '7px 10px' }} />
+          </div>
+          {remiseVal > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'rgba(232,224,213,0.4)', marginBottom: 4 }}><span>Remise</span><span>-{fmt(remiseVal)}</span></div>}
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'rgba(232,224,213,0.35)', marginBottom: 2 }}><span>HT</span><span>{fmt(totalNet / 1.20)}</span></div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 26, fontFamily: 'Georgia, serif', marginTop: 6 }}>
+            <span style={{ fontSize: 13, color: 'rgba(232,224,213,0.5)', alignSelf: 'flex-end', marginBottom: 3 }}>TTC</span>
+            <span style={{ color: '#c9a96e' }}>{fmt(totalNet)}</span>
+          </div>
+        </div>
+
+        {/* Paiement */}
+        {showPaiement ? (
+          <div style={{ flex: 1, padding: '12px 16px', overflowY: 'auto' as const }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 12 }}>
+              {MODES.map(m => (
+                <button key={m.id} onClick={() => setModeCourant(m.id)} style={{ background: modeCourant === m.id ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.03)', border: `2px solid ${modeCourant === m.id ? m.c : 'rgba(255,255,255,0.07)'}`, color: modeCourant === m.id ? m.c : 'rgba(232,224,213,0.5)', borderRadius: 8, padding: '10px 4px', fontSize: 11, cursor: 'pointer' }}>{m.label}</button>
+              ))}
+            </div>
+            {modeCourant !== 'non_regle' && (
+              <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                <input type="number" step="0.01" placeholder={fmt(resteAPayer)} value={montantSaisi} onChange={e => setMontantSaisi(e.target.value)} style={{ flex: 1, background: 'rgba(255,255,255,0.07)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 6, color: '#f0e8d8', fontSize: 16, padding: '10px', outline: 'none' }} />
+                <button onClick={addPaiement} style={{ background: '#c9a96e', border: 'none', borderRadius: 6, color: '#0d0a08', padding: '10px 16px', fontSize: 16, cursor: 'pointer', fontWeight: 700 }}>+</button>
+              </div>
+            )}
+            {modeCourant === 'non_regle' && <button onClick={addPaiement} style={{ width: '100%', background: 'rgba(201,110,110,0.12)', border: '1px solid rgba(201,110,110,0.3)', borderRadius: 8, color: '#c96e6e', padding: '12px', fontSize: 14, cursor: 'pointer', marginBottom: 10 }}>Mettre en compte</button>}
+            {paiements.map((p, i) => (
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '0.5px solid rgba(255,255,255,0.05)' }}>
+                <span style={{ fontSize: 14, color: 'rgba(232,224,213,0.7)' }}>{p.label}</span>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <span style={{ color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{fmt(p.montant)}</span>
+                  <button onClick={() => setPaiements(prev => prev.filter((_, j) => j !== i))} style={{ background: 'transparent', border: 'none', color: '#c96e6e', cursor: 'pointer' }}>✕</button>
+                </div>
+              </div>
+            ))}
+            {paiements.length > 0 && (
+              <div style={{ marginTop: 8, fontSize: 14, color: resteAPayer > 0 ? '#c96e6e' : '#6ec96e', fontWeight: 600 }}>
+                {resteAPayer > 0 ? `Reste: ${fmt(resteAPayer)}` : monnaie > 0 ? `Monnaie: ${fmt(monnaie)}` : '✓ Soldé'}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div style={{ flex: 1, padding: '12px 16px' }}>
+            {attentes.length < 4 && lignes.length > 0 && (
+              <button onClick={mettreEnAttente} style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 8, color: 'rgba(232,224,213,0.6)', padding: '12px', fontSize: 13, cursor: 'pointer', marginBottom: 10 }}>⏸ Mettre en attente</button>
+            )}
+          </div>
+        )}
+
+        {/* Bouton principal */}
+        <div style={{ padding: '12px 16px 20px' }}>
+          {!showPaiement ? (
+            <button onClick={() => lignes.length > 0 && setShowPaiement(true)} style={{ width: '100%', background: lignes.length > 0 ? '#c9a96e' : '#2a2a1e', color: lignes.length > 0 ? '#0d0a08' : '#555', border: 'none', borderRadius: 10, padding: '16px', fontSize: 16, cursor: lignes.length > 0 ? 'pointer' : 'not-allowed', fontWeight: 700 }}>
+              {lignes.length > 0 ? `💳 Encaisser ${fmt(totalNet)}` : 'Panier vide'}
+            </button>
+          ) : (
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => { setShowPaiement(false); setPaiements([]) }} style={{ flex: 1, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.15)', color: 'rgba(232,224,213,0.5)', borderRadius: 8, padding: '14px', fontSize: 13, cursor: 'pointer' }}>← Retour</button>
+              <button onClick={() => canValider && handleValider()} style={{ flex: 2, background: canValider ? '#c9a96e' : '#2a2a1e', color: canValider ? '#0d0a08' : '#555', border: 'none', borderRadius: 8, padding: '14px', fontSize: 14, cursor: canValider ? 'pointer' : 'not-allowed', fontWeight: 700 }}>
+                {canValider ? `✓ Valider ${fmt(totalNet)}` : 'Ajouter paiement'}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Alertes client */}
+      {alertesClient && (
+        <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }}>
+          <div style={{ background: '#18130e', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 12, padding: '28px', maxWidth: 460, width: '90%' }}>
+            <div style={{ fontFamily: 'Georgia, serif', fontSize: 20, color: '#f0e8d8', marginBottom: 16 }}>⚠ Alertes — {alertesClient.client.est_societe ? alertesClient.client.raison_sociale : `${alertesClient.client.prenom} ${alertesClient.client.nom}`}</div>
+            {alertesClient.bons?.length > 0 && <div style={{ marginBottom: 12 }}><div style={{ fontSize: 12, color: '#c9a96e', marginBottom: 8 }}>🎟 BONS D'ACHAT</div>{alertesClient.bons.map((b: any) => <div key={b.id} style={{ background: 'rgba(201,169,110,0.1)', borderRadius: 6, padding: '10px', marginBottom: 6, color: '#c9a96e', fontFamily: 'Georgia, serif', fontSize: 16 }}>{b.montant}€ — {b.code}</div>)}</div>}
+            {alertesClient.demandes?.length > 0 && <div style={{ marginBottom: 12 }}><div style={{ fontSize: 12, color: '#6e9ec9', marginBottom: 8 }}>📋 DEMANDES</div>{alertesClient.demandes.map((d: any) => <div key={d.id} style={{ background: 'rgba(110,158,201,0.08)', borderRadius: 6, padding: '10px', marginBottom: 6, fontSize: 14 }}>{d.titre}</div>)}</div>}
+            {alertesClient.factures?.length > 0 && <div style={{ marginBottom: 12 }}><div style={{ fontSize: 12, color: '#c96e6e', marginBottom: 8 }}>💳 FACTURES NON RÉGLÉES</div>{alertesClient.factures.map((f: any) => <div key={f.id} style={{ background: 'rgba(201,110,110,0.08)', borderRadius: 6, padding: '10px', marginBottom: 6, fontSize: 14, color: '#c96e6e' }}>{f.numero} — {parseFloat(f.total_ttc).toFixed(2)}€</div>)}</div>}
+            <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+              <button onClick={() => setAlertesClient(null)} style={{ flex: 1, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.15)', color: 'rgba(232,224,213,0.5)', borderRadius: 8, padding: '12px', fontSize: 13, cursor: 'pointer' }}>← Retour</button>
+              <button onClick={() => { setClient(alertesClient.client); setAlertesClient(null); setShowClientPanel(false) }} style={{ flex: 2, background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 8, padding: '12px', fontSize: 14, cursor: 'pointer', fontWeight: 600 }}>Continuer →</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {venteOk && (
+        <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999 }}>
+          <div style={{ textAlign: 'center' as const }}>
+            <div style={{ fontSize: 72 }}>✓</div>
+            <div style={{ fontFamily: 'Georgia, serif', fontSize: 28, color: '#6ec96e', marginTop: 12 }}>Vente enregistrée !</div>
+          </div>
+        </div>
+      )}
+
+      {showFermeture && (
+        <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999 }}>
+          <div style={{ background: '#18130e', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 12, padding: '32px', maxWidth: 420, width: '90%' }}>
+            <div style={{ fontFamily: 'Georgia, serif', fontSize: 20, color: '#f0e8d8', marginBottom: 20 }}>Fermeture de caisse</div>
+            <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', marginBottom: 8 }}>ESPÈCES EN CAISSE</div>
+            <input type="number" step="0.01" placeholder="0.00" value={espacesFermeture} onChange={e => setEspacesFermeture(e.target.value)} style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 8, color: '#f0e8d8', fontSize: 20, padding: '14px', boxSizing: 'border-box' as const, textAlign: 'center' as const, marginBottom: 20 }} />
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setShowFermeture(false)} style={{ flex: 1, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.15)', color: 'rgba(232,224,213,0.5)', borderRadius: 8, padding: '14px', fontSize: 14, cursor: 'pointer' }}>Annuler</button>
+              <button onClick={async () => { await supabase.from('caisse_sessions').update({ statut: 'fermee', ferme_le: new Date().toISOString(), especes_fermeture: parseFloat(espacesFermeture) || 0 }).eq('id', session.id); onFermer() }} style={{ flex: 2, background: '#c96e6e', color: '#fff', border: 'none', borderRadius: 8, padding: '14px', fontSize: 14, cursor: 'pointer', fontWeight: 700 }}>Fermer la caisse</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
