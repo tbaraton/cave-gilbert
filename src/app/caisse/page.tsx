@@ -1009,8 +1009,13 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
       supabase.from('products').select('id, nom, nom_cuvee, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id').or(`nom.ilike.%${q}%,millesime::text.ilike.%${q}%`).eq('actif', true).limit(20),
       supabase.from('products').select('id, nom, nom_cuvee, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id').not('nom_cuvee', 'is', null).ilike('nom_cuvee', `%${q}%`).eq('actif', true).limit(20),
     ])
-    const seenIds = new Set((byNom || []).map((p: any) => p.id))
-    const byNomMerged = [...(byNom || []), ...(byCuvee || []).filter((p: any) => !seenIds.has(p.id))].slice(0, 20)
+    // Fusionner en priorisant byCuvee (correspondance exacte sur le nom de cuvée)
+    const cuveeIds = new Set((byCuvee || []).map((p: any) => p.id))
+    const nomIds = new Set((byNom || []).map((p: any) => p.id))
+    const byNomMerged = [
+      ...(byCuvee || []),
+      ...(byNom || []).filter((p: any) => !cuveeIds.has(p.id)),
+    ].slice(0, 20)
     const byNomFinal = byNomMerged
     // Recherche par domaine
     const { data: domaines } = await supabase.from('domaines').select('id').ilike('nom', `%${q}%`).limit(5)
