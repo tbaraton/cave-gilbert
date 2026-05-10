@@ -583,6 +583,8 @@ export default function AdminClientsPage() {
   const [page, setPage] = useState(0)
   const [totalCount, setTotalCount] = useState(0)
   const PAGE_SIZE = 100
+  const [sortCol, setSortCol] = useState('nom')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [mainTab, setMainTab] = useState<'clients' | 'demandes'>('clients')
   const [allDemandes, setAllDemandes] = useState<any[]>([])
   const [loadingDemandes, setLoadingDemandes] = useState(false)
@@ -595,7 +597,7 @@ export default function AdminClientsPage() {
     let query = supabase
       .from('customers')
       .select('id, prenom, nom, email, telephone, ville, code_postal, adresse, pays, est_societe, raison_sociale, siret, tarif_pro, remise_pct, remise_raison, notes, newsletter, created_at', { count: 'exact' })
-      .order('nom')
+      .order(sortCol, { ascending: sortDir === 'asc' })
 
     // Filtres côté serveur
     if (search.trim()) {
@@ -610,10 +612,10 @@ export default function AdminClientsPage() {
     setClients(data || [])
     if (count !== null) setTotalCount(count)
     setLoading(false)
-  }, [page, search, filterType])
+  }, [page, search, filterType, sortCol, sortDir])
 
   useEffect(() => { loadClients() }, [loadClients])
-  useEffect(() => { setPage(0) }, [search, filterType])
+  useEffect(() => { setPage(0) }, [search, filterType, sortCol, sortDir])
 
   const loadAllDemandes = useCallback(async () => {
     setLoadingDemandes(true)
@@ -775,8 +777,23 @@ export default function AdminClientsPage() {
                 <table style={{ width: '100%', borderCollapse: 'collapse' as const }}>
                   <thead>
                     <tr style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
-                      {['Client', 'Type', 'Email', 'Téléphone', 'Ville', 'Tarif', ''].map(h => (
-                        <th key={h} style={{ padding: '10px 14px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', fontWeight: 400 }}>{h}</th>
+                      {[
+                        { label: 'Client', col: 'nom' },
+                        { label: 'Type', col: 'est_societe' },
+                        { label: 'Email', col: 'email' },
+                        { label: 'Téléphone', col: 'telephone' },
+                        { label: 'Ville', col: 'ville' },
+                        { label: 'Tarif', col: 'tarif_pro' },
+                        { label: '', col: null },
+                      ].map(({ label, col }) => (
+                        <th key={label} onClick={() => {
+                          if (!col) return
+                          if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+                          else { setSortCol(col); setSortDir('asc') }
+                          setPage(0)
+                        }} style={{ padding: '10px 14px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: sortCol === col ? '#c9a96e' : 'rgba(232,224,213,0.3)', fontWeight: 400, cursor: col ? 'pointer' : 'default', userSelect: 'none' as const, whiteSpace: 'nowrap' as const }}>
+                          {label}{col && sortCol === col ? (sortDir === 'asc' ? ' ↑' : ' ↓') : col ? ' ↕' : ''}
+                        </th>
                       ))}
                     </tr>
                   </thead>
