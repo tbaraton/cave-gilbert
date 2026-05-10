@@ -1319,6 +1319,7 @@ export default function AdminPage() {
     { label: 'Transferts',    href: '/admin/transferts',    icon: '⇄' },
     { label: 'Inventaire',    href: '/admin/inventaire',    icon: '◉' },
     { label: 'Assistant IA',  href: '/admin/ia',            icon: '✦' },
+    { label: 'Utilisateurs',  href: '/admin/utilisateurs',  icon: '👤' },
     { label: 'Import',        href: '/admin/import',        icon: '↑' },
   ]
 
