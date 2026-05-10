@@ -43,6 +43,10 @@ function ModalClient({ client, onClose, onSaved }: { client?: any; onClose: () =
 
   const handleSave = async () => {
     if (!form.nom.trim()) { setError('Le nom est obligatoire'); return }
+    if (!form.prenom.trim()) { setError('Le prénom est obligatoire'); return }
+    if (!form.email.trim()) { setError("L'email est obligatoire"); return }
+    if (!form.code_postal.trim()) { setError('Le code postal est obligatoire'); return }
+    if (!form.ville.trim()) { setError('La ville est obligatoire'); return }
     setSaving(true); setError('')
     const payload = {
       prenom: form.prenom,
