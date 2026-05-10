@@ -824,8 +824,13 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
                     </div>
                     {/* Remise */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <input type="number" min={0} max={100} value={l.remise_pct || ''} placeholder="0" inputMode="decimal"
-                        onChange={e => updateLigne(l.id, 'remise_pct', parseFloat(e.target.value) || 0)}
+                      <input type="number" min={0} max={user.role === 'caviste' ? 20 : 100} value={l.remise_pct || ''} placeholder="0" inputMode="decimal"
+                        onChange={e => {
+                          const val = parseFloat(e.target.value) || 0
+                          const max = user.role === 'caviste' ? 20 : 100
+                          updateLigne(l.id, 'remise_pct', Math.min(val, max))
+                          if (val > 0) setRemise('')  // pas de cumul
+                        }}
                         style={{ width: 52, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 6, color: '#e8e0d5', fontSize: 14, padding: '6px 8px', textAlign: 'center' as const }} />
                       <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>%</span>
                     </div>
@@ -862,8 +867,17 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
                       <button key={v} onClick={() => setRemiseType(v as any)} style={{ background: remiseType === v ? 'rgba(201,169,110,0.2)' : 'transparent', border: 'none', color: remiseType === v ? '#c9a96e' : 'rgba(232,224,213,0.4)', padding: '8px 14px', fontSize: 13, cursor: 'pointer' }}>{l}</button>
                     ))}
                   </div>
-                  <input type="number" step="0.01" placeholder="Remise" value={remise} onChange={e => setRemise(e.target.value)} inputMode="decimal"
-                    style={{ width: 80, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 6, color: '#e8e0d5', fontSize: 15, padding: '8px 10px' }} />
+                  <input type="number" step="0.01" placeholder="Remise"
+                    value={remise}
+                    disabled={lignes.some(l => l.remise_pct > 0)}
+                    onChange={e => {
+                      const val = parseFloat(e.target.value) || 0
+                      const max = user.role === 'caviste' ? 20 : 9999
+                      setRemise(String(Math.min(val, max)))
+                    }}
+                    title={lignes.some(l => l.remise_pct > 0) ? 'Remise par ligne active — pas de cumul' : ''}
+                    inputMode="decimal"
+                    style={{ width: 80, background: lignes.some(l => l.remise_pct > 0) ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 6, color: lignes.some(l => l.remise_pct > 0) ? 'rgba(232,224,213,0.2)' : '#e8e0d5', fontSize: 15, padding: '8px 10px', cursor: lignes.some(l => l.remise_pct > 0) ? 'not-allowed' : 'text' }} />
                 </div>
                 <div style={{ textAlign: 'right' as const }}>
                   {remiseVal > 0 && <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>-{fmt(remiseVal)}</div>}
@@ -1328,7 +1342,14 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
                     </td>
                     <td style={{ padding: '10px', fontSize: 13, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{l.prix_unit.toFixed(2)}€</td>
                     <td style={{ padding: '10px' }}>
-                      <input type="number" min={0} max={100} value={l.remise_pct || ''} placeholder="0" onChange={e => updateLigne(l.id, 'remise_pct', parseFloat(e.target.value) || 0)} style={{ width: 50, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 4, color: '#e8e0d5', fontSize: 13, padding: '4px 6px', textAlign: 'center' as const }} />
+                      <input type="number" min={0} max={user.role === 'caviste' ? 20 : 100} value={l.remise_pct || ''} placeholder="0"
+                        onChange={e => {
+                          const val = parseFloat(e.target.value) || 0
+                          const max = user.role === 'caviste' ? 20 : 100
+                          updateLigne(l.id, 'remise_pct', Math.min(val, max))
+                          if (val > 0) setRemise('')
+                        }}
+                        style={{ width: 50, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 4, color: '#e8e0d5', fontSize: 13, padding: '4px 6px', textAlign: 'center' as const }} />
                     </td>
                     <td style={{ padding: '10px', fontSize: 15, color: '#f0e8d8', fontFamily: 'Georgia, serif', fontWeight: 600 }}>{fmt(l.total)}</td>
                     <td style={{ padding: '10px' }}>
@@ -1399,7 +1420,16 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
                 <button key={v} onClick={() => setRemiseType(v as any)} style={{ background: remiseType === v ? 'rgba(201,169,110,0.2)' : 'transparent', border: 'none', color: remiseType === v ? '#c9a96e' : 'rgba(232,224,213,0.4)', padding: '7px 12px', fontSize: 13, cursor: 'pointer' }}>{l}</button>
               ))}
             </div>
-            <input type="number" step="0.01" placeholder="Remise" value={remise} onChange={e => setRemise(e.target.value)} style={{ flex: 1, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 4, color: '#e8e0d5', fontSize: 14, padding: '7px 10px' }} />
+            <input type="number" step="0.01" placeholder="Remise"
+              value={remise}
+              disabled={lignes.some(l => l.remise_pct > 0)}
+              onChange={e => {
+                const val = parseFloat(e.target.value) || 0
+                const max = user.role === 'caviste' ? 20 : 9999
+                setRemise(String(Math.min(val, max)))
+              }}
+              title={lignes.some(l => l.remise_pct > 0) ? 'Remise par ligne active — pas de cumul' : ''}
+              style={{ flex: 1, background: lignes.some(l => l.remise_pct > 0) ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 4, color: lignes.some(l => l.remise_pct > 0) ? 'rgba(232,224,213,0.2)' : '#e8e0d5', fontSize: 14, padding: '7px 10px', cursor: lignes.some(l => l.remise_pct > 0) ? 'not-allowed' : 'text' }} />
           </div>
           {remiseVal > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'rgba(232,224,213,0.4)', marginBottom: 4 }}><span>Remise</span><span>-{fmt(remiseVal)}</span></div>}
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'rgba(232,224,213,0.35)', marginBottom: 2 }}><span>HT</span><span>{fmt(totalNet / 1.20)}</span></div>
