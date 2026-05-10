@@ -85,17 +85,19 @@ function EcranOuverture({ user, onOuvrir }: { user: User; onOuvrir: (s: Session)
   const [siteId, setSiteId] = useState('')
   const [especes, setEspeces] = useState('')
   const [loading, setLoading] = useState(false)
+  const [ready, setReady] = useState(false)
 
   useEffect(() => {
     const load = async () => {
-      // Vérifier session existante d'abord
-      const { data: session } = await supabase.from('caisse_sessions').select('*').eq('user_id', user.id).eq('statut', 'ouverte').maybeSingle()
-      if (session) { onOuvrir(session); return }
-
-      // Sinon charger les sites
+      // Charger les sites en premier
       const { data: sitesData } = await supabase.from('sites').select('*').eq('actif', true).order('nom')
       setSites(sitesData || [])
       if (sitesData?.length) setSiteId(sitesData[0].id)
+      setReady(true)
+
+      // Ensuite vérifier session existante
+      const { data: session } = await supabase.from('caisse_sessions').select('*').eq('user_id', user.id).eq('statut', 'ouverte').maybeSingle()
+      if (session) onOuvrir(session)
     }
     load()
   }, [])
@@ -112,6 +114,12 @@ function EcranOuverture({ user, onOuvrir }: { user: User; onOuvrir: (s: Session)
     if (data) onOuvrir(data)
     setLoading(false)
   }
+
+  if (!ready) return (
+    <div style={{ minHeight: '100dvh', background: '#0d0a08', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ fontSize: 24, color: '#c9a96e' }}>⟳</div>
+    </div>
+  )
 
   return (
     <div style={{ minHeight: '100dvh', background: '#0d0a08', display: 'flex', flexDirection: 'column' as const, alignItems: 'center', justifyContent: 'center', padding: 24, fontFamily: "'DM Sans', system-ui, sans-serif" }}>
