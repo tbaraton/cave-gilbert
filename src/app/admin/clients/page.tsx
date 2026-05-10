@@ -421,26 +421,31 @@ export default function AdminClientsPage() {
     setLoading(true)
     const from = page * PAGE_SIZE
     const to = from + PAGE_SIZE - 1
-    const { data, error, count } = await supabase
+
+    let query = supabase
       .from('customers')
       .select('id, prenom, nom, email, telephone, ville, code_postal, adresse, pays, est_societe, raison_sociale, siret, tarif_pro, notes, newsletter, created_at', { count: 'exact' })
       .order('nom')
-      .range(from, to)
+
+    // Filtres côté serveur
+    if (search.trim()) {
+      query = query.or(`nom.ilike.%${search}%,prenom.ilike.%${search}%,email.ilike.%${search}%,ville.ilike.%${search}%,raison_sociale.ilike.%${search}%`)
+    }
+    if (filterType === 'particulier') query = query.eq('est_societe', false)
+    else if (filterType === 'societe') query = query.eq('est_societe', true)
+    else if (filterType === 'pro') query = query.eq('tarif_pro', true)
+
+    const { data, error, count } = await query.range(from, to)
     if (error) console.error('Clients error:', error)
     setClients(data || [])
     if (count !== null) setTotalCount(count)
     setLoading(false)
-  }, [page])
+  }, [page, search, filterType])
 
   useEffect(() => { loadClients() }, [loadClients])
   useEffect(() => { setPage(0) }, [search, filterType])
 
-  const filtres = clients.filter(c => {
-    const text = `${c.prenom || ''} ${c.nom || ''} ${c.email || ''} ${c.ville || ''} ${c.raison_sociale || ''}`.toLowerCase()
-    const matchSearch = !search || text.includes(search.toLowerCase())
-    const matchType = filterType === 'tous' ? true : filterType === 'particulier' ? !c.est_societe : filterType === 'societe' ? c.est_societe : c.tarif_pro
-    return matchSearch && matchType
-  })
+  const filtres = clients // Filtres appliqués côté serveur
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#0d0a08', fontFamily: "'DM Sans', system-ui, sans-serif", color: '#e8e0d5' }}>
