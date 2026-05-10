@@ -618,23 +618,7 @@ function ModalNouvelleCommande({ domaines, preselectedDomaineId, onCreated, onCl
   const [error, setError] = useState('')
   const [internalDomaines, setInternalDomaines] = useState<any[]>([])
 
-  // Charger les domaines et pré-sélectionner immédiatement
-  useEffect(() => {
-    const load = async () => {
-      let list = domaines && domaines.length > 0 ? domaines : []
-      if (list.length === 0) {
-        const { data } = await supabase.from('domaines').select('id, nom').order('nom')
-        list = data || []
-        setInternalDomaines(list)
-      }
-      // Pré-sélectionner et charger les produits dès que la liste est prête
-      if (preselectedDomaineId && list.length > 0) {
-        setDomaineId(preselectedDomaineId)
-        loadProduitsDomaine(preselectedDomaineId)
-      }
-    }
-    load()
-  }, [])
+  // (useEffect moved below loadProduitsDomaine)
 
   const allDomaines = domaines && domaines.length > 0 ? domaines : internalDomaines
 
@@ -669,6 +653,23 @@ function ModalNouvelleCommande({ domaines, preselectedDomaineId, onCreated, onCl
     })))
     setLoadingProduits(false)
   }
+
+  // Pré-sélectionner le fournisseur et charger ses produits (après loadProduitsDomaine)
+  useEffect(() => {
+    const load = async () => {
+      let list = domaines && domaines.length > 0 ? domaines : []
+      if (list.length === 0) {
+        const { data } = await supabase.from('domaines').select('id, nom').order('nom')
+        list = data || []
+        setInternalDomaines(list)
+      }
+      if (preselectedDomaineId && list.length > 0) {
+        setDomaineId(preselectedDomaineId)
+        loadProduitsDomaine(preselectedDomaineId)
+      }
+    }
+    load()
+  }, [])
 
 
 
