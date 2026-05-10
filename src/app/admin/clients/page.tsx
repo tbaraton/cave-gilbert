@@ -599,9 +599,15 @@ export default function AdminClientsPage() {
       .select('id, prenom, nom, email, telephone, ville, code_postal, adresse, pays, est_societe, raison_sociale, siret, tarif_pro, remise_pct, remise_raison, notes, newsletter, created_at', { count: 'exact' })
       .order(sortCol, { ascending: sortDir === 'asc' })
 
-    // Filtres côté serveur
+    // Filtres côté serveur — insensible à la casse et aux accents
     if (search.trim()) {
-      query = query.or(`nom.ilike.%${search}%,prenom.ilike.%${search}%,email.ilike.%${search}%,ville.ilike.%${search}%,raison_sociale.ilike.%${search}%`)
+      const s = search.trim()
+      query = query.or(
+        `nom.ilike.%${s}%,prenom.ilike.%${s}%,email.ilike.%${s}%,ville.ilike.%${s}%,raison_sociale.ilike.%${s}%,` +
+        `nom.ilike.%${s.normalize('NFD').replace(/[̀-ͯ]/g, '')}%,` +
+        `prenom.ilike.%${s.normalize('NFD').replace(/[̀-ͯ]/g, '')}%,` +
+        `raison_sociale.ilike.%${s.normalize('NFD').replace(/[̀-ͯ]/g, '')}%`
+      )
     }
     if (filterType === 'particulier') query = query.eq('est_societe', false)
     else if (filterType === 'societe') query = query.eq('est_societe', true)
