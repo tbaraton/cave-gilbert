@@ -928,6 +928,9 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
   const [showAchatsClient, setShowAchatsClient] = useState(false)
 
   // UI
+  const [paiements, setPaiements] = useState<Paiement[]>([])
+  const [modeCourant, setModeCourant] = useState('cb')
+  const [montantSaisi, setMontantSaisi] = useState('')
   const [venteOk, setVenteOk] = useState(false)
   const [derniereVente, setDerniereVente] = useState<any>(null)
   const [showEmailVente, setShowEmailVente] = useState(false)
@@ -1075,6 +1078,7 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
     setNoteGlobale(''); setNoteGlobaleActive(false)
     setSearchClient(''); setClientsFound([]); setEtape('client')
     setDerniereVente(null); setShowEmailVente(false); setEmailVente('')
+    setPaiements([]); setModeCourant('cb'); setMontantSaisi('')
   }
 
   const handleAddFromHistorique = (lignesHist: any[]) => {
@@ -1632,9 +1636,6 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
 
   // ── ÉTAPE PAIEMENT ────────────────────────────────────────────
   if (etape === 'paiement') {
-    const [paiements, setPaiements] = useState<Paiement[]>([])
-    const [modeCourant, setModeCourant] = useState('cb')
-    const [montantSaisi, setMontantSaisi] = useState('')
     const totalPaye = paiements.reduce((acc, p) => acc + p.montant, 0)
     const resteAPayer = Math.max(0, totalNet - totalPaye)
     const monnaie = totalPaye > totalNet ? totalPaye - totalNet : 0
