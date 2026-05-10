@@ -1007,7 +1007,7 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
     // Recherche par nom produit + millésime
     const [{ data: byNom }, { data: byCuvee }] = await Promise.all([
       supabase.from('products').select('id, nom, nom_cuvee, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id').or(`nom.ilike.%${q}%,millesime::text.ilike.%${q}%`).eq('actif', true).limit(20),
-      supabase.from('products').select('id, nom, nom_cuvee, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id').not('nom_cuvee', 'is', null).ilike('nom_cuvee', `%${q}%`).eq('actif', true).limit(20),
+      supabase.from('products').select('id, nom, nom_cuvee, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id').eq('actif', true).not('nom_cuvee', 'is', null).ilike('nom_cuvee', `%${q}%`).limit(20),
     ])
     // Fusionner en priorisant byCuvee (correspondance exacte sur le nom de cuvée)
     const cuveeIds = new Set((byCuvee || []).map((p: any) => p.id))
@@ -1918,7 +1918,7 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
     if (!q.trim()) { setProduits([]); return }
     const [{ data: byNom }, { data: byCuvee }] = await Promise.all([
       supabase.from('products').select('id, nom, nom_cuvee, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id').or(`nom.ilike.%${q}%,millesime::text.ilike.%${q}%`).eq('actif', true).limit(20),
-      supabase.from('products').select('id, nom, nom_cuvee, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id').not('nom_cuvee', 'is', null).ilike('nom_cuvee', `%${q}%`).eq('actif', true).limit(20),
+      supabase.from('products').select('id, nom, nom_cuvee, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id').eq('actif', true).not('nom_cuvee', 'is', null).ilike('nom_cuvee', `%${q}%`).limit(20),
     ])
     const { data: domaines } = await supabase.from('domaines').select('id').ilike('nom', `%${q}%`).limit(5)
     let byDomaine: any[] = []
