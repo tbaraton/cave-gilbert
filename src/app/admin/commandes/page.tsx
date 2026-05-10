@@ -650,11 +650,13 @@ function ModalNouvelleCommande({ domaines, preselectedDomaineId, onCreated, onCl
   }
 
   // Auto-charger les produits si fournisseur pré-sélectionné
+  // On attend que domaines soit chargé pour s'assurer que le select affiche la bonne valeur
   useEffect(() => {
-    if (preselectedDomaineId) {
+    if (preselectedDomaineId && domaines.length > 0) {
+      setDomaineId(preselectedDomaineId)
       loadProduitsDomaine(preselectedDomaineId)
     }
-  }, [])
+  }, [domaines.length])
 
   const toggleProduit = (produit: any) => {
     setSelected(prev => {

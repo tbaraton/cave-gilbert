@@ -202,6 +202,25 @@ function FicheFournisseur({ fournisseur, onEdit, onBack, onCommande }: {
     .filter(c => c.statut === 'reçue')
     .reduce((acc, c) => acc + parseFloat(c.total_ht || 0), 0)
 
+  const handleSupprimer = async () => {
+    setDeleting(true)
+    // Supprimer les associations product_suppliers
+    await supabase.from('product_suppliers').delete().eq('domaine_id', fournisseur.id)
+    // Supprimer les produits associés
+    await supabase.from('products').delete().eq('domaine_id', fournisseur.id)
+    // Supprimer les commandes et leurs lignes
+    const { data: cmds } = await supabase.from('supplier_orders').select('id').eq('domaine_id', fournisseur.id)
+    if (cmds && cmds.length > 0) {
+      const cmdIds = cmds.map((c: any) => c.id)
+      await supabase.from('supplier_order_items').delete().in('order_id', cmdIds)
+      await supabase.from('supplier_orders').delete().eq('domaine_id', fournisseur.id)
+    }
+    // Supprimer le fournisseur
+    await supabase.from('domaines').delete().eq('id', fournisseur.id)
+    setDeleting(false)
+    onDeleted()
+  }
+
   return (
     <div>
       {/* Header */}
@@ -214,6 +233,9 @@ function FicheFournisseur({ fournisseur, onEdit, onBack, onCommande }: {
         <div style={{ display: 'flex', gap: 10 }}>
           <button onClick={onEdit} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.15)', color: 'rgba(232,224,213,0.5)', borderRadius: 4, padding: '9px 16px', fontSize: 11, cursor: 'pointer' }}>
             Modifier
+          </button>
+          <button onClick={() => setShowSupprimer(true)} style={{ background: 'transparent', border: '0.5px solid rgba(201,110,110,0.3)', color: '#c96e6e', borderRadius: 4, padding: '9px 16px', fontSize: 11, cursor: 'pointer' }}>
+            🗑 Supprimer
           </button>
           <button onClick={onCommande} style={{ background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '9px 20px', fontSize: 11, cursor: 'pointer', fontWeight: 500, letterSpacing: 1.5, textTransform: 'uppercase' as const }}>
             📧 Passer une commande
@@ -362,6 +384,29 @@ function FicheFournisseur({ fournisseur, onEdit, onBack, onCommande }: {
           )}
         </div>
       </div>
+      {/* Popup suppression */}
+      {showSupprimer && (
+        <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 }}>
+          <div style={{ background: '#18130e', border: '0.5px solid rgba(201,110,110,0.4)', borderRadius: 8, padding: '32px', maxWidth: 460, width: '100%' }}>
+            <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 300, color: '#c96e6e', marginBottom: 12 }}>⚠ Supprimer le fournisseur</h2>
+            <p style={{ fontSize: 13, color: '#e8e0d5', marginBottom: 8 }}>{fournisseur.nom}</p>
+            <p style={{ fontSize: 13, color: 'rgba(232,224,213,0.6)', marginBottom: 20, lineHeight: 1.7 }}>
+              Êtes-vous sûr de vouloir supprimer ce fournisseur et <strong style={{ color: '#c96e6e' }}>tous les produits associés</strong> ? Cette action est <strong style={{ color: '#c96e6e' }}>irréversible</strong>.
+            </p>
+            <div style={{ background: 'rgba(201,110,110,0.08)', border: '0.5px solid rgba(201,110,110,0.2)', borderRadius: 4, padding: '10px 14px', marginBottom: 24, fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>
+              Seront supprimés : le fournisseur, {produits.length} produit{produits.length > 1 ? 's' : ''} associé{produits.length > 1 ? 's' : ''} et {commandes.length} commande{commandes.length > 1 ? 's' : ''}.
+            </div>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button onClick={() => setShowSupprimer(false)} style={{ flex: 1, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.15)', color: 'rgba(232,224,213,0.5)', borderRadius: 4, padding: '12px', fontSize: 12, cursor: 'pointer' }}>
+                Non, annuler
+              </button>
+              <button onClick={handleSupprimer} disabled={deleting} style={{ flex: 1, background: '#c96e6e', color: '#fff', border: 'none', borderRadius: 4, padding: '12px', fontSize: 12, cursor: 'pointer', fontWeight: 500 }}>
+                {deleting ? '⟳ Suppression...' : 'Oui, supprimer tout'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -462,6 +507,7 @@ export default function AdminFournisseursPage() {
             onEdit={() => setEditing(true)}
             onBack={() => setView('liste')}
             onCommande={handleCommande}
+            onDeleted={() => { setSelected(null); setView('liste'); loadFournisseurs() }}
           />
         )}
 
