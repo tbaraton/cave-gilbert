@@ -168,6 +168,8 @@ function FicheFournisseur({ fournisseur, onEdit, onBack, onCommande, onDeleted }
   const [commandes, setCommandes] = useState<any[]>([])
   const [produits, setProduits] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [showSupprimer, setShowSupprimer] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     const load = async () => {
