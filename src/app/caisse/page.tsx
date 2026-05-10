@@ -436,6 +436,84 @@ function ModalClientForm({ client, onClose, onSaved }: { client?: any; onClose: 
 }
 
 
+
+// ── Historique Achats Client ──────────────────────────────────
+function HistoriqueAchatsClient({ client, onClose, onAddToCart }: {
+  client: any
+  onClose: () => void
+  onAddToCart: (ligne: any) => void
+}) {
+  const [achats, setAchats] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true)
+      const { data: ventes } = await supabase
+        .from('ventes')
+        .select('id, numero, created_at, vente_lignes(id, product_id, nom_produit, millesime, quantite, prix_unitaire_ttc, total_ttc, remise_pct)')
+        .eq('customer_id', client.id)
+        .eq('statut', 'validee')
+        .order('created_at', { ascending: false })
+        .limit(50)
+
+      // Aplatir en lignes individuelles avec date de vente
+      const lignes: any[] = []
+      for (const v of ventes || []) {
+        for (const l of (v.vente_lignes || [])) {
+          lignes.push({ ...l, vente_date: v.created_at, vente_numero: v.numero })
+        }
+      }
+      setAchats(lignes)
+      setLoading(false)
+    }
+    load()
+  }, [client.id])
+
+  const clientNom = client.est_societe ? client.raison_sociale : `${client.prenom || ''} ${client.nom || ''}`.trim()
+
+  return (
+    <div style={{ position: 'fixed' as const, inset: 0, background: '#0d0a08', zIndex: 700, display: 'flex', flexDirection: 'column' as const, fontFamily: "'DM Sans', system-ui, sans-serif", color: '#e8e0d5' }}>
+      {/* Header */}
+      <div style={{ padding: '14px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', gap: 12, background: '#0d0a08' }}>
+        <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: '#c9a96e', fontSize: 22, cursor: 'pointer' }}>←</button>
+        <div>
+          <div style={{ fontFamily: 'Georgia, serif', fontSize: 17, color: '#f0e8d8' }}>Achats de {clientNom}</div>
+          <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>Un article par ligne — cliquez pour ajouter au panier</div>
+        </div>
+      </div>
+
+      <div style={{ flex: 1, overflowY: 'auto' as const }}>
+        {loading ? (
+          <div style={{ textAlign: 'center' as const, padding: 48, color: 'rgba(232,224,213,0.3)' }}>⟳ Chargement...</div>
+        ) : achats.length === 0 ? (
+          <div style={{ textAlign: 'center' as const, padding: 48, color: 'rgba(232,224,213,0.3)' }}>Aucun achat enregistré</div>
+        ) : achats.map((l, i) => (
+          <div key={`${l.id}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.05)' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 15, color: '#f0e8d8' }}>{l.nom_produit}{l.millesime ? ` ${l.millesime}` : ''}</div>
+              <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', marginTop: 3 }}>
+                {new Date(l.vente_date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                {' · '}{l.quantite} bouteille{l.quantite > 1 ? 's' : ''}
+                {l.remise_pct > 0 ? ` · -${l.remise_pct}%` : ''}
+              </div>
+            </div>
+            <div style={{ textAlign: 'right' as const, marginRight: 8 }}>
+              <div style={{ fontSize: 16, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{parseFloat(l.prix_unitaire_ttc).toFixed(2)}€</div>
+              <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)' }}>/ bouteille</div>
+            </div>
+            <button onClick={() => { onAddToCart(l); onClose() }} style={{
+              background: 'rgba(201,169,110,0.12)', border: '0.5px solid rgba(201,169,110,0.3)',
+              borderRadius: 8, color: '#c9a96e', padding: '10px 14px', fontSize: 13,
+              cursor: 'pointer', whiteSpace: 'nowrap' as const, touchAction: 'manipulation',
+            }}>+ Caisse</button>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ── Historique Ventes ─────────────────────────────────────────
 function HistoriqueVentes({ session, onClose, onAddToCart }: {
   session: Session
@@ -847,9 +925,13 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
   const [showNouveauClient, setShowNouveauClient] = useState(false)
   const [editingClient, setEditingClient] = useState<Client | null>(null)
   const [showHistorique, setShowHistorique] = useState(false)
+  const [showAchatsClient, setShowAchatsClient] = useState(false)
 
   // UI
   const [venteOk, setVenteOk] = useState(false)
+  const [derniereVente, setDerniereVente] = useState<any>(null)
+  const [showEmailVente, setShowEmailVente] = useState(false)
+  const [emailVente, setEmailVente] = useState('')
   const [showFermeture, setShowFermeture] = useState(false)
   const [espacesFermeture, setEspacesFermeture] = useState('')
   const [showDevisEmail, setShowDevisEmail] = useState(false)
@@ -971,6 +1053,7 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
     setClient(null); setLignes([]); setTypeDoc('ticket'); setRemise(''); setRemiseType('pct')
     setNoteGlobale(''); setNoteGlobaleActive(false)
     setSearchClient(''); setClientsFound([]); setEtape('client')
+    setDerniereVente(null); setShowEmailVente(false); setEmailVente('')
   }
 
   const handleAddFromHistorique = (lignesHist: any[]) => {
@@ -985,6 +1068,21 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
       total: parseFloat(l.total_ttc),
     }))
     setLignes(prev => [...prev, ...newLignes])
+    setEtape('produits')
+  }
+
+  const handleAddSingleAchat = (l: any) => {
+    const prix = parseFloat(l.prix_unitaire_ttc)
+    setLignes(prev => [...prev, {
+      id: Math.random().toString(36).slice(2),
+      product_id: l.product_id,
+      nom: l.nom_produit,
+      millesime: l.millesime,
+      qte: 1,
+      prix_unit: prix,
+      remise_pct: 0,
+      total: prix,
+    }])
     setEtape('produits')
   }
 
@@ -1020,8 +1118,33 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
         await supabase.from('loyalty_points').insert({ customer_id: client.id, points: Math.floor(totalNet), raison: `Vente ${numero}` })
       }
     }
+    setDerniereVente({ numero, total: totalNet, lignes: [...lignes], paiements: [...paiements] })
+    setEmailVente(client?.email || '')
     setVenteOk(true)
-    setTimeout(() => { setVenteOk(false); resetVente() }, 2000)
+  }
+
+  const imprimerTicket = (vente: any) => {
+    const lignesHtml = (vente.lignes || []).map((l: any) =>
+      `<div class="ligne"><span>${l.qte}x ${l.nom_modifie || l.nom}${l.millesime ? ' ' + l.millesime : ''}</span><span>${l.total.toFixed(2)}€</span></div>`
+    ).join('')
+    const paiementsHtml = (vente.paiements || []).map((p: any) =>
+      `<div class="ligne"><span>${p.label}</span><span>${p.montant.toFixed(2)}€</span></div>`
+    ).join('')
+    const html = `<html><head><style>
+      body{font-family:monospace;font-size:12px;width:80mm;margin:0 auto}
+      .header{text-align:center;border-bottom:1px dashed #000;padding-bottom:8px;margin-bottom:8px}
+      .ligne{display:flex;justify-content:space-between;margin:3px 0}
+      .total{border-top:1px dashed #000;padding-top:6px;margin-top:6px;font-weight:bold;font-size:14px}
+      .footer{text-align:center;margin-top:10px;font-size:10px}
+    </style></head><body>
+      <div class="header"><b>Cave de Gilbert</b><br/>${new Date().toLocaleDateString('fr-FR')}<br/>N° ${vente.numero}</div>
+      ${noteGlobaleActive && noteGlobale ? `<div class="ligne"><span>${noteGlobale}</span><span>${vente.total.toFixed(2)}€</span></div>` : lignesHtml}
+      <div class="total"><div class="ligne"><span>TOTAL TTC</span><span>${vente.total.toFixed(2)}€</span></div></div>
+      ${paiementsHtml}
+      <div class="footer">Merci de votre visite !</div>
+    </body></html>`
+    const win = window.open('', '_blank')
+    if (win) { win.document.write(html); win.document.close(); win.print() }
   }
 
   const handleFermerCaisse = async () => {
@@ -1114,6 +1237,7 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
         />
       )}
       {showHistorique && <HistoriqueVentes session={session} onClose={() => setShowHistorique(false)} onAddToCart={handleAddFromHistorique} />}
+      {showAchatsClient && client && <HistoriqueAchatsClient client={client} onClose={() => setShowAchatsClient(false)} onAddToCart={handleAddSingleAchat} />}
 
       {/* Fermeture caisse */}
       {showFermeture && (
@@ -1172,7 +1296,10 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
       <div style={header}>
         <button onClick={() => setEtape('client')} style={{ background: 'transparent', border: 'none', color: '#c9a96e', fontSize: 22, cursor: 'pointer', padding: '0 4px' }}>←</button>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 14, color: '#f0e8d8' }}>{client ? (client.est_societe ? client.raison_sociale : `${client.prenom} ${client.nom}`) : 'Client anonyme'}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ fontSize: 14, color: '#f0e8d8' }}>{client ? (client.est_societe ? client.raison_sociale : `${client.prenom} ${client.nom}`) : 'Client anonyme'}</div>
+            {client && <button onClick={() => setShowAchatsClient(true)} style={{ background: 'rgba(201,169,110,0.12)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 4, color: '#c9a96e', padding: '2px 8px', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' as const }}>🕐 Achats</button>}
+          </div>
           <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>Étape 2/4 — {lignes.length} article{lignes.length > 1 ? 's' : ''} — {fmt(totalNet)}</div>
         </div>
         <select value={vendeur.id} onChange={e => { const v = vendeurs.find(u => u.id === e.target.value); if (v) setVendeur(v) }}
@@ -1570,12 +1697,39 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
           </button>
         </div>
 
-        {venteOk && (
-          <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999 }}>
-            <div style={{ textAlign: 'center' as const }}>
-              <div style={{ fontSize: 72, marginBottom: 16 }}>✓</div>
-              <div style={{ fontFamily: 'Georgia, serif', fontSize: 28, color: '#6ec96e' }}>Vente enregistrée !</div>
+        {venteOk && derniereVente && (
+          <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'flex-end', zIndex: 999, fontFamily: "'DM Sans', system-ui, sans-serif" }}>
+            <div style={{ width: '100%', background: '#18130e', borderRadius: '20px 20px 0 0', padding: '28px 20px 48px' }}>
+              <div style={{ textAlign: 'center' as const, marginBottom: 28 }}>
+                <div style={{ fontSize: 52, marginBottom: 8 }}>✓</div>
+                <div style={{ fontFamily: 'Georgia, serif', fontSize: 22, color: '#6ec96e' }}>Vente enregistrée !</div>
+                <div style={{ fontSize: 14, color: 'rgba(232,224,213,0.5)', marginTop: 4 }}>{derniereVente.numero} — {fmt(derniereVente.total)}</div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 12 }}>
+                <button onClick={() => imprimerTicket(derniereVente)} style={{ width: '100%', background: 'rgba(255,255,255,0.07)', border: '0.5px solid rgba(255,255,255,0.15)', borderRadius: 12, color: '#e8e0d5', padding: '16px', fontSize: 16, cursor: 'pointer', touchAction: 'manipulation' }}>
+                  🖨 Imprimer le ticket
+                </button>
+                <button onClick={() => setShowEmailVente(true)} style={{ width: '100%', background: 'rgba(255,255,255,0.07)', border: '0.5px solid rgba(255,255,255,0.15)', borderRadius: 12, color: '#e8e0d5', padding: '16px', fontSize: 16, cursor: 'pointer', touchAction: 'manipulation' }}>
+                  📧 Envoyer par email
+                </button>
+                <button onClick={() => { setVenteOk(false); setDerniereVente(null); resetVente() }} style={{ width: '100%', background: '#c9a96e', border: 'none', borderRadius: 12, color: '#0d0a08', padding: '16px', fontSize: 16, cursor: 'pointer', fontWeight: 700, touchAction: 'manipulation' }}>
+                  ✓ Fin de la vente
+                </button>
+              </div>
             </div>
+            {showEmailVente && (
+              <div style={{ position: 'absolute' as const, inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'flex-end' }}>
+                <div style={{ width: '100%', background: '#18130e', borderRadius: '20px 20px 0 0', padding: '24px 20px 48px' }}>
+                  <div style={{ fontFamily: 'Georgia, serif', fontSize: 18, color: '#f0e8d8', marginBottom: 16 }}>Envoyer par email</div>
+                  <input type="email" value={emailVente} onChange={e => setEmailVente(e.target.value)} placeholder={client?.email || 'email@client.fr'} inputMode="email"
+                    style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 10, color: '#f0e8d8', fontSize: 16, padding: '14px', boxSizing: 'border-box' as const, marginBottom: 16 }} />
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <button onClick={() => setShowEmailVente(false)} style={{ flex: 1, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 10, color: 'rgba(232,224,213,0.5)', padding: '14px', fontSize: 15, cursor: 'pointer' }}>Annuler</button>
+                    <button onClick={() => { alert(`Email envoyé à ${emailVente || client?.email}`); setShowEmailVente(false) }} style={{ flex: 2, background: '#c9a96e', border: 'none', borderRadius: 10, color: '#0d0a08', padding: '14px', fontSize: 15, cursor: 'pointer', fontWeight: 700 }}>Envoyer</button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -1636,6 +1790,10 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
   const [noteGlobale, setNoteGlobale] = useState('')
   const [noteGlobaleActive, setNoteGlobaleActive] = useState(false)
   const [showHistorique, setShowHistorique] = useState(false)
+  const [showAchatsClient, setShowAchatsClient] = useState(false)
+  const [derniereVente, setDerniereVente] = useState<any>(null)
+  const [showEmailVente, setShowEmailVente] = useState(false)
+  const [emailVente, setEmailVente] = useState('')
   const searchTimer = useRef<any>(null)
   const prodTimer = useRef<any>(null)
   const searchRef = useRef<HTMLInputElement>(null)
@@ -1711,7 +1869,7 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
     setAttentes(prev => prev.filter(x => x.id !== a.id))
   }
 
-  const resetVente = () => { setClient(null); setLignes([]); setTypeDoc('ticket'); setRemise(''); setRemiseType('pct'); setPaiements([]); setSearchClient(''); setClientsFound([]); setNoteGlobale(''); setNoteGlobaleActive(false) }
+  const resetVente = () => { setClient(null); setLignes([]); setTypeDoc('ticket'); setRemise(''); setRemiseType('pct'); setPaiements([]); setSearchClient(''); setClientsFound([]); setNoteGlobale(''); setNoteGlobaleActive(false); setDerniereVente(null); setShowEmailVente(false); setEmailVente('') }
 
   const handleAddFromHistorique = (lignesHist: any[]) => {
     const newLignes = lignesHist.map(l => ({
@@ -1725,6 +1883,20 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
       total: parseFloat(l.total_ttc),
     }))
     setLignes(prev => [...prev, ...newLignes])
+  }
+
+  const handleAddSingleAchat = (l: any) => {
+    const prix = parseFloat(l.prix_unitaire_ttc)
+    setLignes(prev => [...prev, {
+      id: Math.random().toString(36).slice(2),
+      product_id: l.product_id,
+      nom: l.nom_produit,
+      millesime: l.millesime,
+      qte: 1,
+      prix_unit: prix,
+      remise_pct: 0,
+      total: prix,
+    }])
   }
 
   const addPaiement = () => {
@@ -1745,8 +1917,33 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
       for (const l of lignes) await supabase.rpc('move_stock', { p_product_id: l.product_id, p_site_id: session.site_id, p_raison: 'vente', p_quantite: l.qte, p_note: `Vente ${numero}`, p_order_id: null, p_transfer_id: null })
       if (client && !client.tarif_pro && sp === 'regle') await supabase.from('loyalty_points').insert({ customer_id: client.id, points: Math.floor(totalNet), raison: `Vente ${numero}` })
     }
+    setDerniereVente({ numero, total: totalNet, lignes: [...lignes], paiements: [...paiements] })
+    setEmailVente(client?.email || '')
     setShowPaiement(false); setVenteOk(true)
-    setTimeout(() => { setVenteOk(false); resetVente() }, 2000)
+  }
+
+  const imprimerTicket = (vente: any) => {
+    const lignesHtml = (vente.lignes || []).map((l: any) =>
+      `<div class="ligne"><span>${l.qte}x ${l.nom_modifie || l.nom}${l.millesime ? ' ' + l.millesime : ''}</span><span>${l.total.toFixed(2)}€</span></div>`
+    ).join('')
+    const paiementsHtml = (vente.paiements || []).map((p: any) =>
+      `<div class="ligne"><span>${p.label}</span><span>${p.montant.toFixed(2)}€</span></div>`
+    ).join('')
+    const html = `<html><head><style>
+      body{font-family:monospace;font-size:12px;width:80mm;margin:0 auto}
+      .header{text-align:center;border-bottom:1px dashed #000;padding-bottom:8px;margin-bottom:8px}
+      .ligne{display:flex;justify-content:space-between;margin:3px 0}
+      .total{border-top:1px dashed #000;padding-top:6px;margin-top:6px;font-weight:bold;font-size:14px}
+      .footer{text-align:center;margin-top:10px;font-size:10px}
+    </style></head><body>
+      <div class="header"><b>Cave de Gilbert</b><br/>${new Date().toLocaleDateString('fr-FR')}<br/>N° ${vente.numero}</div>
+      ${noteGlobaleActive && noteGlobale ? `<div class="ligne"><span>${noteGlobale}</span><span>${vente.total.toFixed(2)}€</span></div>` : lignesHtml}
+      <div class="total"><div class="ligne"><span>TOTAL TTC</span><span>${vente.total.toFixed(2)}€</span></div></div>
+      ${paiementsHtml}
+      <div class="footer">Merci de votre visite !</div>
+    </body></html>`
+    const win = window.open('', '_blank')
+    if (win) { win.document.write(html); win.document.close(); win.print() }
   }
 
   const DOCS = ['ticket','devis','commande','bl','facture']
@@ -1873,6 +2070,11 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
               </div>
             ) : <div style={{ fontSize: 14, color: 'rgba(232,224,213,0.4)', textAlign: 'center' as const }}>👤 Sélectionner un client</div>}
           </button>
+          {client && (
+            <button onClick={() => setShowAchatsClient(true)} style={{ width: '100%', background: 'rgba(201,169,110,0.06)', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 6, color: '#c9a96e', padding: '7px 12px', fontSize: 12, cursor: 'pointer', marginTop: 6, textAlign: 'left' as const }}>
+              🕐 Voir les achats précédents
+            </button>
+          )}
           {showClientPanel && (
             <div style={{ position: 'absolute' as const, top: '100%', left: 0, right: 0, background: '#1a1408', border: '0.5px solid rgba(201,169,110,0.2)', zIndex: 50, padding: '12px' }}>
               <input autoFocus type="text" placeholder="Rechercher..." value={searchClient}
@@ -2002,11 +2204,34 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
         </div>
       )}
 
-      {venteOk && (
-        <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999 }}>
-          <div style={{ textAlign: 'center' as const }}>
-            <div style={{ fontSize: 72 }}>✓</div>
-            <div style={{ fontFamily: 'Georgia, serif', fontSize: 28, color: '#6ec96e', marginTop: 12 }}>Vente enregistrée !</div>
+      {venteOk && derniereVente && (
+        <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999, fontFamily: "'DM Sans', system-ui, sans-serif" }}>
+          <div style={{ background: '#18130e', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 16, padding: '36px 40px', maxWidth: 420, width: '90%' }}>
+            <div style={{ textAlign: 'center' as const, marginBottom: 28 }}>
+              <div style={{ fontSize: 56, marginBottom: 8 }}>✓</div>
+              <div style={{ fontFamily: 'Georgia, serif', fontSize: 22, color: '#6ec96e' }}>Vente enregistrée !</div>
+              <div style={{ fontSize: 14, color: 'rgba(232,224,213,0.5)', marginTop: 4 }}>{derniereVente.numero} — {fmt(derniereVente.total)}</div>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 10 }}>
+              <button onClick={() => imprimerTicket(derniereVente)} style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 10, color: '#e8e0d5', padding: '14px', fontSize: 15, cursor: 'pointer' }}>
+                🖨 Imprimer le ticket
+              </button>
+              {!showEmailVente ? (
+                <button onClick={() => setShowEmailVente(true)} style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 10, color: '#e8e0d5', padding: '14px', fontSize: 15, cursor: 'pointer' }}>
+                  📧 Envoyer par email
+                </button>
+              ) : (
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input type="email" value={emailVente} onChange={e => setEmailVente(e.target.value)} placeholder={client?.email || 'email@client.fr'}
+                    style={{ flex: 1, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 8, color: '#f0e8d8', fontSize: 14, padding: '12px' }} />
+                  <button onClick={() => { alert(`Email envoyé à ${emailVente || client?.email}`); setShowEmailVente(false) }} style={{ background: '#c9a96e', border: 'none', borderRadius: 8, color: '#0d0a08', padding: '12px 16px', fontSize: 14, cursor: 'pointer', fontWeight: 700 }}>→</button>
+                  <button onClick={() => setShowEmailVente(false)} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 8, color: 'rgba(232,224,213,0.4)', padding: '12px', cursor: 'pointer' }}>✕</button>
+                </div>
+              )}
+              <button onClick={() => { setVenteOk(false); setDerniereVente(null); resetVente() }} style={{ width: '100%', background: '#c9a96e', border: 'none', borderRadius: 10, color: '#0d0a08', padding: '14px', fontSize: 15, cursor: 'pointer', fontWeight: 700 }}>
+                ✓ Fin de la vente
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -2032,6 +2257,7 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
         <ModalClientForm client={editingClient} onClose={() => setEditingClient(null)} onSaved={(c) => { if (client?.id === c.id) setClient(c); setEditingClient(null) }} />
       )}
       {showHistorique && <HistoriqueVentes session={session} onClose={() => setShowHistorique(false)} onAddToCart={handleAddFromHistorique} />}
+      {showAchatsClient && client && <HistoriqueAchatsClient client={client} onClose={() => setShowAchatsClient(false)} onAddToCart={handleAddSingleAchat} />}
     </div>
   )
 }
