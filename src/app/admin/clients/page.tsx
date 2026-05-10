@@ -786,6 +786,7 @@ export default function AdminClientsPage() {
                 </div>
               </div>
             )}
+            </>)}
           </>
         )}
       </main>
