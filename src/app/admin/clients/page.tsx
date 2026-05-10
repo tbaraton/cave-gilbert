@@ -592,31 +592,50 @@ export default function AdminClientsPage() {
   const loadClients = useCallback(async () => {
     setLoading(true)
     const from = page * PAGE_SIZE
-    const to = from + PAGE_SIZE - 1
 
-    let query = supabase
-      .from('customers')
-      .select('id, prenom, nom, email, telephone, ville, code_postal, adresse, pays, est_societe, raison_sociale, siret, tarif_pro, remise_pct, remise_raison, notes, newsletter, created_at', { count: 'exact' })
-      .order(sortCol, { ascending: sortDir === 'asc' })
-
-    // Filtres côté serveur — insensible à la casse et aux accents
     if (search.trim()) {
-      const s = search.trim()
-      query = query.or(
-        `nom.ilike.%${s}%,prenom.ilike.%${s}%,email.ilike.%${s}%,ville.ilike.%${s}%,raison_sociale.ilike.%${s}%,` +
-        `nom.ilike.%${s.normalize('NFD').replace(/[̀-ͯ]/g, '')}%,` +
-        `prenom.ilike.%${s.normalize('NFD').replace(/[̀-ͯ]/g, '')}%,` +
-        `raison_sociale.ilike.%${s.normalize('NFD').replace(/[̀-ͯ]/g, '')}%`
-      )
+      // Recherche floue via RPC (accents + fautes de frappe)
+      const { data, error } = await supabase.rpc('search_customers_fuzzy', {
+        search_term: search.trim(),
+        p_limit: PAGE_SIZE,
+        p_offset: from,
+      })
+      if (error) {
+        // Fallback si la fonction n'existe pas encore
+        console.error('RPC error, fallback:', error)
+        const s = search.trim()
+        const sNorm = s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+        let q = supabase.from('customers')
+          .select('id, prenom, nom, email, telephone, ville, code_postal, adresse, pays, est_societe, raison_sociale, siret, tarif_pro, remise_pct, remise_raison, notes, newsletter, created_at', { count: 'exact' })
+          .or(`nom.ilike.%${s}%,prenom.ilike.%${s}%,email.ilike.%${s}%,raison_sociale.ilike.%${s}%,nom.ilike.%${sNorm}%,prenom.ilike.%${sNorm}%`)
+          .order(sortCol, { ascending: sortDir === 'asc' }).range(from, from + PAGE_SIZE - 1)
+        if (filterType === 'particulier') q = q.eq('est_societe', false)
+        else if (filterType === 'societe') q = q.eq('est_societe', true)
+        else if (filterType === 'pro') q = q.eq('tarif_pro', true)
+        const { data: d2, count } = await q
+        setClients(d2 || []); if (count !== null) setTotalCount(count)
+      } else {
+        let filtered = data || []
+        if (filterType === 'particulier') filtered = filtered.filter((c: any) => !c.est_societe)
+        else if (filterType === 'societe') filtered = filtered.filter((c: any) => c.est_societe)
+        else if (filterType === 'pro') filtered = filtered.filter((c: any) => c.tarif_pro)
+        setClients(filtered)
+        setTotalCount(filtered.length)
+      }
+    } else {
+      // Sans recherche : requête normale paginée
+      let query = supabase
+        .from('customers')
+        .select('id, prenom, nom, email, telephone, ville, code_postal, adresse, pays, est_societe, raison_sociale, siret, tarif_pro, remise_pct, remise_raison, notes, newsletter, created_at', { count: 'exact' })
+        .order(sortCol, { ascending: sortDir === 'asc' })
+      if (filterType === 'particulier') query = query.eq('est_societe', false)
+      else if (filterType === 'societe') query = query.eq('est_societe', true)
+      else if (filterType === 'pro') query = query.eq('tarif_pro', true)
+      const { data, error, count } = await query.range(from, from + PAGE_SIZE - 1)
+      if (error) console.error('Clients error:', error)
+      setClients(data || [])
+      if (count !== null) setTotalCount(count)
     }
-    if (filterType === 'particulier') query = query.eq('est_societe', false)
-    else if (filterType === 'societe') query = query.eq('est_societe', true)
-    else if (filterType === 'pro') query = query.eq('tarif_pro', true)
-
-    const { data, error, count } = await query.range(from, to)
-    if (error) console.error('Clients error:', error)
-    setClients(data || [])
-    if (count !== null) setTotalCount(count)
     setLoading(false)
   }, [page, search, filterType, sortCol, sortDir])
 
