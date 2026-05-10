@@ -832,7 +832,15 @@ export default function AdminClientsPage() {
       </main>
 
       {showNouveauClient && <ModalClient onClose={() => setShowNouveauClient(false)} onSaved={() => { loadClients(); setShowNouveauClient(false) }} />}
-      {editingClient && <ModalClient client={editingClient} onClose={() => setEditingClient(null)} onSaved={() => { loadClients(); setEditingClient(null) }} />}
+      {editingClient && <ModalClient client={editingClient} onClose={() => setEditingClient(null)} onSaved={async () => {
+        await loadClients()
+        // Refresh selectedClient if it's the one being edited
+        if (selectedClient?.id === editingClient.id) {
+          const { data } = await supabase.from('customers').select('id, prenom, nom, email, telephone, ville, code_postal, adresse, pays, est_societe, raison_sociale, siret, tarif_pro, remise_pct, remise_raison, notes, newsletter, created_at').eq('id', editingClient.id).single()
+          if (data) setSelectedClient(data)
+        }
+        setEditingClient(null)
+      }} />}
     </div>
   )
 }
