@@ -188,11 +188,22 @@ function ModalClientForm({ client, onClose, onSaved }: { client?: Client; onClos
   }
 
   const handleSaveDemande = async () => {
-    if (!demande.titre.trim() || !client?.id) return
-    await supabase.from('customer_requests').insert({ customer_id: client.id, titre: demande.titre, description: demande.description || null, date_limite: demande.date_limite || null, statut: 'en_attente' })
+    const clientId = client?.id || (client as any)?.id
+    if (!demande.titre.trim() || !clientId) {
+      alert('Impossible de sauvegarder : client non identifié')
+      return
+    }
+    const { error } = await supabase.from('customer_requests').insert({
+      customer_id: clientId,
+      titre: demande.titre,
+      description: demande.description || null,
+      date_limite: demande.date_limite || null,
+      statut: 'en_attente'
+    })
+    if (error) { alert('Erreur: ' + error.message); return }
     setDemande({ titre: '', description: '', date_limite: '' })
     setShowDemande(false)
-    alert('Demande enregistrée !')
+    alert('Demande enregistrée ✓')
   }
 
   const inp = { width: '100%', background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.15)', borderRadius: 10, color: '#f0e8d8', fontSize: 15, padding: '14px', boxSizing: 'border-box' as const }
