@@ -996,47 +996,33 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
   // ── Recherche produit ──
   const searchProduits = async (q: string) => {
     if (!q.trim()) { setProduits([]); return }
-    const { data } = await supabase.from('products')
-      .select('id, nom, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine:domaines(nom), appellation:appellations(nom), region:regions(nom)')
+    // Recherche par nom produit + millésime
+    const { data: byNom } = await supabase.from('products')
+      .select('id, nom, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id')
       .or(`nom.ilike.%${q}%,millesime::text.ilike.%${q}%`)
       .eq('actif', true).limit(12)
-    if (data?.length) {
-      const ids = data.map((p: any) => p.id)
-      const { data: stockData } = await supabase.from('stock').select('product_id, quantite').eq('site_id', session.site_id).in('product_id', ids)
-      const stockMap = Object.fromEntries((stockData || []).map((s: any) => [s.product_id, s.quantite || 0]))
-      // Also search by domaine if no results yet
-      let allData = data
-      if (data.length < 3) {
-        const { data: data2 } = await supabase.from('products')
-          .select('id, nom, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine:domaines(nom), appellation:appellations(nom), region:regions(nom)')
-          .eq('actif', true).limit(12)
-        const existingIds = new Set(data.map((p: any) => p.id))
-        const extra = (data2 || []).filter((p: any) =>
-          !existingIds.has(p.id) && (p.domaine?.nom?.toLowerCase().includes(q.toLowerCase()) || p.appellation?.nom?.toLowerCase().includes(q.toLowerCase()) || p.region?.nom?.toLowerCase().includes(q.toLowerCase()))
-        )
-        allData = [...data, ...extra].slice(0, 12)
-      }
-      const allIds = allData.map((p: any) => p.id)
-      const { data: stockData2 } = await supabase.from('stock').select('product_id, quantite').eq('site_id', session.site_id).in('product_id', allIds)
-      const stockMap2 = Object.fromEntries((stockData2 || []).map((s: any) => [s.product_id, s.quantite || 0]))
-      setProduits(allData.map((p: any) => ({ ...p, stock: stockMap2[p.id] || 0 })))
-    } else {
-      // Search by domaine/appellation/region
-      const { data: data2 } = await supabase.from('products')
-        .select('id, nom, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine:domaines(nom), appellation:appellations(nom), region:regions(nom)')
-        .eq('actif', true).limit(50)
-      const filtered = (data2 || []).filter((p: any) =>
-        p.domaine?.nom?.toLowerCase().includes(q.toLowerCase()) ||
-        p.appellation?.nom?.toLowerCase().includes(q.toLowerCase()) ||
-        p.region?.nom?.toLowerCase().includes(q.toLowerCase())
-      ).slice(0, 12)
-      if (filtered.length) {
-        const ids = filtered.map((p: any) => p.id)
-        const { data: st } = await supabase.from('stock').select('product_id, quantite').eq('site_id', session.site_id).in('product_id', ids)
-        const sm = Object.fromEntries((st || []).map((s: any) => [s.product_id, s.quantite || 0]))
-        setProduits(filtered.map((p: any) => ({ ...p, stock: sm[p.id] || 0 })))
-      } else setProduits([])
+    // Recherche par domaine
+    const { data: domaines } = await supabase.from('domaines').select('id').ilike('nom', `%${q}%`).limit(5)
+    let byDomaine: any[] = []
+    if (domaines?.length) {
+      const domaineIds = domaines.map((d: any) => d.id)
+      const { data } = await supabase.from('products')
+        .select('id, nom, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id')
+        .in('domaine_id', domaineIds).eq('actif', true).limit(12)
+      byDomaine = data || []
     }
+    const existingIds = new Set((byNom || []).map((p: any) => p.id))
+    const merged = [...(byNom || []), ...byDomaine.filter((p: any) => !existingIds.has(p.id))].slice(0, 12)
+    if (merged.length) {
+      // Charger les noms de domaines
+      const domaineIds = [...new Set(merged.map((p: any) => p.domaine_id).filter(Boolean))]
+      const { data: domainesData } = await supabase.from('domaines').select('id, nom').in('id', domaineIds)
+      const domaineMap = Object.fromEntries((domainesData || []).map((d: any) => [d.id, d.nom]))
+      const ids = merged.map((p: any) => p.id)
+      const { data: st } = await supabase.from('stock').select('product_id, quantite').eq('site_id', session.site_id).in('product_id', ids)
+      const sm = Object.fromEntries((st || []).map((s: any) => [s.product_id, s.quantite || 0]))
+      setProduits(merged.map((p: any) => ({ ...p, stock: sm[p.id] || 0, domaine_nom: domaineMap[p.domaine_id] || '' })))
+    } else setProduits([])
   }
 
   const handleSearchProduit = (v: string) => {
@@ -1866,29 +1852,29 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
 
   const searchProduits = async (q: string) => {
     if (!q.trim()) { setProduits([]); return }
-    const { data } = await supabase.from('products')
-      .select('id, nom, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine:domaines(nom), appellation:appellations(nom), region:regions(nom)')
+    const { data: byNom } = await supabase.from('products')
+      .select('id, nom, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id')
       .or(`nom.ilike.%${q}%,millesime::text.ilike.%${q}%`)
       .eq('actif', true).limit(12)
-    let allData = data || []
-    // Also search by domaine/appellation/region
-    const { data: data2 } = await supabase.from('products')
-      .select('id, nom, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine:domaines(nom), appellation:appellations(nom), region:regions(nom)')
-      .eq('actif', true).limit(100)
-    const existingIds = new Set(allData.map((p: any) => p.id))
-    const extra = (data2 || []).filter((p: any) =>
-      !existingIds.has(p.id) && (
-        p.domaine?.nom?.toLowerCase().includes(q.toLowerCase()) ||
-        p.appellation?.nom?.toLowerCase().includes(q.toLowerCase()) ||
-        p.region?.nom?.toLowerCase().includes(q.toLowerCase())
-      )
-    ).slice(0, 12 - allData.length)
-    allData = [...allData, ...extra].slice(0, 12)
-    if (allData.length) {
-      const ids = allData.map((p: any) => p.id)
+    const { data: domaines } = await supabase.from('domaines').select('id').ilike('nom', `%${q}%`).limit(5)
+    let byDomaine: any[] = []
+    if (domaines?.length) {
+      const domaineIds = domaines.map((d: any) => d.id)
+      const { data } = await supabase.from('products')
+        .select('id, nom, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id')
+        .in('domaine_id', domaineIds).eq('actif', true).limit(12)
+      byDomaine = data || []
+    }
+    const existingIds = new Set((byNom || []).map((p: any) => p.id))
+    const merged = [...(byNom || []), ...byDomaine.filter((p: any) => !existingIds.has(p.id))].slice(0, 12)
+    if (merged.length) {
+      const domaineIds2 = [...new Set(merged.map((p: any) => p.domaine_id).filter(Boolean))]
+      const { data: domainesData } = await supabase.from('domaines').select('id, nom').in('id', domaineIds2)
+      const domaineMap = Object.fromEntries((domainesData || []).map((d: any) => [d.id, d.nom]))
+      const ids = merged.map((p: any) => p.id)
       const { data: st } = await supabase.from('stock').select('product_id, quantite').eq('site_id', session.site_id).in('product_id', ids)
       const sm = Object.fromEntries((st || []).map((s: any) => [s.product_id, s.quantite || 0]))
-      setProduits(allData.map((p: any) => ({ ...p, stock: sm[p.id] || 0 })))
+      setProduits(merged.map((p: any) => ({ ...p, stock: sm[p.id] || 0, domaine_nom: domaineMap[p.domaine_id] || '' })))
     } else setProduits([])
   }
 
