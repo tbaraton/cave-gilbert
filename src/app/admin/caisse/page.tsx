@@ -87,13 +87,17 @@ function EcranOuverture({ user, onOuvrir }: { user: User; onOuvrir: (s: Session)
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    supabase.from('sites').select('*').eq('actif', true).order('nom').then(({ data }) => {
-      setSites(data || [])
-      if (data?.length) setSiteId(data[0].id)
-    })
-    supabase.from('caisse_sessions').select('*').eq('user_id', user.id).eq('statut', 'ouverte').maybeSingle().then(({ data }) => {
-      if (data) onOuvrir(data)
-    })
+    const load = async () => {
+      // Charger les sites d'abord
+      const { data: sitesData } = await supabase.from('sites').select('*').eq('actif', true).order('nom')
+      setSites(sitesData || [])
+      if (sitesData?.length) setSiteId(sitesData[0].id)
+
+      // Ensuite vérifier session existante
+      const { data: session } = await supabase.from('caisse_sessions').select('*').eq('user_id', user.id).eq('statut', 'ouverte').maybeSingle()
+      if (session) onOuvrir(session)
+    }
+    load()
   }, [])
 
   const handleOuvrir = async () => {
