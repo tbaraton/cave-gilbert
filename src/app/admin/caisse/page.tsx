@@ -136,6 +136,194 @@ function EcranOuverture({ user, onOuvrir }: { user: User; onOuvrir: (s: Session)
   )
 }
 
+
+// ── Modal Nouveau/Edit Client (Caisse) ───────────────────────
+function ModalClientForm({ client, onClose, onSaved }: { client?: Client; onClose: () => void; onSaved: (c: Client) => void }) {
+  const isNew = !client?.id
+  const [form, setForm] = useState({
+    prenom: client?.prenom || '',
+    nom: client?.nom || '',
+    email: client?.email || '',
+    telephone: client?.telephone || '',
+    adresse: (client as any)?.adresse || '',
+    code_postal: (client as any)?.code_postal || '',
+    ville: (client as any)?.ville || '',
+    pays: (client as any)?.pays || 'France',
+    est_societe: client?.est_societe || false,
+    raison_sociale: client?.raison_sociale || '',
+    tarif_pro: client?.tarif_pro || false,
+    notes: (client as any)?.notes || '',
+  })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [villesSugg, setVillesSugg] = useState<string[]>([])
+  const [showDemande, setShowDemande] = useState(false)
+  const [demande, setDemande] = useState({ titre: '', description: '', date_limite: '' })
+
+  const lookupCP = async (cp: string) => {
+    if (cp.length !== 5) { setVillesSugg([]); return }
+    try {
+      const res = await fetch(`https://geo.api.gouv.fr/communes?codePostal=${cp}&fields=nom&format=json`)
+      const data = await res.json()
+      const villes = data.map((c: any) => c.nom).sort()
+      setVillesSugg(villes)
+      if (villes.length === 1) setForm(f => ({ ...f, ville: villes[0] }))
+    } catch { setVillesSugg([]) }
+  }
+
+  const handleSave = async () => {
+    if (!form.est_societe && !form.nom.trim()) { setError('Le nom est obligatoire'); return }
+    if (!form.est_societe && !form.prenom.trim()) { setError('Le prénom est obligatoire'); return }
+    if (form.est_societe && !form.raison_sociale.trim()) { setError('La raison sociale est obligatoire'); return }
+    if (!form.email.trim()) { setError("L'email est obligatoire"); return }
+    if (!form.code_postal.trim()) { setError('Le code postal est obligatoire'); return }
+    if (!form.ville.trim()) { setError('La ville est obligatoire'); return }
+    setSaving(true); setError('')
+    const payload = { ...form, pays: form.pays || 'France', raison_sociale: form.est_societe ? form.raison_sociale : null, tarif_pro: form.tarif_pro }
+    const { data, error: err } = isNew
+      ? await supabase.from('customers').insert(payload).select('id, prenom, nom, raison_sociale, est_societe, tarif_pro, remise_pct, email, telephone').single()
+      : await supabase.from('customers').update(payload).eq('id', client!.id).select('id, prenom, nom, raison_sociale, est_societe, tarif_pro, remise_pct, email, telephone').single()
+    if (err) { setError(err.message); setSaving(false); return }
+    onSaved(data as Client)
+  }
+
+  const handleSaveDemande = async () => {
+    if (!demande.titre.trim() || !client?.id) return
+    await supabase.from('customer_requests').insert({ customer_id: client.id, titre: demande.titre, description: demande.description || null, date_limite: demande.date_limite || null, statut: 'en_attente' })
+    setDemande({ titre: '', description: '', date_limite: '' })
+    setShowDemande(false)
+    alert('Demande enregistrée !')
+  }
+
+  const inp = { width: '100%', background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.15)', borderRadius: 10, color: '#f0e8d8', fontSize: 15, padding: '14px', boxSizing: 'border-box' as const }
+  const lbl = { fontSize: 11, color: 'rgba(232,224,213,0.4)', letterSpacing: 1, display: 'block' as const, marginBottom: 6 }
+
+  return (
+    <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.9)', zIndex: 500, overflowY: 'auto' as const }}>
+      <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column' as const, background: '#0d0a08', fontFamily: "'DM Sans', system-ui, sans-serif", color: '#e8e0d5' }}>
+        {/* Header */}
+        <div style={{ padding: '14px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', gap: 12, background: '#0d0a08', position: 'sticky' as const, top: 0, zIndex: 10 }}>
+          <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: '#c9a96e', fontSize: 22, cursor: 'pointer' }}>←</button>
+          <div style={{ fontFamily: 'Georgia, serif', fontSize: 17, color: '#f0e8d8' }}>{isNew ? 'Nouveau client' : 'Modifier le client'}</div>
+        </div>
+
+        <div style={{ flex: 1, padding: '20px 16px', overflowY: 'auto' as const }}>
+          {error && <div style={{ background: 'rgba(201,110,110,0.15)', border: '0.5px solid rgba(201,110,110,0.4)', borderRadius: 8, padding: '12px', marginBottom: 16, fontSize: 14, color: '#c96e6e' }}>{error}</div>}
+
+          {/* Société toggle */}
+          <div onClick={() => setForm(f => ({ ...f, est_societe: !f.est_societe }))} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', background: form.est_societe ? 'rgba(201,169,110,0.08)' : 'rgba(255,255,255,0.03)', borderRadius: 10, border: `0.5px solid ${form.est_societe ? 'rgba(201,169,110,0.3)' : 'rgba(255,255,255,0.08)'}`, cursor: 'pointer', marginBottom: 20 }}>
+            <div style={{ width: 22, height: 22, borderRadius: 4, border: `2px solid ${form.est_societe ? '#c9a96e' : 'rgba(255,255,255,0.3)'}`, background: form.est_societe ? '#c9a96e' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              {form.est_societe && <span style={{ fontSize: 13, color: '#0d0a08', fontWeight: 700 }}>✓</span>}
+            </div>
+            <div>
+              <div style={{ fontSize: 15, color: '#f0e8d8' }}>Client Société / Professionnel</div>
+              <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>Cochez pour afficher les champs entreprise</div>
+            </div>
+          </div>
+
+          {form.est_societe && (
+            <div style={{ marginBottom: 16 }}>
+              <label style={lbl}>Raison sociale *</label>
+              <input value={form.raison_sociale} onChange={e => setForm(f => ({ ...f, raison_sociale: e.target.value }))} style={inp} placeholder="Nom de la société" />
+              <div style={{ marginTop: 12 }}>
+                <label style={lbl}>Tarif applicable</label>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  {[{ v: false, l: 'Particulier TTC' }, { v: true, l: 'Tarif professionnel' }].map(({ v, l }) => (
+                    <button key={String(v)} onClick={() => setForm(f => ({ ...f, tarif_pro: v }))} style={{ flex: 1, background: form.tarif_pro === v ? 'rgba(201,169,110,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${form.tarif_pro === v ? '#c9a96e' : 'rgba(255,255,255,0.1)'}`, color: form.tarif_pro === v ? '#c9a96e' : 'rgba(232,224,213,0.4)', borderRadius: 8, padding: '12px', fontSize: 14, cursor: 'pointer' }}>{l}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+            <div>
+              <label style={lbl}>Prénom {!form.est_societe && '*'}</label>
+              <input value={form.prenom} onChange={e => setForm(f => ({ ...f, prenom: e.target.value }))} style={inp} autoCapitalize="words" />
+            </div>
+            <div>
+              <label style={lbl}>Nom {!form.est_societe && '*'}</label>
+              <input value={form.nom} onChange={e => setForm(f => ({ ...f, nom: e.target.value }))} style={inp} autoCapitalize="words" />
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 14 }}>
+            <label style={lbl}>Email *</label>
+            <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} style={inp} inputMode="email" />
+          </div>
+          <div style={{ marginBottom: 14 }}>
+            <label style={lbl}>Téléphone</label>
+            <input type="tel" value={form.telephone} onChange={e => setForm(f => ({ ...f, telephone: e.target.value }))} style={inp} inputMode="tel" />
+          </div>
+          <div style={{ marginBottom: 14 }}>
+            <label style={lbl}>Adresse</label>
+            <input value={form.adresse} onChange={e => setForm(f => ({ ...f, adresse: e.target.value }))} style={inp} />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+            <div>
+              <label style={lbl}>Code postal *</label>
+              <input value={form.code_postal} onChange={e => { setForm(f => ({ ...f, code_postal: e.target.value })); lookupCP(e.target.value) }} style={inp} inputMode="numeric" maxLength={5} />
+            </div>
+            <div>
+              <label style={lbl}>Ville *</label>
+              {villesSugg.length > 1 ? (
+                <select value={form.ville} onChange={e => setForm(f => ({ ...f, ville: e.target.value }))} style={{ ...inp, background: '#1a1408', cursor: 'pointer' }}>
+                  <option value="">— Choisir —</option>
+                  {villesSugg.map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+              ) : (
+                <input value={form.ville} onChange={e => setForm(f => ({ ...f, ville: e.target.value }))} style={inp} />
+              )}
+            </div>
+          </div>
+          <div style={{ marginBottom: 20 }}>
+            <label style={lbl}>Notes internes</label>
+            <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} style={{ ...inp, resize: 'vertical' as const }} placeholder="Préférences, informations..." />
+          </div>
+
+          {/* Demande client (seulement en édition) */}
+          {!isNew && (
+            <div style={{ background: '#18130e', borderRadius: 12, padding: '16px', border: '0.5px solid rgba(255,255,255,0.07)', marginBottom: 20 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: showDemande ? 14 : 0 }}>
+                <div style={{ fontSize: 14, color: '#c9a96e' }}>📋 Ajouter une demande</div>
+                <button onClick={() => setShowDemande(!showDemande)} style={{ background: 'transparent', border: '0.5px solid rgba(201,169,110,0.3)', color: '#c9a96e', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: 'pointer' }}>
+                  {showDemande ? 'Annuler' : '+ Nouvelle'}
+                </button>
+              </div>
+              {showDemande && (
+                <div>
+                  <div style={{ marginBottom: 10 }}>
+                    <label style={lbl}>Objet / Titre *</label>
+                    <input value={demande.titre} onChange={e => setDemande(d => ({ ...d, titre: e.target.value }))} style={inp} placeholder="Ex: Recherche Pommard 2019..." />
+                  </div>
+                  <div style={{ marginBottom: 10 }}>
+                    <label style={lbl}>Description</label>
+                    <input value={demande.description} onChange={e => setDemande(d => ({ ...d, description: e.target.value }))} style={inp} placeholder="Détails..." />
+                  </div>
+                  <div style={{ marginBottom: 14 }}>
+                    <label style={lbl}>Date limite de réponse</label>
+                    <input type="date" value={demande.date_limite} onChange={e => setDemande(d => ({ ...d, date_limite: e.target.value }))} style={inp} />
+                  </div>
+                  <button onClick={handleSaveDemande} disabled={!demande.titre.trim()} style={{ width: '100%', background: demande.titre.trim() ? '#c9a96e' : '#2a2a1e', color: demande.titre.trim() ? '#0d0a08' : '#555', border: 'none', borderRadius: 8, padding: '14px', fontSize: 15, cursor: demande.titre.trim() ? 'pointer' : 'not-allowed', fontWeight: 600 }}>
+                    ✓ Enregistrer la demande
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Bouton save sticky en bas */}
+        <div style={{ padding: '16px 16px 32px', borderTop: '0.5px solid rgba(255,255,255,0.07)', background: '#0d0a08' }}>
+          <button onClick={handleSave} disabled={saving} style={{ width: '100%', background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 12, padding: '18px', fontSize: 16, cursor: 'pointer', fontWeight: 700, letterSpacing: 1, touchAction: 'manipulation' }}>
+            {saving ? '⟳ Enregistrement...' : isNew ? '✓ Créer le client' : '✓ Enregistrer les modifications'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Caisse Principale ─────────────────────────────────────────
 function CaissePrincipale({ user, session, onFermer }: { user: User; session: Session; onFermer: () => void }) {
   // Étapes: client → produits → document → paiement
@@ -374,24 +562,45 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
         <button onClick={() => selectClient(null)} style={{ ...btnSecondary, marginBottom: 12, color: 'rgba(232,224,213,0.6)' }}>
           👤 Client anonyme
         </button>
+        <button onClick={() => setShowNouveauClient(true)} style={{ ...btnSecondary, marginBottom: 16, color: '#6ec96e', border: '0.5px solid rgba(110,201,110,0.3)' }}>
+          + Créer un nouveau client
+        </button>
 
         {loadingClients && <div style={{ textAlign: 'center' as const, color: 'rgba(232,224,213,0.4)', padding: 16 }}>⟳</div>}
 
         {clientsFound.map(c => (
-          <button key={c.id} onClick={() => selectClient(c)} style={{ ...btnSecondary, marginBottom: 10, textAlign: 'left' as const }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <div style={{ fontSize: 16 }}>{c.est_societe ? c.raison_sociale : `${c.prenom} ${c.nom}`}</div>
-                {c.email && <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', marginTop: 2 }}>{c.email}</div>}
+          <div key={c.id} style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+            <button onClick={() => selectClient(c)} style={{ ...btnSecondary, flex: 1, textAlign: 'left' as const }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: 16 }}>{c.est_societe ? c.raison_sociale : `${c.prenom} ${c.nom}`}</div>
+                  {c.email && <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', marginTop: 2 }}>{c.email}</div>}
+                </div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {c.tarif_pro && <span style={{ fontSize: 11, background: '#2a2a1e', color: '#c9b06e', padding: '3px 8px', borderRadius: 4 }}>PRO</span>}
+                  {c.remise_pct > 0 && <span style={{ fontSize: 11, background: '#2a1e2a', color: '#c96ec9', padding: '3px 8px', borderRadius: 4 }}>-{c.remise_pct}%</span>}
+                </div>
               </div>
-              <div style={{ display: 'flex', gap: 6 }}>
-                {c.tarif_pro && <span style={{ fontSize: 11, background: '#2a2a1e', color: '#c9b06e', padding: '3px 8px', borderRadius: 4 }}>PRO</span>}
-                {c.remise_pct > 0 && <span style={{ fontSize: 11, background: '#2a1e2a', color: '#c96ec9', padding: '3px 8px', borderRadius: 4 }}>-{c.remise_pct}%</span>}
-              </div>
-            </div>
-          </button>
+            </button>
+            <button onClick={() => setEditingClient(c)} style={{ background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 12, padding: '12px', fontSize: 18, cursor: 'pointer', color: 'rgba(232,224,213,0.5)', touchAction: 'manipulation' }}>✎</button>
+          </div>
         ))}
       </div>
+
+      {/* Modals nouveau/edit client */}
+      {showNouveauClient && (
+        <ModalClientForm
+          onClose={() => setShowNouveauClient(false)}
+          onSaved={(c) => { setClient(c); setShowNouveauClient(false); setEtape('produits') }}
+        />
+      )}
+      {editingClient && (
+        <ModalClientForm
+          client={editingClient}
+          onClose={() => setEditingClient(null)}
+          onSaved={(c) => { if (client?.id === c.id) setClient(c); setEditingClient(null) }}
+        />
+      )}
 
       {/* Fermeture caisse */}
       {showFermeture && (
@@ -851,6 +1060,8 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
   const [espacesFermeture, setEspacesFermeture] = useState('')
   const [ligneEditId, setLigneEditId] = useState<string | null>(null)
   const [ligneCommentId, setLigneCommentId] = useState<string | null>(null)
+  const [showNouveauClient, setShowNouveauClient] = useState(false)
+  const [editingClient, setEditingClient] = useState<Client | null>(null)
   const searchTimer = useRef<any>(null)
   const prodTimer = useRef<any>(null)
   const searchRef = useRef<HTMLInputElement>(null)
@@ -1060,11 +1271,15 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
                 onChange={e => { setSearchClient(e.target.value); clearTimeout(searchTimer.current); searchTimer.current = setTimeout(() => searchClients(e.target.value), 300) }}
                 style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 6, color: '#f0e8d8', fontSize: 14, padding: '10px', boxSizing: 'border-box' as const, marginBottom: 8 }} />
               <button onClick={() => selectClient(null)} style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.08)', borderRadius: 6, color: 'rgba(232,224,213,0.5)', padding: '10px', fontSize: 13, cursor: 'pointer', marginBottom: 6, textAlign: 'left' as const }}>👤 Client anonyme</button>
+              <button onClick={() => { setShowNouveauClient(true); setShowClientPanel(false) }} style={{ width: '100%', background: 'rgba(110,201,110,0.06)', border: '0.5px solid rgba(110,201,110,0.2)', borderRadius: 6, color: '#6ec96e', padding: '10px', fontSize: 13, cursor: 'pointer', marginBottom: 8, textAlign: 'left' as const }}>+ Nouveau client</button>
               {clientsFound.map(c => (
-                <button key={c.id} onClick={() => selectClient(c)} style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.08)', borderRadius: 6, color: '#e8e0d5', padding: '10px', fontSize: 13, cursor: 'pointer', marginBottom: 6, textAlign: 'left' as const }}>
-                  <div>{c.est_societe ? c.raison_sociale : `${c.prenom} ${c.nom}`}</div>
-                  <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>{c.email}</div>
-                </button>
+                <div key={c.id} style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+                  <button onClick={() => selectClient(c)} style={{ flex: 1, background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.08)', borderRadius: 6, color: '#e8e0d5', padding: '10px', fontSize: 13, cursor: 'pointer', textAlign: 'left' as const }}>
+                    <div>{c.est_societe ? c.raison_sociale : `${c.prenom} ${c.nom}`}</div>
+                    <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>{c.email}</div>
+                  </button>
+                  <button onClick={() => { setEditingClient(c); setShowClientPanel(false) }} style={{ background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 6, padding: '8px 10px', fontSize: 14, cursor: 'pointer', color: 'rgba(232,224,213,0.5)' }}>✎</button>
+                </div>
               ))}
             </div>
           )}
@@ -1191,6 +1406,13 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
             </div>
           </div>
         </div>
+      )}
+
+      {showNouveauClient && (
+        <ModalClientForm onClose={() => setShowNouveauClient(false)} onSaved={(c) => { setClient(c); setShowNouveauClient(false) }} />
+      )}
+      {editingClient && (
+        <ModalClientForm client={editingClient} onClose={() => setEditingClient(null)} onSaved={(c) => { if (client?.id === c.id) setClient(c); setEditingClient(null) }} />
       )}
     </div>
   )
