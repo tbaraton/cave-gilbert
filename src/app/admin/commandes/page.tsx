@@ -654,22 +654,20 @@ function ModalNouvelleCommande({ domaines, preselectedDomaineId, onCreated, onCl
     setLoadingProduits(false)
   }
 
-  // Pré-sélectionner le fournisseur et charger ses produits (après loadProduitsDomaine)
+  // Charger les domaines et pré-sélectionner
   useEffect(() => {
-    const load = async () => {
-      let list = domaines && domaines.length > 0 ? domaines : []
-      if (list.length === 0) {
-        const { data } = await supabase.from('domaines').select('id, nom').order('nom')
-        list = data || []
-        setInternalDomaines(list)
-      }
-      if (preselectedDomaineId && list.length > 0) {
-        setDomaineId(preselectedDomaineId)
-        loadProduitsDomaine(preselectedDomaineId)
-      }
-    }
-    load()
+    supabase.from('domaines').select('id, nom').order('nom').then(({ data }) => {
+      setInternalDomaines(data || [])
+    })
   }, [])
+
+  // Quand internalDomaines est chargé, charger les produits du fournisseur pré-sélectionné
+  useEffect(() => {
+    if (preselectedDomaineId && internalDomaines.length > 0) {
+      setDomaineId(preselectedDomaineId)
+      loadProduitsDomaine(preselectedDomaineId)
+    }
+  }, [internalDomaines])
 
 
 
@@ -2398,10 +2396,11 @@ export default function AdminCommandesPage() {
   useEffect(() => { loadCounts() }, [loadCounts])
 
   useEffect(() => {
-    // Lire le paramètre domaine depuis l'URL (venant de la fiche fournisseur)
-    const params = new URLSearchParams(window.location.search)
-    const domaineId = params.get('domaine')
+    // Lire depuis sessionStorage (venant de la fiche fournisseur)
+    const domaineId = sessionStorage.getItem('preselect_domaine_id')
     if (domaineId) {
+      sessionStorage.removeItem('preselect_domaine_id')
+      sessionStorage.removeItem('preselect_domaine_nom')
       setPreselectedDomaineId(domaineId)
       setView('commandes')
     }
