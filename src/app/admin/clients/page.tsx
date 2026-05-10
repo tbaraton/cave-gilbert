@@ -35,6 +35,8 @@ function ModalClient({ client, onClose, onSaved }: { client?: any; onClose: () =
     raison_sociale: client?.raison_sociale || '',
     siret: client?.siret || '',
     tarif_pro: client?.tarif_pro || false,
+    remise_pct: client?.remise_pct ? String(client.remise_pct) : '',
+    remise_raison: client?.remise_raison || '',
     notes: client?.notes || client?.notes_admin || '',
     newsletter: client?.newsletter || false,
   })
@@ -61,6 +63,8 @@ function ModalClient({ client, onClose, onSaved }: { client?: any; onClose: () =
       raison_sociale: form.est_societe ? form.raison_sociale : null,
       siret: form.est_societe ? form.siret : null,
       tarif_pro: form.tarif_pro,
+      remise_pct: form.remise_pct ? parseFloat(form.remise_pct) : 0,
+      remise_raison: form.remise_raison || null,
       notes: form.notes || null,
       newsletter: form.newsletter,
     }
@@ -143,6 +147,25 @@ function ModalClient({ client, onClose, onSaved }: { client?: any; onClose: () =
           {field('Pays', 'pays')}
         </div>
 
+        {/* Remise permanente */}
+        <div style={{ fontSize: 10, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 10 }}>Remise permanente</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: 12, marginBottom: 14 }}>
+          <div>
+            <label style={lbl}>Remise (%)</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <input type="number" step="0.5" min="0" max="100" value={form.remise_pct}
+                onChange={e => setForm(f => ({ ...f, remise_pct: e.target.value }))}
+                placeholder="0" style={{ ...inp, width: '100%' }} />
+              <span style={{ color: '#c9a96e', fontSize: 14, flexShrink: 0 }}>%</span>
+            </div>
+          </div>
+          <div>
+            <label style={lbl}>Raison de la remise</label>
+            <input value={form.remise_raison} onChange={e => setForm(f => ({ ...f, remise_raison: e.target.value }))}
+              placeholder="Ex: Commerçant local, partenaire, fidélité..." style={inp} />
+          </div>
+        </div>
+
         <div style={{ marginBottom: 14 }}>
           <label style={lbl}>Notes internes</label>
           <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2}
@@ -199,19 +222,25 @@ function FicheClient({ client, onBack, onEdit }: { client: any; onBack: () => vo
   const [vouchers, setVouchers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [bonASupprimer, setBonASupprimer] = useState<any>(null)
+  const [demandes, setDemandes] = useState<any[]>([])
+  const [showNouvelleDemandeForm, setShowNouvelleDemandeForm] = useState(false)
+  const [nouvelleDemande, setNouvelleDemande] = useState({ titre: '', description: '', date_limite: '' })
+  const [savingDemande, setSavingDemande] = useState(false)
 
   const beneficieFidelite = !client.tarif_pro
 
   const loadData = useCallback(async () => {
     setLoading(true)
-    const [{ data: cmds }, { data: pts }, { data: vouchs }] = await Promise.all([
+    const [{ data: cmds }, { data: pts }, { data: vouchs }, { data: reqs }] = await Promise.all([
       supabase.from('orders').select('id, numero, created_at, total_ttc, statut, payee, nb_articles').eq('customer_id', client.id).order('created_at', { ascending: false }).limit(50),
       supabase.from('loyalty_points').select('points').eq('customer_id', client.id),
       supabase.from('loyalty_vouchers').select('*').eq('customer_id', client.id).order('created_at', { ascending: false }),
+      supabase.from('customer_requests').select('*').eq('customer_id', client.id).order('created_at', { ascending: false }),
     ])
     setCommandes(cmds || [])
     setPoints((pts || []).reduce((acc: number, p: any) => acc + (p.points || 0), 0))
     setVouchers(vouchs || [])
+    setDemandes(reqs || [])
     setLoading(false)
   }, [client.id])
 
@@ -234,6 +263,7 @@ function FicheClient({ client, onBack, onEdit }: { client: any; onBack: () => vo
             </h1>
             {client.est_societe && <Badge label="Société" bg="#1e202a" color="#6e9ec9" />}
             {client.tarif_pro ? <Badge label="Tarif pro" bg="#2a2a1e" color="#c9b06e" /> : <Badge label="Particulier" bg="#1e2a1e" color="#6ec96e" />}
+            {client.remise_pct > 0 && <Badge label={`-${client.remise_pct}%`} bg="#2a1e2a" color="#c96ec9" />}
           </div>
           {client.est_societe && client.prenom && <div style={{ fontSize: 13, color: 'rgba(232,224,213,0.5)', marginTop: 4 }}>Contact : {client.prenom} {client.nom}</div>}
         </div>
@@ -397,6 +427,103 @@ function FicheClient({ client, onBack, onEdit }: { client: any; onBack: () => vo
         </>
       )}
 
+          {/* Remise permanente */}
+          {client.remise_pct > 0 && (
+            <div style={{ ...card, marginBottom: 20, border: '0.5px solid rgba(201,110,201,0.25)' }}>
+              <div style={{ fontSize: 10, letterSpacing: 2, color: '#c96ec9', textTransform: 'uppercase' as const, marginBottom: 10 }}>Remise permanente</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                <div style={{ fontSize: 32, color: '#c96ec9', fontFamily: 'Georgia, serif', fontWeight: 300 }}>-{client.remise_pct}%</div>
+                {client.remise_raison && <div style={{ fontSize: 13, color: 'rgba(232,224,213,0.6)', fontStyle: 'italic' }}>{client.remise_raison}</div>}
+              </div>
+            </div>
+          )}
+
+          {/* Demandes client */}
+          <div style={{ ...card, marginBottom: 20 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div style={{ fontSize: 10, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const }}>Demandes client ({demandes.length})</div>
+              <button onClick={() => setShowNouvelleDemandeForm(true)} style={{ background: 'transparent', border: '0.5px solid rgba(201,169,110,0.3)', color: '#c9a96e', borderRadius: 4, padding: '5px 12px', fontSize: 11, cursor: 'pointer' }}>+ Nouvelle demande</button>
+            </div>
+
+            {showNouvelleDemandeForm && (
+              <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 6, padding: '16px', marginBottom: 16, border: '0.5px solid rgba(201,169,110,0.15)' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <label style={lbl}>Titre / Objet *</label>
+                    <input value={nouvelleDemande.titre} onChange={e => setNouvelleDemande(d => ({ ...d, titre: e.target.value }))} placeholder="Ex: Recherche Pommard 2019, Devis 24 bouteilles..." style={inp} />
+                  </div>
+                  <div>
+                    <label style={lbl}>Date limite de réponse</label>
+                    <input type="date" value={nouvelleDemande.date_limite} onChange={e => setNouvelleDemande(d => ({ ...d, date_limite: e.target.value }))} style={inp} />
+                  </div>
+                  <div>
+                    <label style={lbl}>Description</label>
+                    <input value={nouvelleDemande.description} onChange={e => setNouvelleDemande(d => ({ ...d, description: e.target.value }))} placeholder="Détails..." style={inp} />
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => setShowNouvelleDemandeForm(false)} style={{ flex: 1, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '8px', fontSize: 11, cursor: 'pointer' }}>Annuler</button>
+                  <button disabled={savingDemande || !nouvelleDemande.titre.trim()} onClick={async () => {
+                    setSavingDemande(true)
+                    await supabase.from('customer_requests').insert({
+                      customer_id: client.id,
+                      titre: nouvelleDemande.titre,
+                      description: nouvelleDemande.description || null,
+                      date_limite: nouvelleDemande.date_limite || null,
+                      statut: 'en_attente',
+                    })
+                    setNouvelleDemande({ titre: '', description: '', date_limite: '' })
+                    setShowNouvelleDemandeForm(false)
+                    setSavingDemande(false)
+                    loadData()
+                  }} style={{ flex: 2, background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '8px', fontSize: 11, cursor: 'pointer', fontWeight: 500 }}>
+                    {savingDemande ? '⟳' : '✓ Enregistrer'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {demandes.length === 0 && !showNouvelleDemandeForm && (
+              <div style={{ fontSize: 13, color: 'rgba(232,224,213,0.3)', textAlign: 'center' as const, padding: '16px 0' }}>Aucune demande enregistrée</div>
+            )}
+
+            {demandes.map(d => {
+              const isExpired = d.date_limite && new Date(d.date_limite) < new Date() && d.statut === 'en_attente'
+              return (
+                <div key={d.id} style={{ padding: '12px 14px', background: 'rgba(255,255,255,0.02)', borderRadius: 4, marginBottom: 8, border: `0.5px solid ${isExpired ? 'rgba(201,110,110,0.3)' : 'rgba(255,255,255,0.06)'}` }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, color: '#f0e8d8', marginBottom: 4 }}>{d.titre}</div>
+                      {d.description && <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)', marginBottom: 4 }}>{d.description}</div>}
+                      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                        {d.date_limite && (
+                          <span style={{ fontSize: 11, color: isExpired ? '#c96e6e' : 'rgba(232,224,213,0.4)' }}>
+                            {isExpired ? '⚠ ' : '📅 '}Limite : {new Date(d.date_limite).toLocaleDateString('fr-FR')}
+                          </span>
+                        )}
+                        <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 3, background: d.statut === 'traitée' ? '#1e2a1e' : d.statut === 'annulée' ? '#2a1e1e' : '#1e202a', color: d.statut === 'traitée' ? '#6ec96e' : d.statut === 'annulée' ? '#c96e6e' : '#c9b06e' }}>
+                          {d.statut}
+                        </span>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                      {d.statut === 'en_attente' && (
+                        <button onClick={async () => {
+                          await supabase.from('customer_requests').update({ statut: 'traitée' }).eq('id', d.id)
+                          loadData()
+                        }} style={{ background: 'rgba(110,201,110,0.1)', border: '0.5px solid rgba(110,201,110,0.3)', color: '#6ec96e', borderRadius: 3, padding: '3px 8px', fontSize: 10, cursor: 'pointer' }}>✓ Traiter</button>
+                      )}
+                      <button onClick={async () => {
+                        await supabase.from('customer_requests').delete().eq('id', d.id)
+                        loadData()
+                      }} style={{ background: 'transparent', border: '0.5px solid rgba(201,110,110,0.2)', color: '#c96e6e', borderRadius: 3, padding: '3px 8px', fontSize: 10, cursor: 'pointer' }}>🗑</button>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
       {bonASupprimer && (
         <ModalSupprimerBon bon={bonASupprimer} onClose={() => setBonASupprimer(null)} onDeleted={() => { setBonASupprimer(null); loadData() }} />
       )}
@@ -416,6 +543,9 @@ export default function AdminClientsPage() {
   const [page, setPage] = useState(0)
   const [totalCount, setTotalCount] = useState(0)
   const PAGE_SIZE = 100
+  const [mainTab, setMainTab] = useState<'clients' | 'demandes'>('clients')
+  const [allDemandes, setAllDemandes] = useState<any[]>([])
+  const [loadingDemandes, setLoadingDemandes] = useState(false)
 
   const loadClients = useCallback(async () => {
     setLoading(true)
@@ -444,6 +574,18 @@ export default function AdminClientsPage() {
 
   useEffect(() => { loadClients() }, [loadClients])
   useEffect(() => { setPage(0) }, [search, filterType])
+
+  const loadAllDemandes = useCallback(async () => {
+    setLoadingDemandes(true)
+    const { data } = await supabase
+      .from('customer_requests')
+      .select('*, customer:customers(prenom, nom, raison_sociale, est_societe)')
+      .order('date_limite', { ascending: true, nullsFirst: false })
+    setAllDemandes(data || [])
+    setLoadingDemandes(false)
+  }, [])
+
+  useEffect(() => { if (mainTab === 'demandes') loadAllDemandes() }, [mainTab, loadAllDemandes])
 
   const filtres = clients // Filtres appliqués côté serveur
 
@@ -485,15 +627,90 @@ export default function AdminClientsPage() {
           <FicheClient client={selectedClient} onBack={() => setSelectedClient(null)} onEdit={() => setEditingClient(selectedClient)} />
         ) : (
           <>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
               <div>
                 <h1 style={{ fontFamily: 'Georgia, serif', fontSize: 28, fontWeight: 300, color: '#f0e8d8', marginBottom: 4 }}>Clients</h1>
-                <p style={{ fontSize: 12, color: 'rgba(232,224,213,0.35)' }}>{filtres.length} client{filtres.length > 1 ? 's' : ''}</p>
+                <p style={{ fontSize: 12, color: 'rgba(232,224,213,0.35)' }}>{totalCount} client{totalCount > 1 ? 's' : ''}</p>
               </div>
-              <button onClick={() => setShowNouveauClient(true)} style={{ background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '11px 22px', fontSize: 11, letterSpacing: 2, cursor: 'pointer', fontWeight: 500, textTransform: 'uppercase' as const }}>
-                + Nouveau client
-              </button>
+              <div style={{ display: 'flex', gap: 10 }}>
+                {mainTab === 'clients' && (
+                  <button onClick={() => setShowNouveauClient(true)} style={{ background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '11px 22px', fontSize: 11, letterSpacing: 2, cursor: 'pointer', fontWeight: 500, textTransform: 'uppercase' as const }}>
+                    + Nouveau client
+                  </button>
+                )}
+              </div>
             </div>
+
+            {/* Onglets */}
+            <div style={{ display: 'flex', gap: 0, marginBottom: 20, border: '0.5px solid rgba(255,255,255,0.08)', borderRadius: 6, overflow: 'hidden', width: 'fit-content' }}>
+              {[{ id: 'clients', label: '👥 Clients' }, { id: 'demandes', label: '📋 Demandes' }].map(tab => (
+                <button key={tab.id} onClick={() => setMainTab(tab.id as any)} style={{
+                  background: mainTab === tab.id ? 'rgba(201,169,110,0.15)' : 'transparent',
+                  border: 'none', borderRight: tab.id === 'clients' ? '0.5px solid rgba(255,255,255,0.08)' : 'none',
+                  color: mainTab === tab.id ? '#c9a96e' : 'rgba(232,224,213,0.4)',
+                  padding: '9px 20px', fontSize: 12, cursor: 'pointer',
+                }}>{tab.label}{tab.id === 'demandes' && allDemandes.filter(d => d.statut === 'en_attente').length > 0 && <span style={{ marginLeft: 6, background: '#c96e6e', color: '#fff', borderRadius: '50%', width: 18, height: 18, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 10 }}>{allDemandes.filter(d => d.statut === 'en_attente').length}</span>}</button>
+              ))}
+            </div>
+
+            {mainTab === 'demandes' && (
+              <div style={{ background: '#18130e', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 6, overflow: 'hidden' }}>
+                {loadingDemandes ? <div style={{ padding: 48, textAlign: 'center' as const, color: 'rgba(232,224,213,0.3)' }}>Chargement...</div> : (
+                  <table style={{ width: '100%', borderCollapse: 'collapse' as const }}>
+                    <thead>
+                      <tr style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
+                        {['Client', 'Demande', 'Date limite', 'Statut', 'Actions'].map(h => (
+                          <th key={h} style={{ padding: '10px 14px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', fontWeight: 400 }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {allDemandes.map((d, i) => {
+                        const isExpired = d.date_limite && new Date(d.date_limite) < new Date() && d.statut === 'en_attente'
+                        const clientNom = d.customer?.est_societe ? (d.customer?.raison_sociale || `${d.customer?.prenom} ${d.customer?.nom}`) : `${d.customer?.prenom || ''} ${d.customer?.nom || ''}`
+                        return (
+                          <tr key={d.id} style={{ borderBottom: i < allDemandes.length - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none', background: isExpired ? 'rgba(201,110,110,0.04)' : 'transparent' }}>
+                            <td style={{ padding: '11px 14px' }}>
+                              <button onClick={async () => {
+                                const { data: c } = await supabase.from('customers').select('*').eq('id', d.customer_id).single()
+                                if (c) setSelectedClient(c)
+                              }} style={{ background: 'transparent', border: 'none', color: '#c9a96e', fontSize: 13, cursor: 'pointer', textDecoration: 'underline', textDecorationColor: 'rgba(201,169,110,0.3)', padding: 0 }}>
+                                {clientNom}
+                              </button>
+                            </td>
+                            <td style={{ padding: '11px 14px' }}>
+                              <div style={{ fontSize: 13, color: '#f0e8d8' }}>{d.titre}</div>
+                              {d.description && <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>{d.description}</div>}
+                            </td>
+                            <td style={{ padding: '11px 14px', fontSize: 12, color: isExpired ? '#c96e6e' : 'rgba(232,224,213,0.5)', whiteSpace: 'nowrap' as const }}>
+                              {d.date_limite ? `${isExpired ? '⚠ ' : ''}${new Date(d.date_limite).toLocaleDateString('fr-FR')}` : '—'}
+                            </td>
+                            <td style={{ padding: '11px 14px' }}>
+                              <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 3, background: d.statut === 'traitée' ? '#1e2a1e' : d.statut === 'annulée' ? '#2a1e1e' : '#1e202a', color: d.statut === 'traitée' ? '#6ec96e' : d.statut === 'annulée' ? '#c96e6e' : '#c9b06e' }}>
+                                {d.statut}
+                              </span>
+                            </td>
+                            <td style={{ padding: '11px 14px' }}>
+                              {d.statut === 'en_attente' && (
+                                <button onClick={async () => {
+                                  await supabase.from('customer_requests').update({ statut: 'traitée' }).eq('id', d.id)
+                                  loadAllDemandes()
+                                }} style={{ background: 'rgba(110,201,110,0.1)', border: '0.5px solid rgba(110,201,110,0.3)', color: '#6ec96e', borderRadius: 3, padding: '4px 10px', fontSize: 10, cursor: 'pointer' }}>✓ Traiter</button>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                      {allDemandes.length === 0 && (
+                        <tr><td colSpan={5} style={{ padding: '48px', textAlign: 'center' as const, color: 'rgba(232,224,213,0.3)' }}>Aucune demande enregistrée</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            )}
+
+            {mainTab === 'clients' && (
 
             <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' as const }}>
               <input placeholder="Rechercher..." value={search} onChange={e => setSearch(e.target.value)} style={{ flex: '1 1 200px', ...inp, boxSizing: 'border-box' as const }} />
@@ -557,8 +774,8 @@ export default function AdminClientsPage() {
               </div>
             )}
 
-            {/* Pagination */}
-            {totalCount > PAGE_SIZE && (
+              {/* Pagination */}
+              {totalCount > PAGE_SIZE && (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
                 <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>
                   {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, totalCount)} sur {totalCount} clients
