@@ -42,13 +42,31 @@ function ModalClient({ client, onClose, onSaved }: { client?: any; onClose: () =
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [villesSuggestions, setVillesSuggestions] = useState<string[]>([])
+  const [loadingVilles, setLoadingVilles] = useState(false)
+
+  const lookupCP = async (cp: string) => {
+    if (cp.length !== 5) { setVillesSuggestions([]); return }
+    setLoadingVilles(true)
+    try {
+      const res = await fetch(`https://geo.api.gouv.fr/communes?codePostal=${cp}&fields=nom&format=json`)
+      const data = await res.json()
+      const villes = data.map((c: any) => c.nom).sort()
+      setVillesSuggestions(villes)
+      if (villes.length === 1) setForm(f => ({ ...f, ville: villes[0] }))
+    } catch {
+      setVillesSuggestions([])
+    }
+    setLoadingVilles(false)
+  }
 
   const handleSave = async () => {
-    if (!form.nom.trim()) { setError('Le nom est obligatoire'); return }
-    if (!form.prenom.trim()) { setError('Le prénom est obligatoire'); return }
+    if (!form.est_societe && !form.nom.trim()) { setError('Le nom est obligatoire'); return }
+    if (!form.est_societe && !form.prenom.trim()) { setError('Le prénom est obligatoire'); return }
+    if (form.est_societe && !form.raison_sociale.trim()) { setError('La raison sociale est obligatoire'); return }
     if (!form.email.trim()) { setError("L'email est obligatoire"); return }
-    if (isNew && !form.code_postal.trim()) { setError('Le code postal est obligatoire'); return }
-    if (isNew && !form.ville.trim()) { setError('La ville est obligatoire'); return }
+    if (!form.code_postal.trim()) { setError('Le code postal est obligatoire'); return }
+    if (!form.ville.trim()) { setError('La ville est obligatoire'); return }
     setSaving(true); setError('')
     const payload = {
       prenom: form.prenom,
@@ -142,8 +160,30 @@ function ModalClient({ client, onClose, onSaved }: { client?: any; onClose: () =
         <div style={{ fontSize: 10, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 10 }}>Adresse</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
           {field('Adresse', 'adresse', { col: '1 / -1' })}
-          {field('Code postal', 'code_postal')}
-          {field('Ville', 'ville')}
+          <div>
+            <label style={lbl}>Code postal *</label>
+            <input value={form.code_postal}
+              onChange={e => {
+                setForm(f => ({ ...f, code_postal: e.target.value }))
+                lookupCP(e.target.value)
+              }}
+              placeholder="69001" maxLength={5} style={inp} />
+          </div>
+          <div>
+            <label style={lbl}>Ville *</label>
+            {villesSuggestions.length > 1 ? (
+              <select value={form.ville} onChange={e => setForm(f => ({ ...f, ville: e.target.value }))}
+                style={{ ...inp, background: '#1a1408', cursor: 'pointer' }}>
+                <option value="">— Choisir la ville —</option>
+                {villesSuggestions.map(v => <option key={v} value={v}>{v}</option>)}
+              </select>
+            ) : (
+              <div style={{ position: 'relative' as const }}>
+                <input value={form.ville} onChange={e => setForm(f => ({ ...f, ville: e.target.value }))}
+                  placeholder={loadingVilles ? 'Chargement...' : 'Ville'} style={inp} />
+              </div>
+            )}
+          </div>
           {field('Pays', 'pays')}
         </div>
 
