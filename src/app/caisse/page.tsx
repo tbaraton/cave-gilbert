@@ -1762,8 +1762,7 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
           </div>
         )}
       </div>
-    )
-  }
+  )
 
   return null
 }
@@ -2126,4 +2125,30 @@ export default function CaissePage() {
   if (!session) return <EcranOuverture user={user} onOuvrir={setSession} />
   if (isMobile) return <CaissePrincipale user={user} session={session} onFermer={()=>{setSession(null);setUser(null)}}/>
   return <CaisseDesktop user={user} session={session} onFermer={()=>{setSession(null);setUser(null)}}/>
+}ate, useEffect, useCallback, useRef } from 'react'
+import { createClient } from '@supabase/supabase-js'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
+
+// ── Types ─────────────────────────────────────────────────────
+type User = { id: string; nom: string; prenom: string; email: string; pin: string; role: string }
+type Session = { id: string; user_id: string; site_id: string; statut: string; especes_ouverture: number; site_nom?: string }
+type Client = { id: string; prenom: string; nom: string; raison_sociale: string; est_societe: boolean; tarif_pro: boolean; remise_pct: number; email: string; telephone: string }
+type Ligne = { id: string; product_id: string; nom: string; nom_modifie?: string; millesime: number; qte: number; prix_unit: number; remise_pct: number; total: number; commentaire?: string; domaine_nom?: string }
+type Paiement = { mode: string; montant: number; label: string }
+type VenteEnAttente = { id: string; client: Client | null; lignes: Ligne[]; typeDoc: string; remise: string; remiseType: 'pct' | 'eur'; label: string; noteGlobale: string; noteGlobaleActive: boolean }
+
+const COULEURS: Record<string, string> = { rouge: '#e07070', blanc: '#c9b06e', rosé: '#e8a0b0', champagne: '#d4c88a', effervescent: '#a0b0e0', autre: '#888' }
+const fmt = (n: number) => n.toFixed(2) + '€'
+
+
+const getLogoForSite = (siteName: string) => {
+  const name = siteName?.toLowerCase() || ''
+  if (name.includes('petite cave')) return '/logo-petite-cave.png'
+  return '/logo.png'
 }
+
+// ── Login ─────────────────────────────────────────────────────
