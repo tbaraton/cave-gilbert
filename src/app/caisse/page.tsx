@@ -12,7 +12,7 @@ const supabase = createClient(
 type User = { id: string; nom: string; prenom: string; email: string; pin: string; role: string }
 type Session = { id: string; user_id: string; site_id: string; statut: string; especes_ouverture: number; site_nom?: string }
 type Client = { id: string; prenom: string; nom: string; raison_sociale: string; est_societe: boolean; tarif_pro: boolean; remise_pct: number; email: string; telephone: string }
-type Ligne = { id: string; product_id: string; nom: string; nom_modifie?: string; millesime: number; qte: number; prix_unit: number; remise_pct: number; total: number; commentaire?: string }
+type Ligne = { id: string; product_id: string; nom: string; nom_modifie?: string; millesime: number; qte: number; prix_unit: number; remise_pct: number; total: number; commentaire?: string; domaine_nom?: string }
 type Paiement = { mode: string; montant: number; label: string }
 type VenteEnAttente = { id: string; client: Client | null; lignes: Ligne[]; typeDoc: string; remise: string; remiseType: 'pct' | 'eur'; label: string; noteGlobale: string; noteGlobaleActive: boolean }
 
@@ -997,14 +997,46 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
   const searchProduits = async (q: string) => {
     if (!q.trim()) { setProduits([]); return }
     const { data } = await supabase.from('products')
-      .select('id, nom, millesime, couleur, prix_vente_ttc, prix_vente_pro')
-      .ilike('nom', `%${q}%`).eq('actif', true).limit(10)
+      .select('id, nom, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine:domaines(nom), appellation:appellations(nom), region:regions(nom)')
+      .or(`nom.ilike.%${q}%,millesime::text.ilike.%${q}%`)
+      .eq('actif', true).limit(12)
     if (data?.length) {
       const ids = data.map((p: any) => p.id)
       const { data: stockData } = await supabase.from('stock').select('product_id, quantite').eq('site_id', session.site_id).in('product_id', ids)
       const stockMap = Object.fromEntries((stockData || []).map((s: any) => [s.product_id, s.quantite || 0]))
-      setProduits(data.map((p: any) => ({ ...p, stock: stockMap[p.id] || 0 })))
-    } else setProduits([])
+      // Also search by domaine if no results yet
+      let allData = data
+      if (data.length < 3) {
+        const { data: data2 } = await supabase.from('products')
+          .select('id, nom, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine:domaines(nom), appellation:appellations(nom), region:regions(nom)')
+          .eq('actif', true).limit(12)
+        const existingIds = new Set(data.map((p: any) => p.id))
+        const extra = (data2 || []).filter((p: any) =>
+          !existingIds.has(p.id) && (p.domaine?.nom?.toLowerCase().includes(q.toLowerCase()) || p.appellation?.nom?.toLowerCase().includes(q.toLowerCase()) || p.region?.nom?.toLowerCase().includes(q.toLowerCase()))
+        )
+        allData = [...data, ...extra].slice(0, 12)
+      }
+      const allIds = allData.map((p: any) => p.id)
+      const { data: stockData2 } = await supabase.from('stock').select('product_id, quantite').eq('site_id', session.site_id).in('product_id', allIds)
+      const stockMap2 = Object.fromEntries((stockData2 || []).map((s: any) => [s.product_id, s.quantite || 0]))
+      setProduits(allData.map((p: any) => ({ ...p, stock: stockMap2[p.id] || 0 })))
+    } else {
+      // Search by domaine/appellation/region
+      const { data: data2 } = await supabase.from('products')
+        .select('id, nom, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine:domaines(nom), appellation:appellations(nom), region:regions(nom)')
+        .eq('actif', true).limit(50)
+      const filtered = (data2 || []).filter((p: any) =>
+        p.domaine?.nom?.toLowerCase().includes(q.toLowerCase()) ||
+        p.appellation?.nom?.toLowerCase().includes(q.toLowerCase()) ||
+        p.region?.nom?.toLowerCase().includes(q.toLowerCase())
+      ).slice(0, 12)
+      if (filtered.length) {
+        const ids = filtered.map((p: any) => p.id)
+        const { data: st } = await supabase.from('stock').select('product_id, quantite').eq('site_id', session.site_id).in('product_id', ids)
+        const sm = Object.fromEntries((st || []).map((s: any) => [s.product_id, s.quantite || 0]))
+        setProduits(filtered.map((p: any) => ({ ...p, stock: sm[p.id] || 0 })))
+      } else setProduits([])
+    }
   }
 
   const handleSearchProduit = (v: string) => {
@@ -1020,7 +1052,7 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
     if (existing) {
       setLignes(prev => prev.map(l => l.product_id === p.id ? { ...l, qte: l.qte + 1, total: (l.qte + 1) * l.prix_unit * (1 - l.remise_pct / 100) } : l))
     } else {
-      setLignes(prev => [...prev, { id: Math.random().toString(36).slice(2), product_id: p.id, nom: p.nom, millesime: p.millesime, qte: 1, prix_unit: prix, remise_pct: remisePct, total: prix * (1 - remisePct / 100) }])
+      setLignes(prev => [...prev, { id: Math.random().toString(36).slice(2), product_id: p.id, nom: p.nom, millesime: p.millesime, qte: 1, prix_unit: prix, remise_pct: remisePct, total: prix * (1 - remisePct / 100), domaine_nom: p.domaine?.nom || '' }])
     }
     setSearchProduit(''); setProduits([])
   }
@@ -1331,6 +1363,7 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
                       <span style={{ color: COULEURS[p.couleur] || '#888', marginRight: 8 }}>●</span>
                       <span style={{ fontSize: 15 }}>{p.nom}</span>
                       {p.millesime && <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', marginLeft: 8 }}>{p.millesime}</span>}
+                      {p.domaine?.nom && <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)', marginTop: 2 }}>{p.domaine.nom}</div>}
                     </div>
                     <div style={{ textAlign: 'right' as const }}>
                       <div style={{ fontSize: 16, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{((client?.tarif_pro ? p.prix_vente_pro : p.prix_vente_ttc) || p.prix_vente_ttc).toFixed(2)}€</div>
@@ -1356,7 +1389,10 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
                           onBlur={() => setLigneEditId(null)}
                           style={{ background: 'rgba(255,255,255,0.08)', border: '0.5px solid #c9a96e', borderRadius: 6, color: '#f0e8d8', fontSize: 15, padding: '6px 10px', width: '100%' }} autoFocus />
                       ) : (
-                        <div style={{ fontSize: 15, color: '#f0e8d8' }}>{l.nom_modifie || l.nom}{l.millesime ? ` ${l.millesime}` : ''}</div>
+                        <div>
+                          <div style={{ fontSize: 15, color: '#f0e8d8' }}>{l.nom_modifie || l.nom}{l.millesime ? ` ${l.millesime}` : ''}</div>
+                          {l.domaine_nom && <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)' }}>{l.domaine_nom}</div>}
+                        </div>
                       )}
                     </div>
                     <button onClick={() => setLignes(prev => prev.filter(x => x.id !== l.id))} style={{ background: 'transparent', border: 'none', color: '#c96e6e', fontSize: 20, cursor: 'pointer', padding: '0 0 0 12px' }}>✕</button>
@@ -1830,12 +1866,29 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
 
   const searchProduits = async (q: string) => {
     if (!q.trim()) { setProduits([]); return }
-    const { data } = await supabase.from('products').select('id, nom, millesime, couleur, prix_vente_ttc, prix_vente_pro').ilike('nom', `%${q}%`).eq('actif', true).limit(12)
-    if (data?.length) {
-      const ids = data.map((p: any) => p.id)
+    const { data } = await supabase.from('products')
+      .select('id, nom, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine:domaines(nom), appellation:appellations(nom), region:regions(nom)')
+      .or(`nom.ilike.%${q}%,millesime::text.ilike.%${q}%`)
+      .eq('actif', true).limit(12)
+    let allData = data || []
+    // Also search by domaine/appellation/region
+    const { data: data2 } = await supabase.from('products')
+      .select('id, nom, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine:domaines(nom), appellation:appellations(nom), region:regions(nom)')
+      .eq('actif', true).limit(100)
+    const existingIds = new Set(allData.map((p: any) => p.id))
+    const extra = (data2 || []).filter((p: any) =>
+      !existingIds.has(p.id) && (
+        p.domaine?.nom?.toLowerCase().includes(q.toLowerCase()) ||
+        p.appellation?.nom?.toLowerCase().includes(q.toLowerCase()) ||
+        p.region?.nom?.toLowerCase().includes(q.toLowerCase())
+      )
+    ).slice(0, 12 - allData.length)
+    allData = [...allData, ...extra].slice(0, 12)
+    if (allData.length) {
+      const ids = allData.map((p: any) => p.id)
       const { data: st } = await supabase.from('stock').select('product_id, quantite').eq('site_id', session.site_id).in('product_id', ids)
       const sm = Object.fromEntries((st || []).map((s: any) => [s.product_id, s.quantite || 0]))
-      setProduits(data.map((p: any) => ({ ...p, stock: sm[p.id] || 0 })))
+      setProduits(allData.map((p: any) => ({ ...p, stock: sm[p.id] || 0 })))
     } else setProduits([])
   }
 
@@ -1844,7 +1897,7 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
     const rp = client?.remise_pct || 0
     const ex = lignes.find(l => l.product_id === p.id)
     if (ex) setLignes(prev => prev.map(l => l.product_id === p.id ? { ...l, qte: l.qte + 1, total: (l.qte + 1) * l.prix_unit * (1 - l.remise_pct / 100) } : l))
-    else setLignes(prev => [...prev, { id: Math.random().toString(36).slice(2), product_id: p.id, nom: p.nom, millesime: p.millesime, qte: 1, prix_unit: prix, remise_pct: rp, total: prix * (1 - rp / 100) }])
+    else setLignes(prev => [...prev, { id: Math.random().toString(36).slice(2), product_id: p.id, nom: p.nom, millesime: p.millesime, qte: 1, prix_unit: prix, remise_pct: rp, total: prix * (1 - rp / 100), domaine_nom: p.domaine?.nom || '' }])
     setSearchProduit(''); setProduits([]); searchRef.current?.focus()
   }
 
@@ -1992,7 +2045,11 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
               {produits.map((p: any) => (
                 <button key={p.id} onClick={() => addProduit(p)} style={{ width: '100%', background: 'transparent', border: 'none', borderBottom: '0.5px solid rgba(255,255,255,0.05)', color: '#e8e0d5', padding: '11px 16px', cursor: 'pointer', textAlign: 'left' as const, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
                   onMouseEnter={e => (e.currentTarget.style.background = 'rgba(201,169,110,0.07)')} onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                  <div><span style={{ color: COULEURS[p.couleur] || '#888', marginRight: 8 }}>●</span>{p.nom}{p.millesime ? ` ${p.millesime}` : ''}</div>
+                  <div>
+                    <span style={{ color: COULEURS[p.couleur] || '#888', marginRight: 8 }}>●</span>
+                    <span>{p.nom}{p.millesime ? ` ${p.millesime}` : ''}</span>
+                    {p.domaine?.nom && <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)', marginLeft: 8 }}>— {p.domaine.nom}</span>}
+                  </div>
                   <div style={{ textAlign: 'right' as const }}>
                     <div style={{ color: '#c9a96e', fontFamily: 'Georgia, serif', fontSize: 15 }}>{((client?.tarif_pro ? p.prix_vente_pro : p.prix_vente_ttc) || p.prix_vente_ttc).toFixed(2)}€</div>
                     <div style={{ fontSize: 11, color: p.stock <= 0 ? '#c96e6e' : 'rgba(232,224,213,0.4)' }}>stk: {p.stock}</div>
@@ -2018,7 +2075,10 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
                     <td style={{ padding: '10px' }}>
                       {ligneEditId === l.id
                         ? <input value={l.nom_modifie || l.nom} onChange={e => updateLigne(l.id, 'nom_modifie', e.target.value)} onBlur={() => setLigneEditId(null)} autoFocus style={{ background: 'rgba(255,255,255,0.08)', border: '0.5px solid #c9a96e', borderRadius: 4, color: '#f0e8d8', fontSize: 13, padding: '4px 8px', width: '100%' }} />
-                        : <div style={{ fontSize: 14 }}>{l.nom_modifie || l.nom}{l.millesime ? ` ${l.millesime}` : ''}</div>
+                        : <div>
+                            <div style={{ fontSize: 14 }}>{l.nom_modifie || l.nom}{l.millesime ? ` ${l.millesime}` : ''}</div>
+                            {l.domaine_nom && <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)' }}>{l.domaine_nom}</div>}
+                          </div>
                       }
                       {ligneCommentIds.has(l.id) && <textarea value={l.commentaire || ''} onChange={e => updateLigne(l.id, 'commentaire', e.target.value)} placeholder="Commentaire..." rows={1} style={{ width: '100%', marginTop: 6, background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 6, color: '#e8e0d5', fontSize: 12, padding: '6px', boxSizing: 'border-box' as const, resize: 'vertical' as const }} />}
                     </td>
