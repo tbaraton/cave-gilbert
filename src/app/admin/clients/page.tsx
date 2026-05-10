@@ -413,19 +413,27 @@ export default function AdminClientsPage() {
   const [selectedClient, setSelectedClient] = useState<any>(null)
   const [editingClient, setEditingClient] = useState<any>(null)
   const [showNouveauClient, setShowNouveauClient] = useState(false)
+  const [page, setPage] = useState(0)
+  const [totalCount, setTotalCount] = useState(0)
+  const PAGE_SIZE = 100
 
   const loadClients = useCallback(async () => {
     setLoading(true)
-    const { data } = await supabase
+    const from = page * PAGE_SIZE
+    const to = from + PAGE_SIZE - 1
+    const { data, error, count } = await supabase
       .from('customers')
-      .select('id, prenom, nom, email, telephone, ville, code_postal, adresse, pays, est_societe, raison_sociale, siret, tarif_pro, notes, newsletter, created_at')
+      .select('id, prenom, nom, email, telephone, ville, code_postal, adresse, pays, est_societe, raison_sociale, siret, tarif_pro, notes, newsletter, created_at', { count: 'exact' })
       .order('nom')
-      .limit(500)
+      .range(from, to)
+    if (error) console.error('Clients error:', error)
     setClients(data || [])
+    if (count !== null) setTotalCount(count)
     setLoading(false)
-  }, [])
+  }, [page])
 
   useEffect(() => { loadClients() }, [loadClients])
+  useEffect(() => { setPage(0) }, [search, filterType])
 
   const filtres = clients.filter(c => {
     const text = `${c.prenom || ''} ${c.nom || ''} ${c.email || ''} ${c.ville || ''} ${c.raison_sociale || ''}`.toLowerCase()
@@ -541,6 +549,20 @@ export default function AdminClientsPage() {
                     )}
                   </tbody>
                 </table>
+              </div>
+            )}
+
+            {/* Pagination */}
+            {totalCount > PAGE_SIZE && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
+                <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>
+                  {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, totalCount)} sur {totalCount} clients
+                </span>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: page === 0 ? 'rgba(232,224,213,0.2)' : 'rgba(232,224,213,0.5)', borderRadius: 4, padding: '6px 14px', fontSize: 12, cursor: page === 0 ? 'default' : 'pointer' }}>← Précédent</button>
+                  <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', padding: '6px 10px' }}>Page {page + 1} / {Math.ceil(totalCount / PAGE_SIZE)}</span>
+                  <button onClick={() => setPage(p => p + 1)} disabled={(page + 1) * PAGE_SIZE >= totalCount} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: (page + 1) * PAGE_SIZE >= totalCount ? 'rgba(232,224,213,0.2)' : 'rgba(232,224,213,0.5)', borderRadius: 4, padding: '6px 14px', fontSize: 12, cursor: (page + 1) * PAGE_SIZE >= totalCount ? 'default' : 'pointer' }}>Suivant →</button>
+                </div>
               </div>
             )}
           </>
