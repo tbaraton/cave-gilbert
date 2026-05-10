@@ -208,7 +208,15 @@ function ModalClientForm({ client, onClose, onSaved }: { client?: any; onClose: 
       const res = await supabase.from('customers').update(payload).eq('id', client.id).select(SELECT_FIELDS).single()
       data = res.data; err = res.error
     }
-    if (err) { setError(err.message); setSaving(false); return }
+    if (err) {
+      if (err.code === '23505' || err.message?.includes('email')) {
+        setError("Un client avec cet email existe déjà. Recherchez-le dans la liste pour le modifier.")
+      } else {
+        setError(err.message)
+      }
+      setSaving(false)
+      return
+    }
     if (!data) { setError('Erreur lors de la sauvegarde'); setSaving(false); return }
     onSaved(data)
   }
@@ -1488,4 +1496,4 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
       )}
     </div>
   )
-}
+}comm
