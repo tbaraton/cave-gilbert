@@ -379,6 +379,9 @@ function Sidebar({ view, setView, counts }: { view: View; setView: (v: View) => 
           { label: 'Produits', href: '/admin', icon: '⬥' },
           { label: 'Clients', href: '/admin/clients', icon: '◎' },
           { label: 'Fournisseurs', href: '/admin/fournisseurs', icon: '◈' },
+          { label: 'Transferts', href: '/admin/transferts', icon: '⇄' },
+          { label: 'Inventaire', href: '/admin/inventaire', icon: '◉' },
+          { label: 'Assistant IA', href: '/admin/ia', icon: '✦' },
         ].map(item => (
           <a key={item.label} href={item.href} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 20px', fontSize: 12, color: 'rgba(232,224,213,0.45)', borderLeft: '2px solid transparent', textDecoration: 'none' }}>
             <span>{item.icon}</span>{item.label}
