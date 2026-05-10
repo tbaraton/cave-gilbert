@@ -1006,11 +1006,11 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
     if (!q.trim()) { setProduits([]); return }
     // Recherche par nom produit + millésime
     const [{ data: byNom }, { data: byCuvee }] = await Promise.all([
-      supabase.from('products').select('id, nom, nom_cuvee, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id').or(`nom.ilike.%${q}%,millesime::text.ilike.%${q}%`).eq('actif', true).limit(12),
-      supabase.from('products').select('id, nom, nom_cuvee, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id').ilike('nom_cuvee', `%${q}%`).eq('actif', true).limit(12),
+      supabase.from('products').select('id, nom, nom_cuvee, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id').or(`nom.ilike.%${q}%,millesime::text.ilike.%${q}%`).eq('actif', true).limit(20),
+      supabase.from('products').select('id, nom, nom_cuvee, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id').not('nom_cuvee', 'is', null).ilike('nom_cuvee', `%${q}%`).eq('actif', true).limit(20),
     ])
     const seenIds = new Set((byNom || []).map((p: any) => p.id))
-    const byNomMerged = [...(byNom || []), ...(byCuvee || []).filter((p: any) => !seenIds.has(p.id))].slice(0, 12)
+    const byNomMerged = [...(byNom || []), ...(byCuvee || []).filter((p: any) => !seenIds.has(p.id))].slice(0, 20)
     const byNomFinal = byNomMerged
     // Recherche par domaine
     const { data: domaines } = await supabase.from('domaines').select('id').ilike('nom', `%${q}%`).limit(5)
@@ -1023,7 +1023,7 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
       byDomaine = data || []
     }
     const existingIds = new Set((byNomFinal || []).map((p: any) => p.id))
-    const merged = [...(byNomFinal || []), ...byDomaine.filter((p: any) => !existingIds.has(p.id))].slice(0, 12)
+    const merged = [...(byNomFinal || []), ...byDomaine.filter((p: any) => !existingIds.has(p.id))].slice(0, 20)
     if (merged.length) {
       // Charger les noms de domaines
       const domaineIds = [...new Set(merged.map((p: any) => p.domaine_id).filter(Boolean))]
@@ -1912,8 +1912,8 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
   const searchProduits = async (q: string) => {
     if (!q.trim()) { setProduits([]); return }
     const [{ data: byNom }, { data: byCuvee }] = await Promise.all([
-      supabase.from('products').select('id, nom, nom_cuvee, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id').or(`nom.ilike.%${q}%,millesime::text.ilike.%${q}%`).eq('actif', true).limit(12),
-      supabase.from('products').select('id, nom, nom_cuvee, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id').ilike('nom_cuvee', `%${q}%`).eq('actif', true).limit(12),
+      supabase.from('products').select('id, nom, nom_cuvee, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id').or(`nom.ilike.%${q}%,millesime::text.ilike.%${q}%`).eq('actif', true).limit(20),
+      supabase.from('products').select('id, nom, nom_cuvee, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id').not('nom_cuvee', 'is', null).ilike('nom_cuvee', `%${q}%`).eq('actif', true).limit(20),
     ])
     const { data: domaines } = await supabase.from('domaines').select('id').ilike('nom', `%${q}%`).limit(5)
     let byDomaine: any[] = []
