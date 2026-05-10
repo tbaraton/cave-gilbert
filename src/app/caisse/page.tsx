@@ -1004,33 +1004,30 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
   // ── Recherche produit ──
   const searchProduits = async (q: string) => {
     if (!q.trim()) { setProduits([]); return }
-    // Recherche par nom produit + millésime
+    // Essayer la RPC d'abord
+    const { data: rpcData, error: rpcError } = await supabase.rpc('search_products', {
+      search_term: q.trim(),
+      p_site_id: session.site_id,
+    })
+    if (!rpcError && rpcData?.length >= 0) {
+      // Charger les noms de domaines
+      const domaineIds = [...new Set((rpcData || []).map((p: any) => p.domaine_id).filter(Boolean))]
+      let domaineMap: Record<string, string> = {}
+      if (domaineIds.length) {
+        const { data: domainesData } = await supabase.from('domaines').select('id, nom').in('id', domaineIds)
+        domaineMap = Object.fromEntries((domainesData || []).map((d: any) => [d.id, d.nom]))
+      }
+      setProduits((rpcData || []).map((p: any) => ({ ...p, domaine_nom: domaineMap[p.domaine_id] || '' })))
+      return
+    }
+    // Fallback si RPC pas disponible
     const [{ data: byNom }, { data: byCuvee }] = await Promise.all([
       supabase.from('products').select('id, nom, nom_cuvee, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id').or(`nom.ilike.%${q}%,millesime::text.ilike.%${q}%`).eq('actif', true).limit(20),
       supabase.from('products').select('id, nom, nom_cuvee, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id').eq('actif', true).not('nom_cuvee', 'is', null).ilike('nom_cuvee', `%${q}%`).limit(20),
     ])
-    // Fusionner en priorisant byCuvee (correspondance exacte sur le nom de cuvée)
     const cuveeIds = new Set((byCuvee || []).map((p: any) => p.id))
-    const nomIds = new Set((byNom || []).map((p: any) => p.id))
-    const byNomMerged = [
-      ...(byCuvee || []),
-      ...(byNom || []).filter((p: any) => !cuveeIds.has(p.id)),
-    ].slice(0, 20)
-    const byNomFinal = byNomMerged
-    // Recherche par domaine
-    const { data: domaines } = await supabase.from('domaines').select('id').ilike('nom', `%${q}%`).limit(5)
-    let byDomaine: any[] = []
-    if (domaines?.length) {
-      const domaineIds = domaines.map((d: any) => d.id)
-      const { data } = await supabase.from('products')
-        .select('id, nom, nom_cuvee, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id')
-        .in('domaine_id', domaineIds).eq('actif', true).limit(12)
-      byDomaine = data || []
-    }
-    const existingIds = new Set((byNomFinal || []).map((p: any) => p.id))
-    const merged = [...(byNomFinal || []), ...byDomaine.filter((p: any) => !existingIds.has(p.id))].slice(0, 20)
+    const merged = [...(byCuvee || []), ...(byNom || []).filter((p: any) => !cuveeIds.has(p.id))].slice(0, 20)
     if (merged.length) {
-      // Charger les noms de domaines
       const domaineIds = [...new Set(merged.map((p: any) => p.domaine_id).filter(Boolean))]
       const { data: domainesData } = await supabase.from('domaines').select('id, nom').in('id', domaineIds)
       const domaineMap = Object.fromEntries((domainesData || []).map((d: any) => [d.id, d.nom]))
@@ -1040,7 +1037,6 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
       setProduits(merged.map((p: any) => ({ ...p, stock: sm[p.id] || 0, domaine_nom: domaineMap[p.domaine_id] || '' })))
     } else setProduits([])
   }
-
   const handleSearchProduit = (v: string) => {
     setSearchProduit(v)
     clearTimeout(searchProduitTimer.current)
@@ -1916,29 +1912,39 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
 
   const searchProduits = async (q: string) => {
     if (!q.trim()) { setProduits([]); return }
+    // Essayer la RPC d'abord
+    const { data: rpcData, error: rpcError } = await supabase.rpc('search_products', {
+      search_term: q.trim(),
+      p_site_id: session.site_id,
+    })
+    if (!rpcError && rpcData?.length >= 0) {
+      // Charger les noms de domaines
+      const domaineIds = [...new Set((rpcData || []).map((p: any) => p.domaine_id).filter(Boolean))]
+      let domaineMap: Record<string, string> = {}
+      if (domaineIds.length) {
+        const { data: domainesData } = await supabase.from('domaines').select('id, nom').in('id', domaineIds)
+        domaineMap = Object.fromEntries((domainesData || []).map((d: any) => [d.id, d.nom]))
+      }
+      setProduits((rpcData || []).map((p: any) => ({ ...p, domaine_nom: domaineMap[p.domaine_id] || '' })))
+      return
+    }
+    // Fallback si RPC pas disponible
     const [{ data: byNom }, { data: byCuvee }] = await Promise.all([
       supabase.from('products').select('id, nom, nom_cuvee, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id').or(`nom.ilike.%${q}%,millesime::text.ilike.%${q}%`).eq('actif', true).limit(20),
       supabase.from('products').select('id, nom, nom_cuvee, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id').eq('actif', true).not('nom_cuvee', 'is', null).ilike('nom_cuvee', `%${q}%`).limit(20),
     ])
-    const { data: domaines } = await supabase.from('domaines').select('id').ilike('nom', `%${q}%`).limit(5)
-    let byDomaine: any[] = []
-    if (domaines?.length) {
-      const { data } = await supabase.from('products').select('id, nom, nom_cuvee, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id').in('domaine_id', domaines.map((d:any)=>d.id)).eq('actif', true).limit(12)
-      byDomaine = data || []
-    }
-    const seenIds = new Set([...(byNom||[]), ...(byCuvee||[])].map((p:any)=>p.id))
-    const merged = [...(byNom||[]), ...(byCuvee||[]).filter((p:any)=>!seenIds.has(p.id)), ...byDomaine.filter((p:any)=>!seenIds.has(p.id))].slice(0,12)
+    const cuveeIds = new Set((byCuvee || []).map((p: any) => p.id))
+    const merged = [...(byCuvee || []), ...(byNom || []).filter((p: any) => !cuveeIds.has(p.id))].slice(0, 20)
     if (merged.length) {
-      const domaineIds = [...new Set(merged.map((p:any)=>p.domaine_id).filter(Boolean))]
+      const domaineIds = [...new Set(merged.map((p: any) => p.domaine_id).filter(Boolean))]
       const { data: domainesData } = await supabase.from('domaines').select('id, nom').in('id', domaineIds)
-      const domaineMap = Object.fromEntries((domainesData||[]).map((d:any)=>[d.id, d.nom]))
-      const ids = merged.map((p:any)=>p.id)
+      const domaineMap = Object.fromEntries((domainesData || []).map((d: any) => [d.id, d.nom]))
+      const ids = merged.map((p: any) => p.id)
       const { data: st } = await supabase.from('stock').select('product_id, quantite').eq('site_id', session.site_id).in('product_id', ids)
-      const sm = Object.fromEntries((st||[]).map((s:any)=>[s.product_id, s.quantite||0]))
-      setProduits(merged.map((p:any)=>({...p, stock: sm[p.id]||0, domaine_nom: domaineMap[p.domaine_id]||''})))
+      const sm = Object.fromEntries((st || []).map((s: any) => [s.product_id, s.quantite || 0]))
+      setProduits(merged.map((p: any) => ({ ...p, stock: sm[p.id] || 0, domaine_nom: domaineMap[p.domaine_id] || '' })))
     } else setProduits([])
   }
-
   const addProduit = (p: any) => {
     const prix = (client?.tarif_pro ? p.prix_vente_pro : p.prix_vente_ttc) || p.prix_vente_ttc
     const rp = client?.remise_pct || 0
