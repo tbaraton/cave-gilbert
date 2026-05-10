@@ -30,7 +30,7 @@ function EcranLogin({ onLogin }: { onLogin: (user: User) => void }) {
   const handleLogin = async () => {
     if (!email || !pin) { setError('Prénom et PIN requis'); return }
     setLoading(true); setError('')
-    const { data } = await supabase.from('users').select('*').ilike('prenom', email.trim()).eq('actif', true).single()
+    const { data } = await supabase.from('users').select('*').ilike('prenom', email.trim()).eq('actif', true).maybeSingle()
     if (!data) { setError('Utilisateur introuvable'); setLoading(false); return }
     if (data.pin !== pin) { setError('PIN incorrect'); setLoading(false); return }
     onLogin(data)
