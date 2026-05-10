@@ -47,8 +47,8 @@ function ModalClient({ client, onClose, onSaved }: { client?: any; onClose: () =
     if (!form.nom.trim()) { setError('Le nom est obligatoire'); return }
     if (!form.prenom.trim()) { setError('Le prénom est obligatoire'); return }
     if (!form.email.trim()) { setError("L'email est obligatoire"); return }
-    if (!form.code_postal.trim()) { setError('Le code postal est obligatoire'); return }
-    if (!form.ville.trim()) { setError('La ville est obligatoire'); return }
+    if (isNew && !form.code_postal.trim()) { setError('Le code postal est obligatoire'); return }
+    if (isNew && !form.ville.trim()) { setError('La ville est obligatoire'); return }
     setSaving(true); setError('')
     const payload = {
       prenom: form.prenom,
@@ -554,7 +554,7 @@ export default function AdminClientsPage() {
 
     let query = supabase
       .from('customers')
-      .select('id, prenom, nom, email, telephone, ville, code_postal, adresse, pays, est_societe, raison_sociale, siret, tarif_pro, notes, newsletter, created_at', { count: 'exact' })
+      .select('id, prenom, nom, email, telephone, ville, code_postal, adresse, pays, est_societe, raison_sociale, siret, tarif_pro, remise_pct, remise_raison, notes, newsletter, created_at', { count: 'exact' })
       .order('nom')
 
     // Filtres côté serveur
