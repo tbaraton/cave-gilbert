@@ -1770,36 +1770,20 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
               ⏸ {a.label}
             </button>
           ))}
-          <button onClick={() => setShowGestion(!showGestion)} style={{ background: showGestion ? 'rgba(201,169,110,0.15)' : 'transparent', border: `0.5px solid ${showGestion ? 'rgba(201,169,110,0.4)' : 'rgba(255,255,255,0.15)'}`, color: showGestion ? '#c9a96e' : 'rgba(232,224,213,0.5)', borderRadius: 4, padding: '6px 12px', fontSize: 11, cursor: 'pointer' }}>📋 Historique</button>
+          <button onClick={() => setShowHistorique(true)} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.15)', color: 'rgba(232,224,213,0.5)', borderRadius: 4, padding: '6px 12px', fontSize: 11, cursor: 'pointer' }}>📋 Historique</button>
+          {noteGlobaleActive
+            ? <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input value={noteGlobale} onChange={e => setNoteGlobale(e.target.value)} placeholder="Intitulé personnalisé..."
+                  style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(201,169,110,0.4)', borderRadius: 4, color: '#f0e8d8', fontSize: 12, padding: '5px 10px', width: 220 }} />
+                <button onClick={() => { setNoteGlobaleActive(false); setNoteGlobale('') }} style={{ background: 'transparent', border: 'none', color: '#c96e6e', cursor: 'pointer', fontSize: 14 }}>✕</button>
+              </div>
+            : <button onClick={() => setNoteGlobaleActive(true)} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.15)', color: 'rgba(232,224,213,0.5)', borderRadius: 4, padding: '6px 12px', fontSize: 11, cursor: 'pointer' }}>📝 Intitulé</button>
+          }
           <button onClick={() => setShowFermeture(true)} style={{ background: 'transparent', border: '0.5px solid rgba(201,110,110,0.3)', color: '#c96e6e', borderRadius: 4, padding: '6px 12px', fontSize: 11, cursor: 'pointer' }}>Fermer</button>
         </div>
 
         {/* Panneau Gestion */}
-        {showGestion && (
-          <div style={{ background: '#0f0c09', borderBottom: '0.5px solid rgba(201,169,110,0.2)', padding: '16px', display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' as const }}>
-            {/* Historique */}
-            <button onClick={() => { setShowHistorique(true); setShowGestion(false) }} style={{ background: 'rgba(201,169,110,0.08)', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 8, padding: '10px 18px', color: '#c9a96e', fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' as const }}>
-              📋 Historique des ventes
-            </button>
-            {/* Intitulé personnalisé */}
-            <div style={{ flex: 1, minWidth: 280 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: noteGlobaleActive ? 10 : 0 }}>
-                <div style={{ fontSize: 12, color: '#c9a96e', letterSpacing: 1 }}>📝 INTITULÉ PERSONNALISÉ</div>
-                <button onClick={() => { setNoteGlobaleActive(!noteGlobaleActive); if (noteGlobaleActive) setNoteGlobale('') }}
-                  style={{ background: noteGlobaleActive ? 'rgba(201,110,110,0.1)' : 'rgba(201,169,110,0.1)', border: `0.5px solid ${noteGlobaleActive ? 'rgba(201,110,110,0.3)' : 'rgba(201,169,110,0.3)'}`, color: noteGlobaleActive ? '#c96e6e' : '#c9a96e', borderRadius: 4, padding: '3px 10px', fontSize: 11, cursor: 'pointer' }}>
-                  {noteGlobaleActive ? '✕ Désactiver' : '+ Activer'}
-                </button>
-              </div>
-              {noteGlobaleActive && (
-                <div>
-                  <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)', marginBottom: 6 }}>Remplace le détail sur la note — stock décrémenté normalement</div>
-                  <input value={noteGlobale} onChange={e => setNoteGlobale(e.target.value)} placeholder="Ex: 10 coffrets clients — 10€/coffret"
-                    style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 6, color: '#f0e8d8', fontSize: 14, padding: '9px 12px', boxSizing: 'border-box' as const }} />
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+
 
         {/* Recherche produit */}
         <div style={{ padding: '12px 16px', position: 'relative' as const }}>
@@ -2051,4 +2035,3 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
     </div>
   )
 }
-// v2
