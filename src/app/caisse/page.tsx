@@ -418,6 +418,176 @@ function ModalClientForm({ client, onClose, onSaved }: { client?: any; onClose: 
   )
 }
 
+
+// ── Historique Ventes ─────────────────────────────────────────
+function HistoriqueVentes({ session, onClose }: { session: Session; onClose: () => void }) {
+  const [ventes, setVentes] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [filterType, setFilterType] = useState('tous')
+  const [filterDate, setFilterDate] = useState('')
+  const [detail, setDetail] = useState<any>(null)
+  const [lignesDetail, setLignesDetail] = useState<any[]>([])
+  const [paiementsDetail, setPaiementsDetail] = useState<any[]>([])
+
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true)
+      let q = supabase.from('ventes')
+        .select('id, numero, created_at, type_doc, statut, statut_paiement, total_ttc, customer:customers(prenom, nom, raison_sociale, est_societe), user:users(prenom, nom)')
+        .eq('site_id', session.site_id)
+        .order('created_at', { ascending: false })
+        .limit(100)
+      if (filterType !== 'tous') q = q.eq('type_doc', filterType)
+      if (filterDate) q = q.gte('created_at', filterDate).lte('created_at', filterDate + 'T23:59:59')
+      const { data } = await q
+      setVentes(data || [])
+      setLoading(false)
+    }
+    load()
+  }, [filterType, filterDate])
+
+  const openDetail = async (v: any) => {
+    setDetail(v)
+    const [{ data: lignes }, { data: paiements }] = await Promise.all([
+      supabase.from('vente_lignes').select('*').eq('vente_id', v.id),
+      supabase.from('vente_paiements').select('*').eq('vente_id', v.id),
+    ])
+    setLignesDetail(lignes || [])
+    setPaiementsDetail(paiements || [])
+  }
+
+  const DOCS = [
+    { id: 'tous', label: 'Tous' },
+    { id: 'ticket', label: '🧾 Tickets' },
+    { id: 'devis', label: '📄 Devis' },
+    { id: 'commande', label: '📦 Commandes' },
+    { id: 'bl', label: '🚚 BL' },
+    { id: 'facture', label: '💼 Factures' },
+  ]
+
+  const typeColor: Record<string, string> = { ticket: '#888', devis: '#6e9ec9', commande: '#c9b06e', bl: '#6ec9b0', facture: '#c9a96e' }
+  const statutPaiementColor: Record<string, string> = { regle: '#6ec96e', non_regle: '#c96e6e', partiel: '#c9b06e' }
+  const statutPaiementLabel: Record<string, string> = { regle: 'Réglé', non_regle: 'Non réglé', partiel: 'Partiel' }
+
+  const clientNom = (v: any) => {
+    if (!v.customer) return 'Client anonyme'
+    return v.customer.est_societe ? v.customer.raison_sociale : `${v.customer.prenom || ''} ${v.customer.nom || ''}`.trim()
+  }
+
+  if (detail) return (
+    <div style={{ position: 'fixed' as const, inset: 0, background: '#0d0a08', zIndex: 600, overflowY: 'auto' as const, fontFamily: "'DM Sans', system-ui, sans-serif", color: '#e8e0d5' }}>
+      <div style={{ padding: '14px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', gap: 12, background: '#0d0a08', position: 'sticky' as const, top: 0, zIndex: 10 }}>
+        <button onClick={() => setDetail(null)} style={{ background: 'transparent', border: 'none', color: '#c9a96e', fontSize: 22, cursor: 'pointer' }}>←</button>
+        <div>
+          <div style={{ fontFamily: 'Georgia, serif', fontSize: 16, color: '#f0e8d8' }}>{detail.numero}</div>
+          <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>{new Date(detail.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+        </div>
+      </div>
+      <div style={{ padding: '20px 16px' }}>
+        {/* Infos vente */}
+        <div style={{ background: '#18130e', borderRadius: 10, padding: '16px', marginBottom: 16, border: '0.5px solid rgba(255,255,255,0.07)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            {[
+              { label: 'Client', value: clientNom(detail) },
+              { label: 'Vendeur', value: detail.user ? `${detail.user.prenom} ${detail.user.nom}` : '—' },
+              { label: 'Type', value: detail.type_doc?.toUpperCase() },
+              { label: 'Paiement', value: statutPaiementLabel[detail.statut_paiement] || detail.statut_paiement },
+            ].map(({ label, value }) => (
+              <div key={label}>
+                <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.35)', letterSpacing: 1.5, marginBottom: 4 }}>{label.toUpperCase()}</div>
+                <div style={{ fontSize: 14, color: '#f0e8d8' }}>{value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Lignes */}
+        <div style={{ background: '#18130e', borderRadius: 10, padding: '16px', marginBottom: 16, border: '0.5px solid rgba(255,255,255,0.07)' }}>
+          <div style={{ fontSize: 11, color: '#c9a96e', letterSpacing: 1.5, marginBottom: 12 }}>ARTICLES</div>
+          {lignesDetail.map(l => (
+            <div key={l.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '0.5px solid rgba(255,255,255,0.05)' }}>
+              <div>
+                <div style={{ fontSize: 14, color: '#f0e8d8' }}>{l.nom_produit}{l.millesime ? ` ${l.millesime}` : ''}</div>
+                <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>{l.quantite} × {parseFloat(l.prix_unitaire_ttc).toFixed(2)}€{l.remise_pct > 0 ? ` (-${l.remise_pct}%)` : ''}</div>
+              </div>
+              <div style={{ fontSize: 16, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{parseFloat(l.total_ttc).toFixed(2)}€</div>
+            </div>
+          ))}
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12, paddingTop: 8, borderTop: '0.5px solid rgba(255,255,255,0.1)' }}>
+            <span style={{ fontSize: 14, color: 'rgba(232,224,213,0.6)' }}>Total TTC</span>
+            <span style={{ fontSize: 20, color: '#c9a96e', fontFamily: 'Georgia, serif', fontWeight: 600 }}>{parseFloat(detail.total_ttc).toFixed(2)}€</span>
+          </div>
+        </div>
+
+        {/* Paiements */}
+        {paiementsDetail.length > 0 && (
+          <div style={{ background: '#18130e', borderRadius: 10, padding: '16px', border: '0.5px solid rgba(255,255,255,0.07)' }}>
+            <div style={{ fontSize: 11, color: '#c9a96e', letterSpacing: 1.5, marginBottom: 12 }}>RÈGLEMENTS</div>
+            {paiementsDetail.map(p => (
+              <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 14 }}>
+                <span style={{ color: 'rgba(232,224,213,0.6)', textTransform: 'capitalize' as const }}>{p.mode.replace('_', ' ')}</span>
+                <span style={{ color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{parseFloat(p.montant).toFixed(2)}€</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+
+  return (
+    <div style={{ position: 'fixed' as const, inset: 0, background: '#0d0a08', zIndex: 600, display: 'flex', flexDirection: 'column' as const, fontFamily: "'DM Sans', system-ui, sans-serif", color: '#e8e0d5' }}>
+      {/* Header */}
+      <div style={{ padding: '14px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', gap: 12, background: '#0d0a08' }}>
+        <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: '#c9a96e', fontSize: 22, cursor: 'pointer' }}>←</button>
+        <div style={{ fontFamily: 'Georgia, serif', fontSize: 18, color: '#f0e8d8' }}>Historique des ventes</div>
+      </div>
+
+      {/* Filtres */}
+      <div style={{ padding: '12px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', background: '#100d0a' }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const, marginBottom: 10 }}>
+          {DOCS.map(d => (
+            <button key={d.id} onClick={() => setFilterType(d.id)} style={{
+              background: filterType === d.id ? 'rgba(201,169,110,0.15)' : 'rgba(255,255,255,0.04)',
+              border: `0.5px solid ${filterType === d.id ? 'rgba(201,169,110,0.4)' : 'rgba(255,255,255,0.1)'}`,
+              color: filterType === d.id ? '#c9a96e' : 'rgba(232,224,213,0.5)',
+              borderRadius: 20, padding: '6px 14px', fontSize: 12, cursor: 'pointer',
+            }}>{d.label}</button>
+          ))}
+        </div>
+        <input type="date" value={filterDate} onChange={e => setFilterDate(e.target.value)}
+          style={{ background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#e8e0d5', fontSize: 14, padding: '8px 12px' }} />
+        {filterDate && <button onClick={() => setFilterDate('')} style={{ background: 'transparent', border: 'none', color: '#c96e6e', fontSize: 13, cursor: 'pointer', marginLeft: 8 }}>✕ Effacer</button>}
+      </div>
+
+      {/* Liste */}
+      <div style={{ flex: 1, overflowY: 'auto' as const }}>
+        {loading ? (
+          <div style={{ textAlign: 'center' as const, padding: 40, color: 'rgba(232,224,213,0.3)' }}>⟳ Chargement...</div>
+        ) : ventes.length === 0 ? (
+          <div style={{ textAlign: 'center' as const, padding: 40, color: 'rgba(232,224,213,0.3)' }}>Aucune vente trouvée</div>
+        ) : ventes.map(v => (
+          <button key={v.id} onClick={() => openDetail(v)} style={{ width: '100%', background: 'transparent', border: 'none', borderBottom: '0.5px solid rgba(255,255,255,0.05)', padding: '14px 16px', cursor: 'pointer', textAlign: 'left' as const, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <span style={{ fontSize: 13, color: '#f0e8d8', fontFamily: 'monospace' }}>{v.numero}</span>
+                <span style={{ fontSize: 10, background: `${typeColor[v.type_doc]}20`, color: typeColor[v.type_doc] || '#888', padding: '2px 8px', borderRadius: 3, textTransform: 'uppercase' as const }}>{v.type_doc}</span>
+                <span style={{ fontSize: 10, background: `${statutPaiementColor[v.statut_paiement]}20`, color: statutPaiementColor[v.statut_paiement] || '#888', padding: '2px 8px', borderRadius: 3 }}>{statutPaiementLabel[v.statut_paiement]}</span>
+              </div>
+              <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>
+                {clientNom(v)} — {new Date(v.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+              </div>
+            </div>
+            <div style={{ fontSize: 18, color: '#c9a96e', fontFamily: 'Georgia, serif', fontWeight: 600, marginLeft: 12 }}>{parseFloat(v.total_ttc).toFixed(2)}€</div>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ── Caisse Principale ─────────────────────────────────────────
 function CaissePrincipale({ user, session, onFermer }: { user: User; session: Session; onFermer: () => void }) {
   // Étapes: client → produits → document → paiement
@@ -452,6 +622,7 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
   const [ligneCommentId, setLigneCommentId] = useState<string | null>(null)
   const [showNouveauClient, setShowNouveauClient] = useState(false)
   const [editingClient, setEditingClient] = useState<Client | null>(null)
+  const [showHistorique, setShowHistorique] = useState(false)
 
   // UI
   const [venteOk, setVenteOk] = useState(false)
@@ -702,6 +873,7 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
           onSaved={(c) => { if (client?.id === c.id) setClient(c); setEditingClient(null) }}
         />
       )}
+      {showHistorique && <HistoriqueVentes session={session} onClose={() => setShowHistorique(false)} />}
 
       {/* Fermeture caisse */}
       {showFermeture && (
@@ -908,6 +1080,17 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
 
       {onglet === 'gestion' && (
         <div style={{ flex: 1, padding: '16px', overflowY: 'auto' as const }}>
+
+          {/* Historique ventes */}
+          <button onClick={() => setShowHistorique(true)} style={{ width: '100%', background: '#18130e', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 12, padding: '16px', cursor: 'pointer', textAlign: 'left' as const, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ fontSize: 22 }}>📋</span>
+            <div>
+              <div style={{ fontSize: 14, color: '#c9a96e' }}>Historique des ventes</div>
+              <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', marginTop: 2 }}>Tickets, devis, factures, BL, commandes</div>
+            </div>
+            <span style={{ marginLeft: 'auto', color: 'rgba(232,224,213,0.3)', fontSize: 18 }}>→</span>
+          </button>
+
           <div style={{ fontSize: 13, color: 'rgba(232,224,213,0.4)', marginBottom: 16 }}>Sélectionnez une ligne dans la caisse pour modifier son nom.</div>
 
           {/* Note globale */}
@@ -1209,6 +1392,10 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
   const [ligneCommentId, setLigneCommentId] = useState<string | null>(null)
   const [showNouveauClient, setShowNouveauClient] = useState(false)
   const [editingClient, setEditingClient] = useState<Client | null>(null)
+  const [showGestion, setShowGestion] = useState(false)
+  const [noteGlobale, setNoteGlobale] = useState('')
+  const [noteGlobaleActive, setNoteGlobaleActive] = useState(false)
+  const [showHistorique, setShowHistorique] = useState(false)
   const searchTimer = useRef<any>(null)
   const prodTimer = useRef<any>(null)
   const searchRef = useRef<HTMLInputElement>(null)
@@ -1284,7 +1471,7 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
     setAttentes(prev => prev.filter(x => x.id !== a.id))
   }
 
-  const resetVente = () => { setClient(null); setLignes([]); setTypeDoc('ticket'); setRemise(''); setRemiseType('pct'); setPaiements([]); setSearchClient(''); setClientsFound([]) }
+  const resetVente = () => { setClient(null); setLignes([]); setTypeDoc('ticket'); setRemise(''); setRemiseType('pct'); setPaiements([]); setSearchClient(''); setClientsFound([]); setNoteGlobale(''); setNoteGlobaleActive(false) }
 
   const addPaiement = () => {
     const montant = modeCourant === 'non_regle' ? resteAPayer : (parseFloat(montantSaisi) || resteAPayer)
@@ -1297,7 +1484,7 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
   const handleValider = async () => {
     const numero = `VTE-${new Date().getFullYear()}${String(new Date().getMonth()+1).padStart(2,'0')}${String(new Date().getDate()).padStart(2,'0')}-${String(Math.floor(Math.random()*9999)).padStart(4,'0')}`
     const sp = paiements.some(p => p.mode === 'non_regle') ? 'non_regle' : totalNet <= totalPaye ? 'regle' : 'partiel'
-    const { data: v } = await supabase.from('ventes').insert({ numero, session_id: session.id, user_id: vendeur.id, customer_id: client?.id || null, site_id: session.site_id, type_doc: typeDoc, statut: 'validee', statut_paiement: sp, total_ht: totalNet / 1.20, total_ttc: totalNet, remise_globale_pct: remiseType === 'pct' ? parseFloat(remise) || 0 : 0, remise_globale_eur: remiseType === 'eur' ? parseFloat(remise) || 0 : 0 }).select('id').single()
+    const { data: v } = await supabase.from('ventes').insert({ numero, session_id: session.id, user_id: vendeur.id, customer_id: client?.id || null, site_id: session.site_id, type_doc: typeDoc, statut: 'validee', statut_paiement: sp, total_ht: totalNet / 1.20, total_ttc: totalNet, remise_globale_pct: remiseType === 'pct' ? parseFloat(remise) || 0 : 0, remise_globale_eur: remiseType === 'eur' ? parseFloat(remise) || 0 : 0, notes: noteGlobaleActive && noteGlobale ? noteGlobale : null }).select('id').single()
     if (v) {
       await supabase.from('vente_lignes').insert(lignes.map(l => ({ vente_id: v.id, product_id: l.product_id, nom_produit: l.nom_modifie || l.nom, millesime: l.millesime, quantite: l.qte, prix_unitaire_ttc: l.prix_unit, remise_pct: l.remise_pct, total_ttc: l.total })))
       await supabase.from('vente_paiements').insert(paiements.map(p => ({ vente_id: v.id, mode: p.mode, montant: p.montant })))
@@ -1328,8 +1515,50 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
               ⏸ {a.label}
             </button>
           ))}
+          <button onClick={() => setShowGestion(!showGestion)} style={{ background: showGestion ? 'rgba(201,169,110,0.15)' : 'transparent', border: `0.5px solid ${showGestion ? 'rgba(201,169,110,0.4)' : 'rgba(255,255,255,0.15)'}`, color: showGestion ? '#c9a96e' : 'rgba(232,224,213,0.5)', borderRadius: 4, padding: '6px 12px', fontSize: 11, cursor: 'pointer' }}>⚙ Gestion</button>
           <button onClick={() => setShowFermeture(true)} style={{ background: 'transparent', border: '0.5px solid rgba(201,110,110,0.3)', color: '#c96e6e', borderRadius: 4, padding: '6px 12px', fontSize: 11, cursor: 'pointer' }}>Fermer</button>
         </div>
+
+        {/* Panneau Gestion */}
+        {showGestion && (
+          <div style={{ background: '#0f0c09', borderBottom: '0.5px solid rgba(201,169,110,0.2)', padding: '16px', display: 'flex', gap: 20, flexWrap: 'wrap' as const }}>
+            {/* Note globale */}
+            <div style={{ flex: '1 1 300px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: noteGlobaleActive ? 10 : 0 }}>
+                <div style={{ fontSize: 12, color: '#c9a96e', letterSpacing: 1 }}>📋 INTITULÉ PERSONNALISÉ</div>
+                <button onClick={() => { setNoteGlobaleActive(!noteGlobaleActive); if (noteGlobaleActive) setNoteGlobale('') }}
+                  style={{ background: noteGlobaleActive ? 'rgba(201,110,110,0.1)' : 'rgba(201,169,110,0.1)', border: `0.5px solid ${noteGlobaleActive ? 'rgba(201,110,110,0.3)' : 'rgba(201,169,110,0.3)'}`, color: noteGlobaleActive ? '#c96e6e' : '#c9a96e', borderRadius: 4, padding: '3px 10px', fontSize: 11, cursor: 'pointer' }}>
+                  {noteGlobaleActive ? '✕ Désactiver' : '+ Activer'}
+                </button>
+              </div>
+              {noteGlobaleActive && (
+                <div>
+                  <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)', marginBottom: 6 }}>Remplace le détail sur la note — stock décrémenté normalement</div>
+                  <input value={noteGlobale} onChange={e => setNoteGlobale(e.target.value)} placeholder="Ex: 10 coffrets clients — 10€/coffret"
+                    style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 6, color: '#f0e8d8', fontSize: 14, padding: '9px 12px', boxSizing: 'border-box' as const }} />
+                </div>
+              )}
+            </div>
+            {/* Historique */}
+            <div style={{ flex: '0 0 auto' }}>
+              <button onClick={() => setShowHistorique(true)} style={{ background: 'rgba(201,169,110,0.08)', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 8, padding: '10px 18px', color: '#c9a96e', fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' as const }}>
+                📋 Historique des ventes
+              </button>
+            </div>
+
+            {/* Modifier nom article */}
+            <div style={{ flex: '1 1 300px' }}>
+              <div style={{ fontSize: 12, color: '#c9a96e', letterSpacing: 1, marginBottom: 8 }}>✎ MODIFIER NOM D'ARTICLE</div>
+              {lignes.length === 0 ? <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.3)' }}>Aucun article</div> : lignes.map(l => (
+                <div key={l.id} style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
+                  <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', alignSelf: 'center', minWidth: 60, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{l.nom}</span>
+                  <input value={l.nom_modifie || l.nom} onChange={e => updateLigne(l.id, 'nom_modifie', e.target.value)}
+                    style={{ flex: 1, background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 4, color: '#f0e8d8', fontSize: 13, padding: '6px 10px' }} />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Recherche produit */}
         <div style={{ padding: '12px 16px', position: 'relative' as const }}>
@@ -1577,6 +1806,7 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
       {editingClient && (
         <ModalClientForm client={editingClient} onClose={() => setEditingClient(null)} onSaved={(c) => { if (client?.id === c.id) setClient(c); setEditingClient(null) }} />
       )}
+      {showHistorique && <HistoriqueVentes session={session} onClose={() => setShowHistorique(false)} />}
     </div>
   )
 }
