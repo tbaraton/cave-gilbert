@@ -88,14 +88,14 @@ function EcranOuverture({ user, onOuvrir }: { user: User; onOuvrir: (s: Session)
 
   useEffect(() => {
     const load = async () => {
-      // Charger les sites d'abord
+      // Vérifier session existante d'abord
+      const { data: session } = await supabase.from('caisse_sessions').select('*').eq('user_id', user.id).eq('statut', 'ouverte').maybeSingle()
+      if (session) { onOuvrir(session); return }
+
+      // Sinon charger les sites
       const { data: sitesData } = await supabase.from('sites').select('*').eq('actif', true).order('nom')
       setSites(sitesData || [])
       if (sitesData?.length) setSiteId(sitesData[0].id)
-
-      // Ensuite vérifier session existante
-      const { data: session } = await supabase.from('caisse_sessions').select('*').eq('user_id', user.id).eq('statut', 'ouverte').maybeSingle()
-      if (session) onOuvrir(session)
     }
     load()
   }, [])
@@ -126,11 +126,17 @@ function EcranOuverture({ user, onOuvrir }: { user: User; onOuvrir: (s: Session)
           </select>
         </div>
 
-        <div style={{ marginBottom: 28 }}>
-          <label style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', letterSpacing: 1, display: 'block', marginBottom: 8 }}>ESPÈCES EN CAISSE</label>
-          <input type="number" step="0.01" placeholder="0.00" value={especes} onChange={e => setEspeces(e.target.value)} inputMode="decimal"
-            style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(201,169,110,0.25)', borderRadius: 8, color: '#f0e8d8', fontSize: 22, padding: '14px', boxSizing: 'border-box' as const, textAlign: 'center' as const }} />
-        </div>
+        {sites.find(s => s.id === siteId)?.nom?.toLowerCase().includes('entrepôt') || sites.find(s => s.id === siteId)?.nom?.toLowerCase().includes('entrepot') ? (
+          <div style={{ marginBottom: 28, background: 'rgba(255,255,255,0.03)', borderRadius: 8, padding: '14px', textAlign: 'center' as const }}>
+            <div style={{ fontSize: 13, color: 'rgba(232,224,213,0.4)', fontStyle: 'italic' }}>Site entrepôt — pas de caisse espèces</div>
+          </div>
+        ) : (
+          <div style={{ marginBottom: 28 }}>
+            <label style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', letterSpacing: 1, display: 'block', marginBottom: 8 }}>ESPÈCES EN CAISSE</label>
+            <input type="number" step="0.01" placeholder="0.00" value={especes} onChange={e => setEspeces(e.target.value)} inputMode="decimal"
+              style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(201,169,110,0.25)', borderRadius: 8, color: '#f0e8d8', fontSize: 22, padding: '14px', boxSizing: 'border-box' as const, textAlign: 'center' as const }} />
+          </div>
+        )}
 
         <button onClick={handleOuvrir} disabled={loading} style={{ width: '100%', background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 12, padding: '18px', fontSize: 16, cursor: 'pointer', fontWeight: 700, letterSpacing: 1, touchAction: 'manipulation' }}>
           {loading ? '⟳' : '✓ Ouvrir la caisse'}
