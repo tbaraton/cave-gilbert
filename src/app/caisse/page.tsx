@@ -420,40 +420,164 @@ function ModalClientForm({ client, onClose, onSaved }: { client?: any; onClose: 
 
 
 // ── Historique Ventes ─────────────────────────────────────────
-function HistoriqueVentes({ session, onClose }: { session: Session; onClose: () => void }) {
+function HistoriqueVentes({ session, onClose, onAddToCart }: {
+  session: Session
+  onClose: () => void
+  onAddToCart: (lignes: any[]) => void
+}) {
   const [ventes, setVentes] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [filterType, setFilterType] = useState('tous')
   const [filterDate, setFilterDate] = useState('')
+  const [searchClient, setSearchClient] = useState('')
+  const [clientsFound, setClientsFound] = useState<any[]>([])
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(null)
+  const [selectedClientNom, setSelectedClientNom] = useState('')
   const [detail, setDetail] = useState<any>(null)
   const [lignesDetail, setLignesDetail] = useState<any[]>([])
   const [paiementsDetail, setPaiementsDetail] = useState<any[]>([])
+  const [actionMsg, setActionMsg] = useState('')
+  const [showEmail, setShowEmail] = useState(false)
+  const [emailDest, setEmailDest] = useState('')
+  const searchTimer = useRef<any>(null)
 
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true)
-      let q = supabase.from('ventes')
-        .select('id, numero, created_at, type_doc, statut, statut_paiement, total_ttc, customer:customers(prenom, nom, raison_sociale, est_societe), user:users(prenom, nom)')
-        .eq('site_id', session.site_id)
-        .order('created_at', { ascending: false })
-        .limit(100)
-      if (filterType !== 'tous') q = q.eq('type_doc', filterType)
-      if (filterDate) q = q.gte('created_at', filterDate).lte('created_at', filterDate + 'T23:59:59')
-      const { data } = await q
-      setVentes(data || [])
-      setLoading(false)
-    }
-    load()
-  }, [filterType, filterDate])
+  const loadVentes = useCallback(async () => {
+    setLoading(true)
+    let q = supabase.from('ventes')
+      .select('id, numero, created_at, type_doc, statut, statut_paiement, total_ttc, notes, customer:customers(id, prenom, nom, raison_sociale, est_societe, email), user:users(prenom, nom)')
+      .eq('site_id', session.site_id)
+      .order('created_at', { ascending: false })
+      .limit(200)
+    if (filterType !== 'tous') q = q.eq('type_doc', filterType)
+    if (filterDate) q = q.gte('created_at', filterDate).lte('created_at', filterDate + 'T23:59:59')
+    if (selectedClientId) q = q.eq('customer_id', selectedClientId)
+    const { data } = await q
+    setVentes(data || [])
+    setLoading(false)
+  }, [filterType, filterDate, selectedClientId])
+
+  useEffect(() => { loadVentes() }, [loadVentes])
+
+  const searchClients = async (q: string) => {
+    if (!q.trim()) { setClientsFound([]); return }
+    const { data } = await supabase.from('customers')
+      .select('id, prenom, nom, raison_sociale, est_societe, email')
+      .or(`nom.ilike.%${q}%,prenom.ilike.%${q}%,raison_sociale.ilike.%${q}%`)
+      .limit(6)
+    setClientsFound(data || [])
+  }
 
   const openDetail = async (v: any) => {
     setDetail(v)
+    setEmailDest(v.customer?.email || '')
     const [{ data: lignes }, { data: paiements }] = await Promise.all([
       supabase.from('vente_lignes').select('*').eq('vente_id', v.id),
       supabase.from('vente_paiements').select('*').eq('vente_id', v.id),
     ])
     setLignesDetail(lignes || [])
     setPaiementsDetail(paiements || [])
+  }
+
+  const clientNom = (v: any) => {
+    if (!v.customer) return 'Client anonyme'
+    return v.customer.est_societe ? v.customer.raison_sociale : `${v.customer.prenom || ''} ${v.customer.nom || ''}`.trim()
+  }
+
+  const handleAddToCart = () => {
+    onAddToCart(lignesDetail)
+    onClose()
+  }
+
+  const handleAnnulerFacture = async () => {
+    if (!detail) return
+    if (!confirm(`Annuler la facture ${detail.numero} et générer un avoir de ${parseFloat(detail.total_ttc).toFixed(2)}€ ?`)) return
+    const numero = `AV-${Date.now()}`
+    await supabase.from('ventes').insert({
+      numero, session_id: session.id, user_id: detail.user_id,
+      customer_id: detail.customer?.id || null, site_id: session.site_id,
+      type_doc: 'avoir', statut: 'validee', statut_paiement: 'regle',
+      total_ht: -(parseFloat(detail.total_ttc) / 1.20),
+      total_ttc: -parseFloat(detail.total_ttc),
+      notes: `Avoir suite annulation facture ${detail.numero}`,
+    })
+    await supabase.from('ventes').update({ statut: 'annulee' }).eq('id', detail.id)
+    setActionMsg(`✓ Avoir ${numero} créé — facture ${detail.numero} annulée`)
+    loadVentes()
+    setTimeout(() => setDetail(null), 2000)
+  }
+
+  const handleAnnulerDevis = async () => {
+    if (!detail) return
+    if (!confirm(`Annuler le devis ${detail.numero} ?`)) return
+    await supabase.from('ventes').update({ statut: 'annulee' }).eq('id', detail.id)
+    setActionMsg(`✓ Devis ${detail.numero} annulé`)
+    loadVentes()
+    setTimeout(() => setDetail(null), 1500)
+  }
+
+  const handleModifierDevis = () => {
+    onAddToCart(lignesDetail)
+    onClose()
+  }
+
+  const handlePrint = (type: 'ticket' | 'facture') => {
+    if (!detail) return
+    const css = type === 'ticket' ? `
+      body { font-family: monospace; font-size: 12px; width: 80mm; margin: 0 auto; }
+      .header { text-align: center; border-bottom: 1px dashed #000; padding-bottom: 8px; margin-bottom: 8px; }
+      .ligne { display: flex; justify-content: space-between; margin: 3px 0; }
+      .total { border-top: 1px dashed #000; padding-top: 6px; margin-top: 6px; font-weight: bold; font-size: 14px; }
+      .footer { text-align: center; margin-top: 10px; font-size: 10px; }
+    ` : `
+      body { font-family: Arial, sans-serif; font-size: 12px; max-width: 210mm; margin: 0 auto; padding: 20mm; }
+      .header { display: flex; justify-content: space-between; margin-bottom: 30px; }
+      .title { font-size: 24px; font-weight: bold; color: #8B6914; margin-bottom: 20px; }
+      table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+      th { background: #f5f0e8; padding: 8px; text-align: left; border-bottom: 2px solid #c9a96e; }
+      td { padding: 8px; border-bottom: 1px solid #eee; }
+      .total-row { font-weight: bold; font-size: 14px; }
+      .footer { margin-top: 40px; font-size: 10px; color: #666; border-top: 1px solid #eee; padding-top: 10px; }
+    `
+
+    const lignesHtml = lignesDetail.map(l =>
+      type === 'ticket'
+        ? `<div class="ligne"><span>${l.quantite}x ${l.nom_produit}${l.millesime ? ' ' + l.millesime : ''}</span><span>${parseFloat(l.total_ttc).toFixed(2)}€</span></div>`
+        : `<tr><td>${l.nom_produit}${l.millesime ? ' ' + l.millesime : ''}</td><td style="text-align:center">${l.quantite}</td><td style="text-align:right">${parseFloat(l.prix_unitaire_ttc).toFixed(2)}€</td>${l.remise_pct > 0 ? `<td style="text-align:right">${l.remise_pct}%</td>` : '<td></td>'}<td style="text-align:right"><b>${parseFloat(l.total_ttc).toFixed(2)}€</b></td></tr>`
+    ).join('')
+
+    const html = type === 'ticket' ? `
+      <html><head><style>${css}</style></head><body>
+      <div class="header">
+        <div><b>Cave de Gilbert</b></div>
+        <div>${new Date(detail.created_at).toLocaleDateString('fr-FR')}</div>
+        <div>N° ${detail.numero}</div>
+      </div>
+      ${detail.notes ? `<div style="border:1px dashed #000;padding:6px;margin-bottom:8px">${detail.notes}</div>` : lignesHtml}
+      <div class="total"><div class="ligne"><span>TOTAL TTC</span><span>${parseFloat(detail.total_ttc).toFixed(2)}€</span></div></div>
+      ${paiementsDetail.map(p => `<div class="ligne"><span>${p.mode}</span><span>${parseFloat(p.montant).toFixed(2)}€</span></div>`).join('')}
+      <div class="footer">Merci de votre visite !</div>
+      </body></html>
+    ` : `
+      <html><head><style>${css}</style></head><body>
+      <div class="header">
+        <div><b>Cave de Gilbert</b><br/>69 Route du Vin<br/>69210 L'Arbresle</div>
+        <div style="text-align:right">${clientNom(detail)}<br/>${detail.customer?.email || ''}</div>
+      </div>
+      <div class="title">${detail.type_doc === 'facture' ? 'FACTURE' : detail.type_doc === 'devis' ? 'DEVIS' : detail.type_doc === 'bl' ? 'BON DE LIVRAISON' : 'DOCUMENT'} N° ${detail.numero}</div>
+      <div>Date : ${new Date(detail.created_at).toLocaleDateString('fr-FR')}</div>
+      ${detail.notes ? `<div style="margin:16px 0;padding:12px;background:#f9f6f0;border-left:3px solid #c9a96e">${detail.notes}<br/><b>Total : ${parseFloat(detail.total_ttc).toFixed(2)}€ TTC</b></div>` : `
+      <table><thead><tr><th>Désignation</th><th>Qté</th><th>P.U. TTC</th><th>Remise</th><th>Total TTC</th></tr></thead>
+      <tbody>${lignesHtml}</tbody></table>`}
+      <div style="text-align:right;margin-top:20px">
+        <div>HT : ${(parseFloat(detail.total_ttc)/1.20).toFixed(2)}€</div>
+        <div>TVA 20% : ${(parseFloat(detail.total_ttc)-parseFloat(detail.total_ttc)/1.20).toFixed(2)}€</div>
+        <div class="total-row" style="font-size:18px;color:#8B6914">TOTAL TTC : ${parseFloat(detail.total_ttc).toFixed(2)}€</div>
+      </div>
+      <div class="footer">Cave de Gilbert — SIRET : XXX XXX XXX 00000 — TVA : FR XX XXX XXX XXX</div>
+      </body></html>
+    `
+    const win = window.open('', '_blank')
+    if (win) { win.document.write(html); win.document.close(); win.print() }
   }
 
   const DOCS = [
@@ -465,64 +589,56 @@ function HistoriqueVentes({ session, onClose }: { session: Session; onClose: () 
     { id: 'facture', label: '💼 Factures' },
   ]
 
-  const typeColor: Record<string, string> = { ticket: '#888', devis: '#6e9ec9', commande: '#c9b06e', bl: '#6ec9b0', facture: '#c9a96e' }
-  const statutPaiementColor: Record<string, string> = { regle: '#6ec96e', non_regle: '#c96e6e', partiel: '#c9b06e' }
-  const statutPaiementLabel: Record<string, string> = { regle: 'Réglé', non_regle: 'Non réglé', partiel: 'Partiel' }
+  const typeColor: Record<string, string> = { ticket: '#888', devis: '#6e9ec9', commande: '#c9b06e', bl: '#6ec9b0', facture: '#c9a96e', avoir: '#c96e6e' }
+  const statutColor: Record<string, string> = { regle: '#6ec96e', non_regle: '#c96e6e', partiel: '#c9b06e' }
+  const statutLabel: Record<string, string> = { regle: 'Réglé', non_regle: 'Non réglé', partiel: 'Partiel' }
 
-  const clientNom = (v: any) => {
-    if (!v.customer) return 'Client anonyme'
-    return v.customer.est_societe ? v.customer.raison_sociale : `${v.customer.prenom || ''} ${v.customer.nom || ''}`.trim()
-  }
-
+  // ── Détail vente ──
   if (detail) return (
-    <div style={{ position: 'fixed' as const, inset: 0, background: '#0d0a08', zIndex: 600, overflowY: 'auto' as const, fontFamily: "'DM Sans', system-ui, sans-serif", color: '#e8e0d5' }}>
+    <div style={{ position: 'fixed' as const, inset: 0, background: '#0d0a08', zIndex: 600, display: 'flex', flexDirection: 'column' as const, fontFamily: "'DM Sans', system-ui, sans-serif", color: '#e8e0d5' }}>
       <div style={{ padding: '14px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', gap: 12, background: '#0d0a08', position: 'sticky' as const, top: 0, zIndex: 10 }}>
-        <button onClick={() => setDetail(null)} style={{ background: 'transparent', border: 'none', color: '#c9a96e', fontSize: 22, cursor: 'pointer' }}>←</button>
-        <div>
+        <button onClick={() => { setDetail(null); setActionMsg('') }} style={{ background: 'transparent', border: 'none', color: '#c9a96e', fontSize: 22, cursor: 'pointer' }}>←</button>
+        <div style={{ flex: 1 }}>
           <div style={{ fontFamily: 'Georgia, serif', fontSize: 16, color: '#f0e8d8' }}>{detail.numero}</div>
-          <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>{new Date(detail.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+          <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>{clientNom(detail)} — {new Date(detail.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}</div>
         </div>
+        <div style={{ fontSize: 20, color: '#c9a96e', fontFamily: 'Georgia, serif', fontWeight: 700 }}>{parseFloat(detail.total_ttc).toFixed(2)}€</div>
       </div>
-      <div style={{ padding: '20px 16px' }}>
-        {/* Infos vente */}
-        <div style={{ background: '#18130e', borderRadius: 10, padding: '16px', marginBottom: 16, border: '0.5px solid rgba(255,255,255,0.07)' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            {[
-              { label: 'Client', value: clientNom(detail) },
-              { label: 'Vendeur', value: detail.user ? `${detail.user.prenom} ${detail.user.nom}` : '—' },
-              { label: 'Type', value: detail.type_doc?.toUpperCase() },
-              { label: 'Paiement', value: statutPaiementLabel[detail.statut_paiement] || detail.statut_paiement },
-            ].map(({ label, value }) => (
-              <div key={label}>
-                <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.35)', letterSpacing: 1.5, marginBottom: 4 }}>{label.toUpperCase()}</div>
-                <div style={{ fontSize: 14, color: '#f0e8d8' }}>{value}</div>
-              </div>
-            ))}
-          </div>
-        </div>
 
-        {/* Lignes */}
-        <div style={{ background: '#18130e', borderRadius: 10, padding: '16px', marginBottom: 16, border: '0.5px solid rgba(255,255,255,0.07)' }}>
-          <div style={{ fontSize: 11, color: '#c9a96e', letterSpacing: 1.5, marginBottom: 12 }}>ARTICLES</div>
-          {lignesDetail.map(l => (
+      {actionMsg && <div style={{ background: 'rgba(110,201,110,0.1)', border: '0.5px solid rgba(110,201,110,0.3)', padding: '12px 16px', fontSize: 14, color: '#6ec96e' }}>{actionMsg}</div>}
+
+      <div style={{ flex: 1, overflowY: 'auto' as const, padding: '16px' }}>
+        {/* Articles */}
+        <div style={{ background: '#18130e', borderRadius: 10, padding: '16px', marginBottom: 14, border: '0.5px solid rgba(255,255,255,0.07)' }}>
+          <div style={{ fontSize: 11, color: '#c9a96e', letterSpacing: 1.5, marginBottom: 10 }}>ARTICLES</div>
+          {detail.notes ? (
+            <div style={{ background: 'rgba(201,169,110,0.06)', borderRadius: 6, padding: '10px 14px', border: '0.5px solid rgba(201,169,110,0.2)' }}>
+              <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', marginBottom: 4 }}>INTITULÉ PERSONNALISÉ</div>
+              <div style={{ fontSize: 15, color: '#f0e8d8' }}>{detail.notes}</div>
+              <div style={{ fontSize: 18, color: '#c9a96e', fontFamily: 'Georgia, serif', marginTop: 6 }}>{parseFloat(detail.total_ttc).toFixed(2)}€</div>
+            </div>
+          ) : lignesDetail.map(l => (
             <div key={l.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '0.5px solid rgba(255,255,255,0.05)' }}>
               <div>
                 <div style={{ fontSize: 14, color: '#f0e8d8' }}>{l.nom_produit}{l.millesime ? ` ${l.millesime}` : ''}</div>
                 <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>{l.quantite} × {parseFloat(l.prix_unitaire_ttc).toFixed(2)}€{l.remise_pct > 0 ? ` (-${l.remise_pct}%)` : ''}</div>
               </div>
-              <div style={{ fontSize: 16, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{parseFloat(l.total_ttc).toFixed(2)}€</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ fontSize: 16, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{parseFloat(l.total_ttc).toFixed(2)}€</div>
+                <button onClick={() => { onAddToCart([l]); onClose() }} style={{ background: 'rgba(201,169,110,0.1)', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 6, color: '#c9a96e', padding: '4px 10px', fontSize: 11, cursor: 'pointer' }}>+ Caisse</button>
+              </div>
             </div>
           ))}
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12, paddingTop: 8, borderTop: '0.5px solid rgba(255,255,255,0.1)' }}>
-            <span style={{ fontSize: 14, color: 'rgba(232,224,213,0.6)' }}>Total TTC</span>
-            <span style={{ fontSize: 20, color: '#c9a96e', fontFamily: 'Georgia, serif', fontWeight: 600 }}>{parseFloat(detail.total_ttc).toFixed(2)}€</span>
-          </div>
+          {!detail.notes && <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, paddingTop: 8, borderTop: '0.5px solid rgba(255,255,255,0.1)', fontWeight: 600 }}>
+            <span style={{ color: 'rgba(232,224,213,0.6)' }}>Total TTC</span>
+            <span style={{ fontSize: 20, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{parseFloat(detail.total_ttc).toFixed(2)}€</span>
+          </div>}
         </div>
 
-        {/* Paiements */}
+        {/* Règlements */}
         {paiementsDetail.length > 0 && (
-          <div style={{ background: '#18130e', borderRadius: 10, padding: '16px', border: '0.5px solid rgba(255,255,255,0.07)' }}>
-            <div style={{ fontSize: 11, color: '#c9a96e', letterSpacing: 1.5, marginBottom: 12 }}>RÈGLEMENTS</div>
+          <div style={{ background: '#18130e', borderRadius: 10, padding: '16px', marginBottom: 14, border: '0.5px solid rgba(255,255,255,0.07)' }}>
+            <div style={{ fontSize: 11, color: '#c9a96e', letterSpacing: 1.5, marginBottom: 10 }}>RÈGLEMENTS</div>
             {paiementsDetail.map(p => (
               <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 14 }}>
                 <span style={{ color: 'rgba(232,224,213,0.6)', textTransform: 'capitalize' as const }}>{p.mode.replace('_', ' ')}</span>
@@ -531,33 +647,121 @@ function HistoriqueVentes({ session, onClose }: { session: Session; onClose: () 
             ))}
           </div>
         )}
+
+        {/* Actions */}
+        <div style={{ background: '#18130e', borderRadius: 10, padding: '16px', border: '0.5px solid rgba(255,255,255,0.07)' }}>
+          <div style={{ fontSize: 11, color: '#c9a96e', letterSpacing: 1.5, marginBottom: 12 }}>ACTIONS</div>
+          <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
+            {/* Ajouter tout à la caisse */}
+            <button onClick={handleAddToCart} style={{ background: 'rgba(201,169,110,0.12)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 8, color: '#c9a96e', padding: '12px 16px', fontSize: 14, cursor: 'pointer', textAlign: 'left' as const }}>
+              🛒 Ajouter tous les articles à la caisse
+            </button>
+
+            {/* Envoyer par email */}
+            {!showEmail ? (
+              <button onClick={() => setShowEmail(true)} style={{ background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#e8e0d5', padding: '12px 16px', fontSize: 14, cursor: 'pointer', textAlign: 'left' as const }}>
+                📧 Envoyer par email
+              </button>
+            ) : (
+              <div style={{ background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '12px 16px' }}>
+                <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', marginBottom: 8 }}>ADRESSE EMAIL</div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input value={emailDest} onChange={e => setEmailDest(e.target.value)} type="email" placeholder="email@client.fr"
+                    style={{ flex: 1, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 6, color: '#f0e8d8', fontSize: 14, padding: '10px' }} />
+                  <button onClick={() => { alert(`Email envoyé à ${emailDest} (intégration email à connecter)`); setShowEmail(false) }}
+                    style={{ background: '#c9a96e', border: 'none', borderRadius: 6, color: '#0d0a08', padding: '10px 16px', fontSize: 14, cursor: 'pointer', fontWeight: 700 }}>Envoyer</button>
+                  <button onClick={() => setShowEmail(false)} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 6, color: 'rgba(232,224,213,0.4)', padding: '10px', fontSize: 13, cursor: 'pointer' }}>✕</button>
+                </div>
+              </div>
+            )}
+
+            {/* Imprimer ticket */}
+            {['ticket', 'commande'].includes(detail.type_doc) && (
+              <button onClick={() => handlePrint('ticket')} style={{ background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#e8e0d5', padding: '12px 16px', fontSize: 14, cursor: 'pointer', textAlign: 'left' as const }}>
+                🖨 Imprimer le ticket de caisse
+              </button>
+            )}
+
+            {/* Imprimer facture A4 */}
+            <button onClick={() => handlePrint('facture')} style={{ background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#e8e0d5', padding: '12px 16px', fontSize: 14, cursor: 'pointer', textAlign: 'left' as const }}>
+              🖨 Imprimer document A4 TTC
+            </button>
+
+            {/* Modifier devis */}
+            {detail.type_doc === 'devis' && detail.statut !== 'annulee' && (
+              <button onClick={handleModifierDevis} style={{ background: 'rgba(110,158,201,0.1)', border: '0.5px solid rgba(110,158,201,0.3)', borderRadius: 8, color: '#6e9ec9', padding: '12px 16px', fontSize: 14, cursor: 'pointer', textAlign: 'left' as const }}>
+                ✎ Modifier le devis (charge dans la caisse)
+              </button>
+            )}
+
+            {/* Annuler devis */}
+            {detail.type_doc === 'devis' && detail.statut !== 'annulee' && (
+              <button onClick={handleAnnulerDevis} style={{ background: 'rgba(201,110,110,0.08)', border: '0.5px solid rgba(201,110,110,0.25)', borderRadius: 8, color: '#c96e6e', padding: '12px 16px', fontSize: 14, cursor: 'pointer', textAlign: 'left' as const }}>
+                ✕ Annuler le devis
+              </button>
+            )}
+
+            {/* Annuler facture + avoir */}
+            {detail.type_doc === 'facture' && detail.statut !== 'annulee' && (
+              <button onClick={handleAnnulerFacture} style={{ background: 'rgba(201,110,110,0.08)', border: '0.5px solid rgba(201,110,110,0.25)', borderRadius: 8, color: '#c96e6e', padding: '12px 16px', fontSize: 14, cursor: 'pointer', textAlign: 'left' as const }}>
+                ✕ Annuler la facture + générer avoir automatique
+              </button>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   )
 
+  // ── Liste ventes ──
   return (
     <div style={{ position: 'fixed' as const, inset: 0, background: '#0d0a08', zIndex: 600, display: 'flex', flexDirection: 'column' as const, fontFamily: "'DM Sans', system-ui, sans-serif", color: '#e8e0d5' }}>
       {/* Header */}
-      <div style={{ padding: '14px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', gap: 12, background: '#0d0a08' }}>
+      <div style={{ padding: '14px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', gap: 12 }}>
         <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: '#c9a96e', fontSize: 22, cursor: 'pointer' }}>←</button>
         <div style={{ fontFamily: 'Georgia, serif', fontSize: 18, color: '#f0e8d8' }}>Historique des ventes</div>
       </div>
 
       {/* Filtres */}
       <div style={{ padding: '12px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', background: '#100d0a' }}>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const, marginBottom: 10 }}>
+        {/* Filtre type */}
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const, marginBottom: 10 }}>
           {DOCS.map(d => (
-            <button key={d.id} onClick={() => setFilterType(d.id)} style={{
-              background: filterType === d.id ? 'rgba(201,169,110,0.15)' : 'rgba(255,255,255,0.04)',
-              border: `0.5px solid ${filterType === d.id ? 'rgba(201,169,110,0.4)' : 'rgba(255,255,255,0.1)'}`,
-              color: filterType === d.id ? '#c9a96e' : 'rgba(232,224,213,0.5)',
-              borderRadius: 20, padding: '6px 14px', fontSize: 12, cursor: 'pointer',
-            }}>{d.label}</button>
+            <button key={d.id} onClick={() => setFilterType(d.id)} style={{ background: filterType === d.id ? 'rgba(201,169,110,0.15)' : 'rgba(255,255,255,0.04)', border: `0.5px solid ${filterType === d.id ? 'rgba(201,169,110,0.4)' : 'rgba(255,255,255,0.1)'}`, color: filterType === d.id ? '#c9a96e' : 'rgba(232,224,213,0.5)', borderRadius: 20, padding: '5px 12px', fontSize: 12, cursor: 'pointer' }}>{d.label}</button>
           ))}
         </div>
-        <input type="date" value={filterDate} onChange={e => setFilterDate(e.target.value)}
-          style={{ background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#e8e0d5', fontSize: 14, padding: '8px 12px' }} />
-        {filterDate && <button onClick={() => setFilterDate('')} style={{ background: 'transparent', border: 'none', color: '#c96e6e', fontSize: 13, cursor: 'pointer', marginLeft: 8 }}>✕ Effacer</button>}
+        {/* Filtre date + client */}
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' as const, alignItems: 'flex-start' }}>
+          <input type="date" value={filterDate} onChange={e => setFilterDate(e.target.value)}
+            style={{ background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#e8e0d5', fontSize: 14, padding: '8px 12px' }} />
+          {filterDate && <button onClick={() => setFilterDate('')} style={{ background: 'transparent', border: 'none', color: '#c96e6e', fontSize: 13, cursor: 'pointer' }}>✕</button>}
+
+          {/* Recherche client */}
+          <div style={{ flex: 1, minWidth: 180, position: 'relative' as const }}>
+            {selectedClientId ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(201,169,110,0.1)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 8, padding: '8px 12px' }}>
+                <span style={{ fontSize: 13, color: '#c9a96e', flex: 1 }}>👤 {selectedClientNom}</span>
+                <button onClick={() => { setSelectedClientId(null); setSelectedClientNom(''); setSearchClient(''); setClientsFound([]) }} style={{ background: 'transparent', border: 'none', color: '#c96e6e', cursor: 'pointer', fontSize: 16 }}>✕</button>
+              </div>
+            ) : (
+              <>
+                <input type="text" placeholder="🔍 Filtrer par client..." value={searchClient}
+                  onChange={e => { setSearchClient(e.target.value); clearTimeout(searchTimer.current); searchTimer.current = setTimeout(() => searchClients(e.target.value), 300) }}
+                  style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#e8e0d5', fontSize: 14, padding: '8px 12px', boxSizing: 'border-box' as const }} />
+                {clientsFound.length > 0 && (
+                  <div style={{ position: 'absolute' as const, top: '100%', left: 0, right: 0, background: '#1a1408', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 8, zIndex: 10, marginTop: 4 }}>
+                    {clientsFound.map(c => (
+                      <button key={c.id} onClick={() => { setSelectedClientId(c.id); setSelectedClientNom(c.est_societe ? c.raison_sociale : `${c.prenom} ${c.nom}`); setClientsFound([]); setSearchClient('') }}
+                        style={{ width: '100%', background: 'transparent', border: 'none', borderBottom: '0.5px solid rgba(255,255,255,0.05)', color: '#e8e0d5', padding: '10px 14px', cursor: 'pointer', textAlign: 'left' as const, fontSize: 14 }}>
+                        {c.est_societe ? c.raison_sociale : `${c.prenom} ${c.nom}`}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Liste */}
@@ -567,16 +771,19 @@ function HistoriqueVentes({ session, onClose }: { session: Session; onClose: () 
         ) : ventes.length === 0 ? (
           <div style={{ textAlign: 'center' as const, padding: 40, color: 'rgba(232,224,213,0.3)' }}>Aucune vente trouvée</div>
         ) : ventes.map(v => (
-          <button key={v.id} onClick={() => openDetail(v)} style={{ width: '100%', background: 'transparent', border: 'none', borderBottom: '0.5px solid rgba(255,255,255,0.05)', padding: '14px 16px', cursor: 'pointer', textAlign: 'left' as const, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+          <button key={v.id} onClick={() => openDetail(v)} style={{ width: '100%', background: v.statut === 'annulee' ? 'rgba(201,110,110,0.03)' : 'transparent', border: 'none', borderBottom: '0.5px solid rgba(255,255,255,0.05)', padding: '12px 16px', cursor: 'pointer', textAlign: 'left' as const, display: 'flex', justifyContent: 'space-between', alignItems: 'center', opacity: v.statut === 'annulee' ? 0.5 : 1 }}
             onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
-            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            onMouseLeave={e => (e.currentTarget.style.background = v.statut === 'annulee' ? 'rgba(201,110,110,0.03)' : 'transparent')}>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' as const }}>
                 <span style={{ fontSize: 13, color: '#f0e8d8', fontFamily: 'monospace' }}>{v.numero}</span>
-                <span style={{ fontSize: 10, background: `${typeColor[v.type_doc]}20`, color: typeColor[v.type_doc] || '#888', padding: '2px 8px', borderRadius: 3, textTransform: 'uppercase' as const }}>{v.type_doc}</span>
-                <span style={{ fontSize: 10, background: `${statutPaiementColor[v.statut_paiement]}20`, color: statutPaiementColor[v.statut_paiement] || '#888', padding: '2px 8px', borderRadius: 3 }}>{statutPaiementLabel[v.statut_paiement]}</span>
+                <span style={{ fontSize: 10, background: `${typeColor[v.type_doc] || '#888'}22`, color: typeColor[v.type_doc] || '#888', padding: '2px 7px', borderRadius: 3, textTransform: 'uppercase' as const }}>{v.type_doc}</span>
+                {v.statut === 'annulee'
+                  ? <span style={{ fontSize: 10, background: 'rgba(201,110,110,0.15)', color: '#c96e6e', padding: '2px 7px', borderRadius: 3 }}>Annulée</span>
+                  : <span style={{ fontSize: 10, background: `${statutColor[v.statut_paiement] || '#888'}22`, color: statutColor[v.statut_paiement] || '#888', padding: '2px 7px', borderRadius: 3 }}>{statutLabel[v.statut_paiement]}</span>
+                }
               </div>
-              <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>
+              <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>
                 {clientNom(v)} — {new Date(v.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
               </div>
             </div>
@@ -749,6 +956,21 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
     setSearchClient(''); setClientsFound([]); setEtape('client')
   }
 
+  const handleAddFromHistorique = (lignesHist: any[]) => {
+    const newLignes = lignesHist.map(l => ({
+      id: Math.random().toString(36).slice(2),
+      product_id: l.product_id,
+      nom: l.nom_produit,
+      millesime: l.millesime,
+      qte: l.quantite,
+      prix_unit: parseFloat(l.prix_unitaire_ttc),
+      remise_pct: l.remise_pct || 0,
+      total: parseFloat(l.total_ttc),
+    }))
+    setLignes(prev => [...prev, ...newLignes])
+    setEtape('produits')
+  }
+
   // ── Validation vente ──
   const handleValiderVente = async (paiements: Paiement[]) => {
     const numero = `VTE-${new Date().getFullYear()}${String(new Date().getMonth()+1).padStart(2,'0')}${String(new Date().getDate()).padStart(2,'0')}-${String(Math.floor(Math.random()*9999)).padStart(4,'0')}`
@@ -873,7 +1095,7 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
           onSaved={(c) => { if (client?.id === c.id) setClient(c); setEditingClient(null) }}
         />
       )}
-      {showHistorique && <HistoriqueVentes session={session} onClose={() => setShowHistorique(false)} />}
+      {showHistorique && <HistoriqueVentes session={session} onClose={() => setShowHistorique(false)} onAddToCart={handleAddFromHistorique} />}
 
       {/* Fermeture caisse */}
       {showFermeture && (
@@ -1473,6 +1695,20 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
 
   const resetVente = () => { setClient(null); setLignes([]); setTypeDoc('ticket'); setRemise(''); setRemiseType('pct'); setPaiements([]); setSearchClient(''); setClientsFound([]); setNoteGlobale(''); setNoteGlobaleActive(false) }
 
+  const handleAddFromHistorique = (lignesHist: any[]) => {
+    const newLignes = lignesHist.map(l => ({
+      id: Math.random().toString(36).slice(2),
+      product_id: l.product_id,
+      nom: l.nom_produit,
+      millesime: l.millesime,
+      qte: l.quantite,
+      prix_unit: parseFloat(l.prix_unitaire_ttc),
+      remise_pct: l.remise_pct || 0,
+      total: parseFloat(l.total_ttc),
+    }))
+    setLignes(prev => [...prev, ...newLignes])
+  }
+
   const addPaiement = () => {
     const montant = modeCourant === 'non_regle' ? resteAPayer : (parseFloat(montantSaisi) || resteAPayer)
     if (montant <= 0) return
@@ -1515,7 +1751,7 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
               ⏸ {a.label}
             </button>
           ))}
-          <button onClick={() => setShowGestion(!showGestion)} style={{ background: showGestion ? 'rgba(201,169,110,0.15)' : 'transparent', border: `0.5px solid ${showGestion ? 'rgba(201,169,110,0.4)' : 'rgba(255,255,255,0.15)'}`, color: showGestion ? '#c9a96e' : 'rgba(232,224,213,0.5)', borderRadius: 4, padding: '6px 12px', fontSize: 11, cursor: 'pointer' }}>⚙ Gestion</button>
+          <button onClick={() => setShowGestion(!showGestion)} style={{ background: showGestion ? 'rgba(201,169,110,0.15)' : 'transparent', border: `0.5px solid ${showGestion ? 'rgba(201,169,110,0.4)' : 'rgba(255,255,255,0.15)'}`, color: showGestion ? '#c9a96e' : 'rgba(232,224,213,0.5)', borderRadius: 4, padding: '6px 12px', fontSize: 11, cursor: 'pointer' }}>📋 Historique</button>
           <button onClick={() => setShowFermeture(true)} style={{ background: 'transparent', border: '0.5px solid rgba(201,110,110,0.3)', color: '#c96e6e', borderRadius: 4, padding: '6px 12px', fontSize: 11, cursor: 'pointer' }}>Fermer</button>
         </div>
 
@@ -1806,7 +2042,7 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
       {editingClient && (
         <ModalClientForm client={editingClient} onClose={() => setEditingClient(null)} onSaved={(c) => { if (client?.id === c.id) setClient(c); setEditingClient(null) }} />
       )}
-      {showHistorique && <HistoriqueVentes session={session} onClose={() => setShowHistorique(false)} />}
+      {showHistorique && <HistoriqueVentes session={session} onClose={() => setShowHistorique(false)} onAddToCart={handleAddFromHistorique} />}
     </div>
   )
 }
