@@ -450,6 +450,8 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
   const [onglet, setOnglet] = useState<'caisse' | 'gestion'>('caisse')
   const [ligneEditId, setLigneEditId] = useState<string | null>(null)
   const [ligneCommentId, setLigneCommentId] = useState<string | null>(null)
+  const [showNouveauClient, setShowNouveauClient] = useState(false)
+  const [editingClient, setEditingClient] = useState<Client | null>(null)
 
   // UI
   const [venteOk, setVenteOk] = useState(false)
