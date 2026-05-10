@@ -28,9 +28,9 @@ function EcranLogin({ onLogin }: { onLogin: (user: User) => void }) {
   const [loading, setLoading] = useState(false)
 
   const handleLogin = async () => {
-    if (!email || !pin) { setError('Email et PIN requis'); return }
+    if (!email || !pin) { setError('Prénom et PIN requis'); return }
     setLoading(true); setError('')
-    const { data } = await supabase.from('users').select('*').eq('email', email.toLowerCase()).eq('actif', true).single()
+    const { data } = await supabase.from('users').select('*').ilike('prenom', email.trim()).eq('actif', true).single()
     if (!data) { setError('Utilisateur introuvable'); setLoading(false); return }
     if (data.pin !== pin) { setError('PIN incorrect'); setLoading(false); return }
     onLogin(data)
@@ -56,7 +56,7 @@ function EcranLogin({ onLogin }: { onLogin: (user: User) => void }) {
 
         {error && <div style={{ background: 'rgba(201,110,110,0.1)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 6, padding: '10px', marginBottom: 16, fontSize: 13, color: '#c96e6e' }}>{error}</div>}
 
-        <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)}
+        <input type="text" placeholder="Prénom" value={email} onChange={e => setEmail(e.target.value)}
           style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 6, color: '#e8e0d5', fontSize: 14, padding: '12px', boxSizing: 'border-box' as const, marginBottom: 16 }} />
 
         {/* Affichage PIN */}
