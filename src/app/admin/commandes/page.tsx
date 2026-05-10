@@ -616,6 +616,16 @@ function ModalNouvelleCommande({ domaines, preselectedDomaineId, onCreated, onCl
 
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [internalDomaines, setInternalDomaines] = useState<any[]>([])
+
+  // Charger les domaines en interne si la prop est vide
+  useEffect(() => {
+    if (!domaines || domaines.length === 0) {
+      supabase.from('domaines').select('id, nom').order('nom').then(({ data }) => setInternalDomaines(data || []))
+    }
+  }, [])
+
+  const allDomaines = domaines && domaines.length > 0 ? domaines : internalDomaines
 
   const loadProduitsDomaine = async (id: string) => {
     if (!id) { setProduitsDomaine([]); setStockParProduit({}); return }
@@ -649,14 +659,14 @@ function ModalNouvelleCommande({ domaines, preselectedDomaineId, onCreated, onCl
     setLoadingProduits(false)
   }
 
-  // Auto-charger les produits si fournisseur pré-sélectionné
-  // On attend que domaines soit chargé pour s'assurer que le select affiche la bonne valeur
+  // Quand domaines se charge, forcer la sélection si pré-sélectionné
   useEffect(() => {
-    if (preselectedDomaineId && domaines.length > 0) {
+    const list = domaines && domaines.length > 0 ? domaines : internalDomaines
+    if (preselectedDomaineId && list.length > 0 && domaineId !== preselectedDomaineId) {
       setDomaineId(preselectedDomaineId)
       loadProduitsDomaine(preselectedDomaineId)
     }
-  }, [domaines.length])
+  }, [domaines, internalDomaines])
 
   const toggleProduit = (produit: any) => {
     setSelected(prev => {
@@ -725,7 +735,7 @@ function ModalNouvelleCommande({ domaines, preselectedDomaineId, onCreated, onCl
             loadProduitsDomaine(e.target.value)
           }} style={sel}>
             <option value="" style={{ background: '#1a1408', color: '#888' }}>— Choisir un fournisseur —</option>
-            {domaines.map(d => <option key={d.id} value={d.id} style={{ background: '#1a1408', color: '#f0e8d8' }}>{d.nom}</option>)}
+            {allDomaines.map(d => <option key={d.id} value={d.id} style={{ background: '#1a1408', color: '#f0e8d8' }}>{d.nom}</option>)}
           </select>
         </div>
 
