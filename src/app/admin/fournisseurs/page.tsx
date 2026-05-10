@@ -333,13 +333,28 @@ function FicheFournisseur({ fournisseur, onEdit, onBack, onCommande }: {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
               {produits.map(ps => (
                 <div key={ps.id} style={{ padding: '10px 12px', background: 'rgba(255,255,255,0.03)', borderRadius: 4, opacity: ps.product?.actif ? 1 : 0.5 }}>
-                  <div style={{ fontSize: 13, color: '#f0e8d8', marginBottom: 2 }}>
+                  <div style={{ fontSize: 13, color: '#f0e8d8', marginBottom: 4 }}>
                     {ps.product?.nom}
                     {ps.product?.millesime && <span style={{ color: 'rgba(232,224,213,0.4)', marginLeft: 6, fontSize: 11 }}>{ps.product.millesime}</span>}
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.3)' }}>{ps.product?.couleur}</span>
-                    {ps.prix_achat_ht && <span style={{ fontSize: 12, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{parseFloat(ps.prix_achat_ht).toFixed(2)}€ HT</span>}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {ps.prix_achat_ht && <span style={{ fontSize: 11, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{parseFloat(ps.prix_achat_ht).toFixed(2)}€</span>}
+                      <button onClick={async () => {
+                        const newActif = !ps.product?.actif
+                        await supabase.from('products').update({ actif: newActif }).eq('id', ps.product_id)
+                        setProduits(prev => prev.map(p => p.id === ps.id ? { ...p, product: { ...p.product, actif: newActif } } : p))
+                      }} style={{
+                        background: ps.product?.actif ? 'rgba(201,110,110,0.1)' : 'rgba(110,201,110,0.1)',
+                        border: `0.5px solid ${ps.product?.actif ? 'rgba(201,110,110,0.3)' : 'rgba(110,201,110,0.3)'}`,
+                        color: ps.product?.actif ? '#c96e6e' : '#6ec96e',
+                        borderRadius: 3, padding: '2px 8px', fontSize: 9,
+                        cursor: 'pointer', whiteSpace: 'nowrap' as const,
+                      }}>
+                        {ps.product?.actif ? 'Désactiver' : 'Activer'}
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
