@@ -449,12 +449,7 @@ export default function AdminFournisseursPage() {
   }
 
   const handleCommande = () => {
-    // Stocker le fournisseur dans sessionStorage pour le modal
-    if (selected) {
-      sessionStorage.setItem('preselect_domaine_id', selected.id)
-      sessionStorage.setItem('preselect_domaine_nom', selected.nom)
-    }
-    window.location.href = '/admin/commandes'
+    window.location.href = `/admin/commandes?domaine=${selected?.id}`
   }
 
   const filtres = fournisseurs.filter(f =>
