@@ -710,8 +710,7 @@ export default function AdminClientsPage() {
               </div>
             )}
 
-            {mainTab === 'clients' && (
-
+            {mainTab === 'clients' && (<>
             <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' as const }}>
               <input placeholder="Rechercher..." value={search} onChange={e => setSearch(e.target.value)} style={{ flex: '1 1 200px', ...inp, boxSizing: 'border-box' as const }} />
               <div style={{ display: 'flex', gap: 6 }}>
