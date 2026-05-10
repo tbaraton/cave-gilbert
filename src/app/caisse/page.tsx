@@ -1349,7 +1349,7 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
                       <span style={{ color: COULEURS[p.couleur] || '#888', marginRight: 8 }}>●</span>
                       <span style={{ fontSize: 15 }}>{p.nom}</span>
                       {p.millesime && <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', marginLeft: 8 }}>{p.millesime}</span>}
-                      {p.domaine?.nom && <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)', marginTop: 2 }}>{p.domaine.nom}</div>}
+                      {p.domaine_nom && <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)', marginTop: 2 }}>{p.domaine_nom}</div>}
                     </div>
                     <div style={{ textAlign: 'right' as const }}>
                       <div style={{ fontSize: 16, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{((client?.tarif_pro ? p.prix_vente_pro : p.prix_vente_ttc) || p.prix_vente_ttc).toFixed(2)}€</div>
@@ -2034,7 +2034,7 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
                   <div>
                     <span style={{ color: COULEURS[p.couleur] || '#888', marginRight: 8 }}>●</span>
                     <span>{p.nom}{p.millesime ? ` ${p.millesime}` : ''}</span>
-                    {p.domaine?.nom && <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)', marginLeft: 8 }}>— {p.domaine.nom}</span>}
+                    {p.domaine_nom && <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)', marginLeft: 8 }}>— {p.domaine_nom}</span>}
                   </div>
                   <div style={{ textAlign: 'right' as const }}>
                     <div style={{ color: '#c9a96e', fontFamily: 'Georgia, serif', fontSize: 15 }}>{((client?.tarif_pro ? p.prix_vente_pro : p.prix_vente_ttc) || p.prix_vente_ttc).toFixed(2)}€</div>
