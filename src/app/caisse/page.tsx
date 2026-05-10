@@ -998,8 +998,8 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
     if (!q.trim()) { setProduits([]); return }
     // Recherche par nom produit + millésime
     const { data: byNom } = await supabase.from('products')
-      .select('id, nom, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id')
-      .or(`nom.ilike.%${q}%,millesime::text.ilike.%${q}%`)
+      .select('id, nom, nom_cuvee, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id')
+      .or(`nom.ilike.%${q}%,nom_cuvee.ilike.%${q}%,millesime::text.ilike.%${q}%`)
       .eq('actif', true).limit(12)
     // Recherche par domaine
     const { data: domaines } = await supabase.from('domaines').select('id').ilike('nom', `%${q}%`).limit(5)
@@ -1007,7 +1007,7 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
     if (domaines?.length) {
       const domaineIds = domaines.map((d: any) => d.id)
       const { data } = await supabase.from('products')
-        .select('id, nom, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id')
+        .select('id, nom, nom_cuvee, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id')
         .in('domaine_id', domaineIds).eq('actif', true).limit(12)
       byDomaine = data || []
     }
@@ -1349,7 +1349,11 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
                       <span style={{ color: COULEURS[p.couleur] || '#888', marginRight: 8 }}>●</span>
                       <span style={{ fontSize: 15 }}>{p.nom}</span>
                       {p.millesime && <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', marginLeft: 8 }}>{p.millesime}</span>}
-                      {p.domaine_nom && <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)', marginTop: 2 }}>{p.domaine_nom}</div>}
+                      <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)', marginTop: 2 }}>
+                        {p.nom_cuvee && <span style={{ color: '#c9a96e' }}>{p.nom_cuvee}</span>}
+                        {p.nom_cuvee && p.domaine_nom && <span> · </span>}
+                        {p.domaine_nom && <span>{p.domaine_nom}</span>}
+                      </div>
                     </div>
                     <div style={{ textAlign: 'right' as const }}>
                       <div style={{ fontSize: 16, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{((client?.tarif_pro ? p.prix_vente_pro : p.prix_vente_ttc) || p.prix_vente_ttc).toFixed(2)}€</div>
@@ -1853,15 +1857,15 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
   const searchProduits = async (q: string) => {
     if (!q.trim()) { setProduits([]); return }
     const { data: byNom } = await supabase.from('products')
-      .select('id, nom, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id')
-      .or(`nom.ilike.%${q}%,millesime::text.ilike.%${q}%`)
+      .select('id, nom, nom_cuvee, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id')
+      .or(`nom.ilike.%${q}%,nom_cuvee.ilike.%${q}%,millesime::text.ilike.%${q}%`)
       .eq('actif', true).limit(12)
     const { data: domaines } = await supabase.from('domaines').select('id').ilike('nom', `%${q}%`).limit(5)
     let byDomaine: any[] = []
     if (domaines?.length) {
       const domaineIds = domaines.map((d: any) => d.id)
       const { data } = await supabase.from('products')
-        .select('id, nom, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id')
+        .select('id, nom, nom_cuvee, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id')
         .in('domaine_id', domaineIds).eq('actif', true).limit(12)
       byDomaine = data || []
     }
