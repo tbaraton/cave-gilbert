@@ -13,7 +13,7 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
-type Section = 'dashboard' | 'produits' | 'stock' | 'transferts'
+type Section = 'dashboard' | 'produits' | 'stock' | 'transferts' | 'vins' | 'bieres' | 'spiritueux' | 'epicerie' | 'sans_alcool'
 
 // ── Styles constants ─────────────────────────────────────────
 
@@ -1146,6 +1146,7 @@ export default function AdminPage() {
   const [dupliquerProduit, setDupliquerProduit] = useState<any>(null)
   const [showModalMouvement, setShowModalMouvement] = useState(false)
   const [selectedProduit, setSelectedProduit] = useState<any>(null)
+  const [activeCategorie, setActiveCategorie] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [filterRegion, setFilterRegion] = useState('')
   const [filterAppellation, setFilterAppellation] = useState('')
@@ -1176,12 +1177,16 @@ export default function AdminPage() {
         { data: stock },
         { data: sitesData },
       ] = await Promise.all([
-        supabase.from('products').select('id, nom, nom_cuvee, contenance, millesime, couleur, prix_vente_ttc, prix_vente_pro, prix_achat_ht, actif, bio, vegan, casher, naturel, biodynamique, ia_generated, domaine_id, slug, region_id, appellation_id, description_courte, image_url').order('nom').limit(5000),
+        supabase.from('products').select('id, nom, nom_cuvee, contenance, millesime, couleur, categorie, prix_vente_ttc, prix_vente_pro, prix_achat_ht, actif, bio, vegan, casher, naturel, biodynamique, ia_generated, domaine_id, slug, region_id, appellation_id, description_courte, image_url').order('nom').limit(5000),
         supabase.from('v_stock_par_site').select('*'),
         supabase.from('sites').select('*').eq('actif', true).order('nom'),
       ])
 
-      setProduits(prods || [])
+      // Charger domaines pour affichage
+      const { data: domainesData } = await supabase.from('domaines').select('id, nom')
+      const domaineMap = Object.fromEntries((domainesData || []).map((d: any) => [d.id, d.nom]))
+      const prodsWithDomaine = (prods || []).map((p: any) => ({ ...p, domaine_nom: domaineMap[p.domaine_id] || '' }))
+      setProduits(prodsWithDomaine)
       if (prods && prods.length > 0) {
         const maxP = Math.ceil(Math.max(...prods.map((p: any) => parseFloat(p.prix_vente_ttc || 0))))
         setPrixMaxCatalogue(maxP)
@@ -1265,9 +1270,12 @@ export default function AdminPage() {
     ? appellations.filter(a => a.region_id === filterRegion)
     : appellations
 
+  const categorieActive = CATEGORIES.find(c => c.id === section)?.cat || null
+
   const produitsFiltres = produits
     .filter(p =>
       p.nom?.toLowerCase().includes(search.toLowerCase()) &&
+      (categorieActive ? p.categorie === categorieActive : !CATEGORIES.map(c => c.cat).includes(p.categorie)) &&
       (filterRegion === '' || p.region_id === filterRegion) &&
       (filterAppellation === '' || p.appellation_id === filterAppellation) &&
       (filterCouleur === '' || p.couleur === filterCouleur) &&
@@ -1288,6 +1296,14 @@ export default function AdminPage() {
     })
 
   // ── Navigation ───────────────────────────────────────────
+
+  const CATEGORIES = [
+    { id: 'vins',       label: 'Vins',                icon: '🍷', cat: 'vin' },
+    { id: 'bieres',     label: 'Bières',              icon: '🍺', cat: 'biere' },
+    { id: 'spiritueux', label: 'Spiritueux',          icon: '🥃', cat: 'spiritueux' },
+    { id: 'sans_alcool',label: 'Boissons s/alcool',  icon: '🧃', cat: 'sans_alcool' },
+    { id: 'epicerie',   label: 'Épicerie',            icon: '🧀', cat: 'epicerie' },
+  ]
 
   const navItems: { id: Section; label: string; icon: string }[] = [
     { id: 'dashboard',  label: 'Tableau de bord',  icon: '⬡' },
@@ -1332,17 +1348,36 @@ export default function AdminPage() {
         <nav style={{ flex: 1, padding: '16px 0', overflowY: 'auto' as const }}>
           <div style={{ fontSize: 9, letterSpacing: 2, color: 'rgba(232,224,213,0.25)', padding: '4px 20px 8px', textTransform: 'uppercase' as const }}>Catalogue & Stock</div>
           {navItems.map(({ id, label, icon }) => (
-            <button key={id} onClick={() => setSection(id)} style={{
-              width: '100%', textAlign: 'left' as const,
-              background: section === id ? 'rgba(201,169,110,0.08)' : 'transparent',
-              borderLeft: `2px solid ${section === id ? '#c9a96e' : 'transparent'}`,
-              border: 'none', borderLeftStyle: 'solid' as const,
-              color: section === id ? '#c9a96e' : 'rgba(232,224,213,0.45)',
-              padding: '10px 20px', fontSize: 12, cursor: 'pointer',
-              display: 'flex', alignItems: 'center', gap: 10, letterSpacing: 0.5,
-            }}>
-              <span style={{ fontSize: 14 }}>{icon}</span>{label}
-            </button>
+            <div key={id}>
+              <button onClick={() => setSection(id)} style={{
+                width: '100%', textAlign: 'left' as const,
+                background: (section === id || (id === 'produits' && CATEGORIES.some(c => c.id === section))) ? 'rgba(201,169,110,0.08)' : 'transparent',
+                borderLeft: `2px solid ${(section === id || (id === 'produits' && CATEGORIES.some(c => c.id === section))) ? '#c9a96e' : 'transparent'}`,
+                border: 'none', borderLeftStyle: 'solid' as const,
+                color: (section === id || (id === 'produits' && CATEGORIES.some(c => c.id === section))) ? '#c9a96e' : 'rgba(232,224,213,0.45)',
+                padding: '10px 20px', fontSize: 12, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 10, letterSpacing: 0.5,
+              }}>
+                <span style={{ fontSize: 14 }}>{icon}</span>{label}
+              </button>
+              {id === 'produits' && (
+                <div style={{ background: 'rgba(0,0,0,0.2)' }}>
+                  {CATEGORIES.map(cat => (
+                    <button key={cat.id} onClick={() => { setSection(cat.id as Section); setActiveCategorie(cat.cat) }} style={{
+                      width: '100%', textAlign: 'left' as const,
+                      background: section === cat.id ? 'rgba(201,169,110,0.1)' : 'transparent',
+                      borderLeft: `2px solid ${section === cat.id ? '#c9a96e' : 'transparent'}`,
+                      border: 'none', borderLeftStyle: 'solid' as const,
+                      color: section === cat.id ? '#c9a96e' : 'rgba(232,224,213,0.35)',
+                      padding: '8px 20px 8px 36px', fontSize: 11, cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', gap: 8,
+                    }}>
+                      <span>{cat.icon}</span>{cat.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           ))}
           <div style={{ height: '0.5px', background: 'rgba(255,255,255,0.06)', margin: '10px 0' }} />
           <div style={{ fontSize: 9, letterSpacing: 2, color: 'rgba(232,224,213,0.25)', padding: '4px 20px 8px', textTransform: 'uppercase' as const }}>Gestion</div>
@@ -1482,12 +1517,14 @@ export default function AdminPage() {
         )}
 
         {/* ── PRODUITS ── */}
-        {section === 'produits' && (
+        {(section === 'produits' || CATEGORIES.some(c => c.id === section)) && (
           <>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 }}>
               <div>
-                <h1 style={{ fontFamily: 'Georgia, serif', fontSize: 28, fontWeight: 300, color: '#f0e8d8', marginBottom: 4 }}>Catalogue</h1>
-                <p style={{ fontSize: 12, color: 'rgba(232,224,213,0.35)' }}>{produits.length} référence{produits.length > 1 ? 's' : ''}</p>
+                <h1 style={{ fontFamily: 'Georgia, serif', fontSize: 28, fontWeight: 300, color: '#f0e8d8', marginBottom: 4 }}>
+                  {categorieActive ? CATEGORIES.find(c => c.cat === categorieActive)?.icon + ' ' + CATEGORIES.find(c => c.cat === categorieActive)?.label : 'Catalogue'}
+                </h1>
+                <p style={{ fontSize: 12, color: 'rgba(232,224,213,0.35)' }}>{produitsFiltres.length} référence{produitsFiltres.length > 1 ? 's' : ''}</p>
               </div>
               <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                 {/* Toggle actif/inactif */}
@@ -1670,7 +1707,7 @@ export default function AdminPage() {
                         onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                         <td style={{ padding: '14px 16px' }}>
                           <div style={{ fontSize: 13, color: '#f0e8d8', marginBottom: 2 }}>{p.nom}</div>
-                          <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)' }}>{p.domaine || ''}</div>
+                          {p.domaine_nom && <div style={{ fontSize: 11, color: 'rgba(201,169,110,0.5)', marginBottom: 1 }}>{p.domaine_nom}</div>}
                           {p.ia_generated && <span style={{ fontSize: 9, color: 'rgba(175,169,236,0.6)', letterSpacing: 1 }}>✦ IA</span>}
                         </td>
                         <td style={{ padding: '14px 16px' }}>
