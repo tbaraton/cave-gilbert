@@ -1310,6 +1310,8 @@ export default function AdminPage() {
     { id: 'produits',   label: 'Produits',          icon: '⬥' },
   ]
 
+  const [produitsOpen, setProduitsOpen] = useState(false)
+
   const navLinks = [
     { label: 'Clients',       href: '/admin/clients',       icon: '◎' },
     { label: 'Fournisseurs',  href: '/admin/fournisseurs',  icon: '◈' },
@@ -1349,29 +1351,35 @@ export default function AdminPage() {
           <div style={{ fontSize: 9, letterSpacing: 2, color: 'rgba(232,224,213,0.25)', padding: '4px 20px 8px', textTransform: 'uppercase' as const }}>Catalogue & Stock</div>
           {navItems.map(({ id, label, icon }) => (
             <div key={id}>
-              <button onClick={() => setSection(id)} style={{
+              <button onClick={() => {
+                if (id === 'produits') { setProduitsOpen(o => !o) }
+                else { setSection(id) }
+              }} style={{
                 width: '100%', textAlign: 'left' as const,
                 background: (section === id || (id === 'produits' && CATEGORIES.some(c => c.id === section))) ? 'rgba(201,169,110,0.08)' : 'transparent',
-                borderLeft: `2px solid ${(section === id || (id === 'produits' && CATEGORIES.some(c => c.id === section))) ? '#c9a96e' : 'transparent'}`,
+                borderLeft: '2px solid transparent',
                 border: 'none', borderLeftStyle: 'solid' as const,
                 color: (section === id || (id === 'produits' && CATEGORIES.some(c => c.id === section))) ? '#c9a96e' : 'rgba(232,224,213,0.45)',
                 padding: '10px 20px', fontSize: 12, cursor: 'pointer',
                 display: 'flex', alignItems: 'center', gap: 10, letterSpacing: 0.5,
               }}>
-                <span style={{ fontSize: 14 }}>{icon}</span>{label}
+                <span style={{ fontSize: 14 }}>{icon}</span>
+                <span style={{ flex: 1 }}>{label}</span>
+                {id === 'produits' && <span style={{ fontSize: 10, opacity: 0.5 }}>{produitsOpen ? '▾' : '▸'}</span>}
               </button>
-              {id === 'produits' && (
+              {id === 'produits' && produitsOpen && (
                 <div style={{ background: 'rgba(0,0,0,0.2)' }}>
                   {CATEGORIES.map(cat => (
-                    <button key={cat.id} onClick={() => { setSection(cat.id as Section); setActiveCategorie(cat.cat) }} style={{
-                      width: '100%', textAlign: 'left' as const,
-                      background: section === cat.id ? 'rgba(201,169,110,0.1)' : 'transparent',
-                      borderLeft: `2px solid ${section === cat.id ? '#c9a96e' : 'transparent'}`,
-                      border: 'none', borderLeftStyle: 'solid' as const,
-                      color: section === cat.id ? '#c9a96e' : 'rgba(232,224,213,0.35)',
-                      padding: '8px 20px 8px 36px', fontSize: 11, cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', gap: 8,
-                    }}>
+                    <button key={cat.id} onClick={() => { setSection(cat.id as Section); setActiveCategorie(cat.cat) }}
+                      style={{
+                        width: '100%', textAlign: 'left' as const,
+                        background: section === cat.id ? 'rgba(201,169,110,0.1)' : 'transparent',
+                        borderLeft: `2px solid ${section === cat.id ? '#c9a96e' : 'transparent'}`,
+                        border: 'none', borderLeftStyle: 'solid' as const,
+                        color: section === cat.id ? '#c9a96e' : 'rgba(232,224,213,0.35)',
+                        padding: '8px 20px 8px 36px', fontSize: 11, cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', gap: 8,
+                      }}>
                       <span>{cat.icon}</span>{cat.label}
                     </button>
                   ))}
