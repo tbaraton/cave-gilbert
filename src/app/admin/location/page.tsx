@@ -57,7 +57,8 @@ export default function LocationPage() {
     ])
     setFuts(futsData || [])
     setTireuses(tireusesData || [])
-    console.log('Reservations loaded:', resasData?.length, resasData?.[0]?.reservation_tireuses)
+    console.log('Reservations loaded:', resasData?.length)
+    resasData?.forEach((r: any) => console.log('Resa:', r.numero, 'statut:', JSON.stringify(r.statut), 'tireuses:', r.reservation_tireuses?.length))
     setReservations(resasData || [])
     setCommandesLoupiote(commandesData || [])
     setConsignes(consignesData || [])
@@ -208,8 +209,8 @@ export default function LocationPage() {
                           <div style={{ fontSize: 15, color: '#f0e8d8', marginBottom: 2 }}>{t.nom}</div>
                           <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>{t.modele} · {t.nb_tirages} tirage{t.nb_tirages > 1 ? 's' : ''}</div>
                         </div>
-                        <span style={{ fontSize: 11, background: t.statut === 'disponible' ? 'rgba(110,201,110,0.1)' : 'rgba(201,110,110,0.1)', color: t.statut === 'disponible' ? '#6ec96e' : '#c96e6e', padding: '3px 10px', borderRadius: 4 }}>
-                          {t.statut === 'disponible' ? '✓ Disponible' : t.statut}
+                        <span style={{ fontSize: 11, background: resasT.length > 0 ? 'rgba(201,110,110,0.1)' : 'rgba(110,201,110,0.1)', color: resasT.length > 0 ? '#c96e6e' : '#6ec96e', padding: '3px 10px', borderRadius: 4 }}>
+                          {resasT.length > 0 ? `⚠ ${resasT.length} réservation(s)` : '✓ Disponible'}
                         </span>
                       </div>
                       {resasT.length === 0 ? (
