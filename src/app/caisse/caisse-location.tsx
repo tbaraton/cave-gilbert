@@ -436,7 +436,8 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
 
       {/* ── ÉTAPE 1 : CLIENT & DATES ── */}
       {etape === 'client' && (
-        <div style={{ flex: 1, padding: '20px 16px', overflowY: 'auto' as const }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' as const, overflow: 'hidden' }}>
+        <div style={{ flex: 1, padding: '20px 16px 8px', overflowY: 'auto' as const }}>
           <div style={{ fontSize: 18, fontFamily: 'Georgia, serif', color: '#f0e8d8', marginBottom: 20 }}>Client & dates</div>
 
           {/* Recherche client */}
@@ -490,10 +491,13 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
             </div>
           )}
 
+        </div>
+        <div style={{ padding: "12px 16px", borderTop: "0.5px solid rgba(255,255,255,0.07)", background: "#0d0a08" }}>
           <button onClick={passerEtapeFuts} disabled={!dateDebut || !dateFin}
             style={{ ...btnPrimary, opacity: (!dateDebut || !dateFin) ? 0.4 : 1, cursor: (!dateDebut || !dateFin) ? 'not-allowed' : 'pointer' }}>
             Suivant → Choisir les fûts
           </button>
+        </div>
         </div>
       )}
 
@@ -594,7 +598,8 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
 
       {/* ── ÉTAPE 3 : TIREUSE ── */}
       {etape === 'tireuse' && (
-        <div style={{ flex: 1, padding: '20px 16px', overflowY: 'auto' as const }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' as const, overflow: 'hidden' }}>
+        <div style={{ flex: 1, padding: '20px 16px 8px', overflowY: 'auto' as const }}>
           <div style={{ fontSize: 18, fontFamily: 'Georgia, serif', color: '#f0e8d8', marginBottom: 8 }}>Tireuse</div>
           <div style={{ fontSize: 13, color: 'rgba(232,224,213,0.4)', marginBottom: 20 }}>Caution : 900€ par tireuse</div>
 
@@ -646,7 +651,8 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
 
       {/* ── ÉTAPE 4 : RÉCAPITULATIF ── */}
       {etape === 'recapitulatif' && (
-        <div style={{ flex: 1, padding: '20px 16px', overflowY: 'auto' as const }}>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div style={{ flex: 1, padding: '20px 16px 8px', overflowY: 'auto' as const }}>
           <div style={{ fontSize: 18, fontFamily: 'Georgia, serif', color: '#f0e8d8', marginBottom: 20 }}>Récapitulatif</div>
 
           {/* Client */}
@@ -741,10 +747,13 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
             {tireusesChoisies.length > 0 && <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>+ Caution {fmt(cautionTireuse)} en chèque (non encaissé)</div>}
           </div>
 
+        </div>
+        <div style={{ padding: '12px 16px', borderTop: '0.5px solid rgba(255,255,255,0.07)', background: '#0d0a08' }}>
           <button onClick={creerReservation} disabled={saving || !siteRetrait || !siteRetour}
             style={{ ...btnPrimary, background: (saving || !siteRetrait || !siteRetour) ? '#2a2a1e' : '#c9a96e', color: (saving || !siteRetrait || !siteRetour) ? '#555' : '#0d0a08', opacity: (!siteRetrait || !siteRetour) ? 0.5 : 1 }}>
             {saving ? '⟳ Création...' : '✓ Confirmer la réservation'}
           </button>
+        </div>
         </div>
       )}
     </div>
