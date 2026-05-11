@@ -113,7 +113,7 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
     return acc + (fut ? fut.montant_consigne * l.quantite : 0)
   }, 0)
   const cautionTireuse = tireusesChoisies.length * 900
-  const totalTTC = totalFuts + totalConsignesFuts + cautionTireuse
+  const totalTTC = totalFuts  // Caution et consignes gérées séparément
 
   const creerReservation = async () => {
     setSaving(true)
@@ -305,11 +305,8 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
 
           {lignesFuts.some(l => l.fut_id) && (
             <div style={{ background: 'rgba(201,169,110,0.06)', borderRadius: 8, padding: '12px 16px', marginBottom: 16 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'rgba(232,224,213,0.5)', marginBottom: 4 }}>
-                <span>Fûts TTC</span><span>{fmt(totalFuts)}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'rgba(232,224,213,0.5)' }}>
-                <span>Consignes fûts</span><span>{fmt(totalConsignesFuts)}</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 15, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>
+                <span>Sous-total fûts</span><span>{fmt(totalFuts)}</span>
               </div>
             </div>
           )}
@@ -354,19 +351,11 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
 
           {tireusesChoisies.length > 0 && (
             <div style={{ background: 'rgba(201,169,110,0.06)', borderRadius: 8, padding: '12px 16px', marginBottom: 16, marginTop: 8 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: 'rgba(232,224,213,0.6)' }}>
-                <span>Caution tireuse(s)</span>
-                <span style={{ color: '#c9a96e' }}>{fmt(cautionTireuse)}</span>
+              <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>
+                ℹ️ Caution tireuse : {fmt(cautionTireuse)} — chèque physique conservé, restitué au retour
               </div>
             </div>
           )}
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
-            <div onClick={() => setCautionPayee(!cautionPayee)} style={{ width: 22, height: 22, borderRadius: 4, border: `2px solid ${cautionPayee ? '#c9a96e' : 'rgba(255,255,255,0.3)'}`, background: cautionPayee ? '#c9a96e' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
-              {cautionPayee && <span style={{ fontSize: 13, color: '#0d0a08', fontWeight: 700 }}>✓</span>}
-            </div>
-            <span style={{ fontSize: 14, color: 'rgba(232,224,213,0.7)' }}>Caution encaissée</span>
-          </div>
 
           <button onClick={passerRecapitulatif}
             style={{ ...btnPrimary }}>
@@ -404,9 +393,7 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
                 </div>
               )
             })}
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'rgba(232,224,213,0.4)', marginTop: 6, paddingTop: 6, borderTop: '0.5px solid rgba(255,255,255,0.06)' }}>
-              <span>Consignes fûts</span><span>{fmt(totalConsignesFuts)}</span>
-            </div>
+
           </div>
 
           {/* Tireuses */}
@@ -417,18 +404,16 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
                 const t = tireuses.find(x => x.id === tid)
                 return <div key={tid} style={{ fontSize: 13, color: '#e8e0d5', marginBottom: 4 }}>{t?.nom} — {t?.modele}</div>
               })}
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'rgba(232,224,213,0.4)', marginTop: 6, paddingTop: 6, borderTop: '0.5px solid rgba(255,255,255,0.06)' }}>
-                <span>Caution {cautionPayee ? '✓ encaissée' : '(à encaisser)'}</span><span>{fmt(cautionTireuse)}</span>
+              <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)', marginTop: 6, paddingTop: 6, borderTop: '0.5px solid rgba(255,255,255,0.06)' }}>
+                Caution {fmt(cautionTireuse)} en chèque — non encaissée
               </div>
             </div>
           )}
 
           {/* Total */}
           <div style={{ background: 'rgba(201,169,110,0.08)', borderRadius: 10, padding: '16px', marginBottom: 24, border: '0.5px solid rgba(201,169,110,0.2)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'rgba(232,224,213,0.5)', marginBottom: 4 }}><span>Fûts TTC</span><span>{fmt(totalFuts)}</span></div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'rgba(232,224,213,0.5)', marginBottom: 4 }}><span>Consignes fûts</span><span>{fmt(totalConsignesFuts)}</span></div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'rgba(232,224,213,0.5)', marginBottom: 8 }}><span>Caution tireuse</span><span>{fmt(cautionTireuse)}</span></div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 22, color: '#c9a96e', fontFamily: 'Georgia, serif', fontWeight: 700 }}><span>TOTAL</span><span>{fmt(totalTTC)}</span></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 22, color: '#c9a96e', fontFamily: 'Georgia, serif', fontWeight: 700, marginBottom: 8 }}><span>TOTAL TTC</span><span>{fmt(totalTTC)}</span></div>
+            {tireusesChoisies.length > 0 && <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>+ Caution {fmt(cautionTireuse)} en chèque (non encaissé)</div>}
           </div>
 
           <button onClick={creerReservation} disabled={saving}
