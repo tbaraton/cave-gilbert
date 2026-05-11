@@ -41,6 +41,9 @@ export default function LocationPage() {
   const [showDetailResa, setShowDetailResa] = useState<any>(null)
   const [showAnnulees, setShowAnnulees] = useState(false)
   const [showNouvelleCommande, setShowNouvelleCommande] = useState(false)
+  const [dateLivraisonSouhaitee, setDateLivraisonSouhaitee] = useState('')
+  const [envoyerEnCours, setEnvoyerEnCours] = useState(false)
+  const [ajouteAlertes, setAjouteAlertes] = useState<Set<string>>(new Set())
   const [showRetourFuts, setShowRetourFuts] = useState<any>(null)
   const [showNouvelleConsigne, setShowNouvelleConsigne] = useState(false)
 
@@ -99,6 +102,120 @@ export default function LocationPage() {
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  const commandeEnAttente = commandesLoupiote.find((cmd: any) => cmd.statut === 'en_attente')
+
+  const ajouterACommande = async (resa: any, manques: any[]) => {
+    let cmd: any = commandeEnAttente
+    if (!cmd) {
+      const numero = 'CMD-LPT-' + Date.now()
+      const { data } = await supabase.from('commandes_loupiote').insert({
+        numero, statut: 'en_attente',
+        date_commande: new Date().toISOString().split('T')[0],
+        montant_total_ht: 0, montant_consignes: 0,
+      }).select('id').single()
+      if (!data) return
+      cmd = { id: data.id, lignes: [] }
+    }
+    const { data: lignesExist } = await supabase.from('commandes_loupiote_lignes').select('*').eq('commande_id', cmd.id)
+    for (const m of manques) {
+      const exist = (lignesExist || []).find((l: any) => l.fut_catalogue_id === m.fut.id)
+      if (exist) {
+        await supabase.from('commandes_loupiote_lignes').update({ quantite: exist.quantite + m.manque }).eq('id', exist.id)
+      } else {
+        await supabase.from('commandes_loupiote_lignes').insert({
+          commande_id: cmd.id, fut_catalogue_id: m.fut.id,
+          quantite: m.manque, prix_achat_ht: m.fut.prix_achat_ht, montant_consigne_unitaire: 36,
+        })
+      }
+    }
+    const { data: lignes } = await supabase.from('commandes_loupiote_lignes').select('quantite, prix_achat_ht, montant_consigne_unitaire').eq('commande_id', cmd.id)
+    const totalHT = (lignes||[]).reduce((a: number, l: any) => a + l.quantite * l.prix_achat_ht, 0)
+    const totalC = (lignes||[]).reduce((a: number, l: any) => a + l.quantite * l.montant_consigne_unitaire, 0)
+    await supabase.from('commandes_loupiote').update({ montant_total_ht: totalHT, montant_consignes: totalC }).eq('id', cmd.id)
+    setAjouteAlertes(prev => new Set([...prev, resa.id]))
+    await load()
+  }
+
+  const genererBonCommande = (cmd: any, dateLiv?: string) => {
+    const lignes = cmd.lignes || []
+    const totalHT = lignes.reduce((a: number, l: any) => a + l.prix_achat_ht * l.quantite, 0)
+    const totalC = lignes.reduce((a: number, l: any) => a + 36 * l.quantite, 0)
+    return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>Bon de commande ${cmd.numero}</title>
+<style>
+body{font-family:Arial,sans-serif;max-width:800px;margin:0 auto;padding:32px;color:#1a1a1a}
+.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:32px;border-bottom:2px solid #8b4513;padding-bottom:20px}
+h1{font-size:22px;color:#5c2d0a;margin:0 0 4px;font-family:Georgia,serif}
+.doc-info{text-align:right}
+h2{font-size:20px;color:#5c2d0a;margin:0 0 8px}
+.numero{font-size:16px;font-weight:bold;color:#8b4513}
+p{margin:2px 0;font-size:12px;color:#666}
+table{width:100%;border-collapse:collapse;margin-top:20px;font-size:13px}
+th{background:#f5f0eb;padding:10px 12px;text-align:left;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#666}
+td{padding:10px 12px;border-bottom:.5px solid #eee;vertical-align:top}
+.consigne{font-size:10px;color:#888;margin-top:3px}
+.total-row{background:#faf7f3;font-weight:bold}
+.grand-total{background:#f0ebe3;font-weight:bold;font-size:15px}
+</style></head><body>
+<div class="header">
+  <div>
+    <img src="https://cavedegilbert.vercel.app/logo.png" style="height:50px;object-fit:contain;margin-bottom:8px;display:block" onerror="this.style.display='none'" />
+    <h1>Cave de Gilbert</h1>
+    <p>Avenue Jean Colomb — 69280 Marcy l'Étoile</p>
+    <p>04 22 91 41 09 · contact@cavedegilbert.fr</p>
+  </div>
+  <div class="doc-info">
+    <h2>Bon de commande</h2>
+    <p class="numero">${cmd.numero}</p>
+    <p>Date : ${new Date(cmd.date_commande).toLocaleDateString('fr-FR')}</p>
+    ${dateLiv ? '<p>Livraison souhaitée avant le : <strong>' + new Date(dateLiv).toLocaleDateString('fr-FR') + '</strong></p>' : ''}
+  </div>
+</div>
+<p style="margin-bottom:16px"><strong>Fournisseur :</strong> La Loupiote — commandelaloupiote@gmail.com</p>
+<table>
+  <thead><tr><th>Désignation</th><th>Contenance</th><th>Qté</th><th>Prix HT / fût</th><th>Total HT</th></tr></thead>
+  <tbody>
+    ${lignes.map((l: any) => `<tr>
+      <td>${l.fut?.nom_cuvee || ''} (${l.fut?.type_biere || ''})
+        <div class="consigne">Consigne : 36,00 € × ${l.quantite} fût(s) = ${(36 * l.quantite).toFixed(2)} €</div>
+      </td>
+      <td>${l.fut?.contenance_litres}L</td>
+      <td>${l.quantite}</td>
+      <td>${Number(l.prix_achat_ht).toFixed(2)} €</td>
+      <td>${(l.prix_achat_ht * l.quantite).toFixed(2)} €</td>
+    </tr>`).join('')}
+    <tr class="total-row"><td colspan="4">Total HT fûts</td><td>${totalHT.toFixed(2)} €</td></tr>
+    <tr><td colspan="4" style="font-size:12px;color:#888">Total consignes</td><td style="font-size:12px;color:#888">${totalC.toFixed(2)} €</td></tr>
+    <tr class="grand-total"><td colspan="4">TOTAL À RÉGLER</td><td>${(totalHT + totalC).toFixed(2)} €</td></tr>
+  </tbody>
+</table>
+<div style="margin-top:32px;font-size:11px;color:#888;border-top:1px solid #eee;padding-top:16px">
+  <p>Cave de Gilbert — Avenue Jean Colomb, 69280 Marcy l'Étoile</p>
+  <p>Merci de confirmer réception et date de livraison.</p>
+</div>
+</body></html>`
+  }
+
+  const envoyerCommande = async (cmd: any) => {
+    setEnvoyerEnCours(true)
+    try {
+      const html = genererBonCommande(cmd, dateLivraisonSouhaitee || undefined)
+      if (dateLivraisonSouhaitee) {
+        await supabase.from('commandes_loupiote').update({ date_livraison_prevue: dateLivraisonSouhaitee }).eq('id', cmd.id)
+      }
+      const res = await fetch('/api/envoyer-reservation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to: 'commandelaloupiote@gmail.com', numero: cmd.numero, clientNom: 'La Loupiote', html }),
+      })
+      if (res.ok) {
+        await supabase.from('commandes_loupiote').update({ statut: 'commandée' }).eq('id', cmd.id)
+        await load()
+        alert('Commande envoyée à La Loupiote ✓')
+      } else { alert('Erreur envoi email') }
+    } catch { alert('Erreur réseau') }
+    setEnvoyerEnCours(false)
+  }
 
   const clientNom = (r: any) => {
     if (!r.customer) return 'Client anonyme'
@@ -169,30 +286,9 @@ export default function LocationPage() {
                             {clientNom(a.resa)} · {new Date(a.resa.date_debut).toLocaleDateString('fr-FR')}
                           </div>
                           <button onClick={async () => {
-                            const numero = `CMD-LPT-${Date.now()}`
-                            const { data: cmd } = await supabase.from('commandes_loupiote').insert({
-                              numero, statut: 'en_attente',
-                              date_commande: new Date().toISOString().split('T')[0],
-                              reservation_id: a.resa.id,
-                              montant_total_ht: a.manques.reduce((acc: number, m: any) => acc + (m.fut.prix_achat_ht * m.manque), 0),
-                              montant_consignes: 0,
-                              notes: `Commande auto — manque pour ${clientNom(a.resa)} le ${new Date(a.resa.date_debut).toLocaleDateString('fr-FR')}`,
-                            }).select('id').single()
-                            if (cmd) {
-                              await supabase.from('commandes_loupiote_lignes').insert(
-                                a.manques.map((m: any) => ({
-                                  commande_id: cmd.id,
-                                  fut_catalogue_id: m.fut.id,
-                                  quantite: m.manque,
-                                  prix_achat_ht: m.fut.prix_achat_ht,
-                                  montant_consigne_unitaire: 0,
-                                }))
-                              )
-                              load()
-                              setOnglet('loupiote')
-                            }
-                          }} style={{ fontSize: 10, background: 'rgba(201,169,110,0.15)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 4, color: '#c9a96e', padding: '2px 8px', cursor: 'pointer', whiteSpace: 'nowrap' as const, marginLeft: 6 }}>
-                            + Commander
+                            await ajouterACommande(a.resa, a.manques)
+                          }} style={{ fontSize: 10, background: ajouteAlertes.has(a.resa.id) ? 'rgba(110,201,110,0.15)' : 'rgba(201,169,110,0.15)', border: `0.5px solid ${ajouteAlertes.has(a.resa.id) ? 'rgba(110,201,110,0.4)' : 'rgba(201,169,110,0.3)'}`, borderRadius: 4, color: ajouteAlertes.has(a.resa.id) ? '#6ec96e' : '#c9a96e', padding: '2px 8px', cursor: 'pointer', whiteSpace: 'nowrap' as const, marginLeft: 6 }}>
+                            {ajouteAlertes.has(a.resa.id) ? '✓ Ajouté' : '+ Ajouter à la commande'}
                           </button>
                         </div>
                         <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 4, marginTop: 4 }}>
@@ -470,43 +566,110 @@ export default function LocationPage() {
           {onglet === 'loupiote' && (
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-                <div style={{ fontFamily: 'Georgia, serif', fontSize: 18, color: '#f0e8d8' }}>Commandes La Loupiote</div>
-                <button onClick={() => setShowNouvelleCommande(true)} style={{ background: '#c9a96e', border: 'none', borderRadius: 8, color: '#0d0a08', padding: '10px 20px', fontSize: 14, cursor: 'pointer', fontWeight: 600 }}>+ Nouvelle commande</button>
+                <div>
+                  <div style={{ fontFamily: 'Georgia, serif', fontSize: 18, color: '#f0e8d8' }}>Commandes La Loupiote</div>
+                  {commandeEnAttente && <div style={{ fontSize: 12, color: '#c9a96e', marginTop: 4 }}>📋 Panier en cours — {commandeEnAttente.lignes?.length || 0} ligne(s)</div>}
+                </div>
+                <button onClick={() => setShowNouvelleCommande(true)} style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.15)', borderRadius: 8, color: 'rgba(232,224,213,0.5)', padding: '8px 16px', fontSize: 13, cursor: 'pointer' }}>+ Nouvelle commande</button>
               </div>
+
               {commandesLoupiote.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: 40, color: 'rgba(232,224,213,0.3)' }}>Aucune commande</div>
-              ) : commandesLoupiote.map(c => (
-                <div key={c.id} style={{ background: '#18130e', borderRadius: 10, padding: '16px 20px', marginBottom: 10, border: '0.5px solid rgba(255,255,255,0.07)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+                <div style={{ textAlign: 'center', padding: 40, color: 'rgba(232,224,213,0.3)' }}>Aucune commande — ajoutez des fûts depuis les alertes stock</div>
+              ) : commandesLoupiote.map((cmd: any) => (
+                <div key={cmd.id} style={{ background: '#18130e', borderRadius: 10, padding: '16px 20px', marginBottom: 16, border: `0.5px solid ${cmd.statut === 'en_attente' ? 'rgba(201,169,110,0.3)' : 'rgba(255,255,255,0.07)'}` }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
                     <div>
-                      <div style={{ fontFamily: 'monospace', fontSize: 14, color: '#c9a96e' }}>{c.numero}</div>
-                      <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', marginTop: 2 }}>Commandé le {new Date(c.date_commande).toLocaleDateString('fr-FR')}</div>
+                      <div style={{ fontFamily: 'monospace', fontSize: 14, color: '#c9a96e' }}>{cmd.numero}</div>
+                      <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', marginTop: 2 }}>Créée le {new Date(cmd.date_commande).toLocaleDateString('fr-FR')}</div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <select value={c.statut} onChange={async e => { await supabase.from('commandes_loupiote').update({ statut: e.target.value }).eq('id', c.id); load() }}
-                        style={{ background: '#1a1408', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 6, color: '#c9a96e', fontSize: 13, padding: '6px 10px', cursor: 'pointer' }}>
-                        {['en_attente', 'commandée', 'livrée', 'annulée'].map(s => <option key={s} value={s}>{s}</option>)}
-                      </select>
-                      <span style={{ fontSize: 16, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{fmt(c.montant_total_ht + c.montant_consignes)}</span>
+                    <span style={{ fontSize: 11, background: cmd.statut === 'en_attente' ? 'rgba(201,169,110,0.15)' : cmd.statut === 'commandée' ? 'rgba(110,201,110,0.1)' : 'rgba(255,255,255,0.05)', color: cmd.statut === 'en_attente' ? '#c9a96e' : cmd.statut === 'commandée' ? '#6ec96e' : '#888', padding: '3px 10px', borderRadius: 4 }}>{cmd.statut}</span>
+                  </div>
+
+                  {/* Lignes éditable si en_attente */}
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginBottom: 12 }}>
+                    <thead>
+                      <tr style={{ borderBottom: '0.5px solid rgba(255,255,255,0.08)' }}>
+                        {['Désignation', 'Qté', 'Prix HT', 'Consigne', 'Total'].map(h => (
+                          <th key={h} style={{ padding: '6px 8px', textAlign: 'left', fontSize: 10, color: 'rgba(232,224,213,0.35)', letterSpacing: 1, fontWeight: 400 }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cmd.lignes?.map((l: any) => (
+                        <tr key={l.id} style={{ borderBottom: '0.5px solid rgba(255,255,255,0.04)' }}>
+                          <td style={{ padding: '8px' }}>
+                            <div style={{ fontSize: 13, color: '#f0e8d8' }}>{l.fut?.nom_cuvee} {l.fut?.contenance_litres}L</div>
+                            <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.35)' }}>{l.fut?.type_biere}</div>
+                          </td>
+                          <td style={{ padding: '8px' }}>
+                            {cmd.statut === 'en_attente' ? (
+                              <input type="number" min={1} value={l.quantite}
+                                onChange={async e => {
+                                  const q = parseInt(e.target.value) || 1
+                                  await supabase.from('commandes_loupiote_lignes').update({ quantite: q }).eq('id', l.id)
+                                  // Check if alerte was fulfilled - reset badge
+                                  setAjouteAlertes(new Set())
+                                  load()
+                                }}
+                                style={{ width: 50, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 4, color: '#f0e8d8', fontSize: 13, padding: '4px 6px', textAlign: 'center' }} />
+                            ) : <span style={{ color: '#e8e0d5' }}>{l.quantite}</span>}
+                          </td>
+                          <td style={{ padding: '8px' }}>
+                            {cmd.statut === 'en_attente' ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <input type="number" step="0.01" value={l.prix_achat_ht}
+                                  onChange={async e => {
+                                    const p = parseFloat(e.target.value) || 0
+                                    await supabase.from('commandes_loupiote_lignes').update({ prix_achat_ht: p }).eq('id', l.id)
+                                    load()
+                                  }}
+                                  style={{ width: 70, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 4, color: '#f0e8d8', fontSize: 13, padding: '4px 6px' }} />
+                                <span style={{ fontSize: 10, color: 'rgba(232,224,213,0.4)' }}>€</span>
+                              </div>
+                            ) : <span style={{ color: '#e8e0d5' }}>{Number(l.prix_achat_ht).toFixed(2)} €</span>}
+                          </td>
+                          <td style={{ padding: '8px', fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>
+                            36 € × {l.quantite} = {(36 * l.quantite).toFixed(2)} €
+                          </td>
+                          <td style={{ padding: '8px', color: '#c9a96e', fontFamily: 'Georgia, serif' }}>
+                            {(l.prix_achat_ht * l.quantite).toFixed(2)} €
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+
+                  {/* Totaux */}
+                  <div style={{ background: 'rgba(201,169,110,0.05)', borderRadius: 6, padding: '10px 12px', marginBottom: 12 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'rgba(232,224,213,0.5)', marginBottom: 4 }}>
+                      <span>Total HT fûts</span><span>{cmd.montant_total_ht?.toFixed(2)} €</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'rgba(232,224,213,0.5)', marginBottom: 4 }}>
+                      <span>Total consignes (36€/fût)</span><span>{(cmd.lignes||[]).reduce((a: number, l: any) => a + 36 * l.quantite, 0).toFixed(2)} €</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 16, color: '#c9a96e', fontFamily: 'Georgia, serif', fontWeight: 700 }}>
+                      <span>TOTAL</span><span>{(cmd.montant_total_ht + (cmd.lignes||[]).reduce((a: number, l: any) => a + 36 * l.quantite, 0)).toFixed(2)} €</span>
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    {c.lignes?.map((l: any) => (
-                      <span key={l.id} style={{ fontSize: 12, background: 'rgba(255,255,255,0.05)', borderRadius: 4, padding: '4px 10px', color: 'rgba(232,224,213,0.6)' }}>
-                        {l.quantite}× {l.fut?.nom_cuvee} {l.fut?.contenance_litres}L
-                      </span>
-                    ))}
-                  </div>
-                  {c.statut === 'livrée' && (
-                    <div style={{ marginTop: 10 }}>
-                      <button onClick={async () => {
-                        for (const l of c.lignes || []) {
-                          await supabase.from('futs_catalogue').update({ stock_actuel: supabase.rpc('increment', { x: l.quantite }) }).eq('id', l.fut_catalogue_id)
-                        }
-                        load()
-                      }} style={{ fontSize: 12, background: 'rgba(110,201,110,0.1)', border: '0.5px solid rgba(110,201,110,0.2)', borderRadius: 6, color: '#6ec96e', padding: '5px 12px', cursor: 'pointer' }}>
-                        ✓ Confirmer entrée en stock
-                      </button>
+
+                  {/* Date livraison + envoi si en_attente */}
+                  {cmd.statut === 'en_attente' && (
+                    <div>
+                      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10 }}>
+                        <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)', whiteSpace: 'nowrap' }}>Livraison souhaitée avant le :</span>
+                        <input type="date" value={dateLivraisonSouhaitee} onChange={e => setDateLivraisonSouhaitee(e.target.value)}
+                          style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 6, color: '#f0e8d8', fontSize: 13, padding: '6px 10px' }} />
+                      </div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button onClick={() => { const html = genererBonCommande(cmd, dateLivraisonSouhaitee); const w = window.open('', '_blank'); if (w) { w.document.write(html); w.document.close(); w.print() } }}
+                          style={{ flex: 1, background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.15)', borderRadius: 8, color: 'rgba(232,224,213,0.6)', padding: '10px', fontSize: 13, cursor: 'pointer' }}>
+                          🖨 Aperçu / Imprimer
+                        </button>
+                        <button onClick={() => envoyerCommande(cmd)} disabled={envoyerEnCours}
+                          style={{ flex: 2, background: '#c9a96e', border: 'none', borderRadius: 8, color: '#0d0a08', padding: '10px', fontSize: 14, cursor: 'pointer', fontWeight: 700 }}>
+                          {envoyerEnCours ? '⟳ Envoi...' : '📧 Valider & envoyer à La Loupiote'}
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
