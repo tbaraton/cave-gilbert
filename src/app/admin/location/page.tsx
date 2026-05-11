@@ -164,8 +164,36 @@ export default function LocationPage() {
                     <div style={{ maxHeight: 200, overflowY: 'auto' as const }}>
                     {alertes.map((a: any, i: number) => (
                       <div key={i} style={{ marginBottom: 6, padding: '6px 10px', background: 'rgba(201,110,110,0.05)', borderRadius: 6, borderLeft: '2px solid rgba(201,110,110,0.3)' }}>
-                        <div style={{ fontSize: 12, color: '#c96e6e', fontWeight: 600 }}>
-                          {clientNom(a.resa)} · {new Date(a.resa.date_debut).toLocaleDateString('fr-FR')}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                          <div style={{ fontSize: 12, color: '#c96e6e', fontWeight: 600 }}>
+                            {clientNom(a.resa)} · {new Date(a.resa.date_debut).toLocaleDateString('fr-FR')}
+                          </div>
+                          <button onClick={async () => {
+                            const numero = `CMD-LPT-${Date.now()}`
+                            const { data: cmd } = await supabase.from('commandes_loupiote').insert({
+                              numero, statut: 'en_attente',
+                              date_commande: new Date().toISOString().split('T')[0],
+                              reservation_id: a.resa.id,
+                              montant_total_ht: a.manques.reduce((acc: number, m: any) => acc + (m.fut.prix_achat_ht * m.manque), 0),
+                              montant_consignes: 0,
+                              notes: `Commande auto — manque pour ${clientNom(a.resa)} le ${new Date(a.resa.date_debut).toLocaleDateString('fr-FR')}`,
+                            }).select('id').single()
+                            if (cmd) {
+                              await supabase.from('commandes_loupiote_lignes').insert(
+                                a.manques.map((m: any) => ({
+                                  commande_id: cmd.id,
+                                  fut_catalogue_id: m.fut.id,
+                                  quantite: m.manque,
+                                  prix_achat_ht: m.fut.prix_achat_ht,
+                                  montant_consigne_unitaire: 0,
+                                }))
+                              )
+                              load()
+                              setOnglet('loupiote')
+                            }
+                          }} style={{ fontSize: 10, background: 'rgba(201,169,110,0.15)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 4, color: '#c9a96e', padding: '2px 8px', cursor: 'pointer', whiteSpace: 'nowrap' as const, marginLeft: 6 }}>
+                            + Commander
+                          </button>
                         </div>
                         <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 4, marginTop: 4 }}>
                           {a.manques.map((m: any, j: number) => (
