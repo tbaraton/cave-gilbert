@@ -446,8 +446,56 @@ function ModalDetailResa({ resa, onClose, futs, tireuses }: { resa: any; onClose
   const [r, setR] = useState(resa)
   const [saving, setSaving] = useState(false)
   const [retours, setRetours] = useState<Record<string, number>>({})
+  const [editPrix, setEditPrix] = useState(false)
+  const [lignesEdit, setLignesEdit] = useState<any[]>(resa.reservation_futs?.map((l: any) => ({ ...l })) || [])
+  const [remiseType, setRemiseType] = useState<'pct' | 'eur'>('pct')
+  const [remiseVal, setRemiseVal] = useState('')
+  const [editingLignes, setEditingLignes] = useState(false)
+  const [lignesEdit, setLignesEdit] = useState<any[]>(resa.reservation_futs || [])
+  const [remiseType, setRemiseType] = useState<'pct' | 'eur'>('pct')
+  const [remiseGlobale, setRemiseGlobale] = useState('')
 
   const clientNom = r.customer?.est_societe ? r.customer.raison_sociale : `${r.customer?.prenom || ''} ${r.customer?.nom || ''}`.trim()
+
+  const saveLignes = async () => {
+    setSaving(true)
+    const remiseVal = remiseGlobale ? (remiseType === 'pct' ? parseFloat(remiseGlobale) / 100 : 0) : 0
+    const remiseEur = remiseGlobale && remiseType === 'eur' ? parseFloat(remiseGlobale) : 0
+    for (const l of lignesEdit) {
+      const prixApresRemise = remiseType === 'pct' && remiseVal > 0 
+        ? l.prix_unitaire_ttc * (1 - remiseVal)
+        : l.prix_unitaire_ttc
+      await supabase.from('reservation_futs').update({
+        prix_unitaire_ttc: l.prix_unitaire_ttc,
+        quantite: l.quantite,
+      }).eq('id', l.id)
+    }
+    // Recalculer total
+    const totalFuts = lignesEdit.reduce((acc, l) => acc + l.prix_unitaire_ttc * l.quantite, 0)
+    const totalApresRemise = remiseType === 'pct' && remiseVal > 0
+      ? totalFuts * (1 - remiseVal)
+      : remiseType === 'eur' && remiseEur > 0
+      ? Math.max(0, totalFuts - remiseEur)
+      : totalFuts
+    await supabase.from('reservations_location').update({ total_ttc: totalApresRemise }).eq('id', r.id)
+    setR({ ...r, reservation_futs: lignesEdit, total_ttc: totalApresRemise })
+    setEditingLignes(false)
+    setSaving(false)
+  }
+
+  const savePrix = async () => {
+    setSaving(true)
+    for (const l of lignesEdit) {
+      await supabase.from('reservation_futs').update({ prix_unitaire_ttc: l.prix_unitaire_ttc, quantite: l.quantite }).eq('id', l.id)
+    }
+    const sousTotal = lignesEdit.reduce((acc, l) => acc + l.prix_unitaire_ttc * l.quantite, 0)
+    const remise = remiseVal ? parseFloat(remiseVal) : 0
+    const total = remiseType === 'pct' ? sousTotal * (1 - remise / 100) : Math.max(0, sousTotal - remise)
+    await supabase.from('reservations_location').update({ total_ttc: total }).eq('id', r.id)
+    setR({ ...r, reservation_futs: lignesEdit, total_ttc: total })
+    setEditPrix(false)
+    setSaving(false)
+  }
 
   const updateStatut = async (statut: string) => {
     setSaving(true)
@@ -540,15 +588,44 @@ function ModalDetailResa({ resa, onClose, futs, tireuses }: { resa: any; onClose
         {/* Fûts */}
         <div style={{ marginBottom: 20 }}>
           <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', marginBottom: 10, letterSpacing: 1 }}>FÛTS RÉSERVÉS</div>
-          {r.reservation_futs?.map((l: any) => (
-            <div key={l.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '0.5px solid rgba(255,255,255,0.05)' }}>
-              <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+            <button onClick={() => setEditPrix(!editPrix)} style={{ fontSize: 12, background: 'transparent', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 6, color: '#c9a96e', padding: '4px 12px', cursor: 'pointer' }}>✎ Modifier prix</button>
+          </div>
+          {(editPrix ? lignesEdit : r.reservation_futs || []).map((l: any, i: number) => (
+            <div key={l.id} style={{ padding: '10px 0', borderBottom: '0.5px solid rgba(255,255,255,0.05)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ fontSize: 14, color: '#f0e8d8' }}>{l.fut?.nom_cuvee} {l.fut?.contenance_litres}L</div>
-                <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>{l.quantite} fût(s) × {fmt(l.prix_unitaire_ttc)} + {fmt(l.montant_consigne)} consigne</div>
+                <div style={{ fontSize: 15, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{fmt(l.quantite * l.prix_unitaire_ttc)}</div>
               </div>
-              <div style={{ fontSize: 16, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{fmt(l.quantite * l.prix_unitaire_ttc)}</div>
+              {editPrix ? (
+                <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' as const }}>
+                  <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>Qté</span>
+                  <input type="number" min={1} value={l.quantite} onChange={e => setLignesEdit(p => p.map((x, j) => j === i ? { ...x, quantite: parseInt(e.target.value) || 1 } : x))} style={{ width: 55, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.15)', borderRadius: 6, color: '#f0e8d8', fontSize: 14, padding: '5px', textAlign: 'center' as const }} />
+                  <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>Prix u. TTC</span>
+                  <input type="number" step="0.01" value={l.prix_unitaire_ttc} onChange={e => setLignesEdit(p => p.map((x, j) => j === i ? { ...x, prix_unitaire_ttc: parseFloat(e.target.value) || 0 } : x))} style={{ width: 85, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 6, color: '#f0e8d8', fontSize: 14, padding: '5px' }} />
+                  <span style={{ fontSize: 11, color: '#c9a96e' }}>€</span>
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', marginTop: 2 }}>{l.quantite} fût(s) × {fmt(l.prix_unitaire_ttc)}</div>
+              )}
             </div>
           ))}
+          {editPrix && (
+            <div style={{ marginTop: 12, padding: 14, background: 'rgba(255,255,255,0.03)', borderRadius: 8 }}>
+              <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', marginBottom: 8 }}>REMISE GLOBALE</div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+                <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', borderRadius: 6, overflow: 'hidden' }}>
+                  {(['pct','eur'] as const).map(t => <button key={t} onClick={() => setRemiseType(t)} style={{ background: remiseType === t ? 'rgba(201,169,110,0.2)' : 'transparent', border: 'none', color: remiseType === t ? '#c9a96e' : 'rgba(232,224,213,0.4)', padding: '5px 12px', fontSize: 12, cursor: 'pointer' }}>{t === 'pct' ? '%' : '€'}</button>)}
+                </div>
+                <input type="number" step="0.01" value={remiseVal} onChange={e => setRemiseVal(e.target.value)} placeholder="0" style={{ width: 80, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 6, color: '#f0e8d8', fontSize: 14, padding: '5px 8px' }} />
+                {remiseVal && <span style={{ fontSize: 13, color: '#6ec96e' }}>→ {fmt(Math.max(0, lignesEdit.reduce((a,l)=>a+l.prix_unitaire_ttc*l.quantite,0) - (remiseType==='eur' ? parseFloat(remiseVal) : lignesEdit.reduce((a,l)=>a+l.prix_unitaire_ttc*l.quantite,0)*parseFloat(remiseVal)/100)))}</span>}
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={() => setEditPrix(false)} style={{ flex: 1, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 8, color: 'rgba(232,224,213,0.4)', padding: '10px', fontSize: 13, cursor: 'pointer' }}>Annuler</button>
+                <button onClick={savePrix} disabled={saving} style={{ flex: 2, background: '#c9a96e', border: 'none', borderRadius: 8, color: '#0d0a08', padding: '10px', fontSize: 14, cursor: 'pointer', fontWeight: 700 }}>{saving ? '⟳' : '✓ Enregistrer'}</button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Tireuses */}
