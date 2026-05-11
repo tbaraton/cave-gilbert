@@ -1635,6 +1635,9 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
           )}
         </div>
       )}
+      {showHistorique && <HistoriqueVentes session={session} onClose={() => setShowHistorique(false)} onAddToCart={handleAddFromHistorique} />}
+      {showAchatsClient && client && <HistoriqueAchatsClient client={client} onClose={() => setShowAchatsClient(false)} onAddToCart={handleAddSingleAchat} />}
+      {showLocation && <div style={{ position: 'fixed' as const, inset: 0, zIndex: 600 }}><ModuleLocation session={session} user={vendeur} onClose={() => setShowLocation(false)} /></div>}
     </div>
   )
 
