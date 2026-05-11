@@ -146,7 +146,7 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
     const { data: resa } = await supabase.from('reservations_location').insert({
       numero, customer_id: client?.id || null, site_id: session.site_id, user_id: user.id,
       date_debut: dateDebut, date_fin: dateFin, statut: 'confirmée',
-      caution_tireuse_ttc: cautionTireuse, caution_payee: cautionPayee,
+      caution_tireuse_ttc: cautionTireuse, caution_payee: false,
       total_ttc: totalTTC,
     }).select('id').single()
 
@@ -157,7 +157,7 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
         await supabase.from('reservation_futs').insert(
           lignesValides.map(l => {
             const fut = futs.find(f => f.id === l.fut_id)
-            return { reservation_id: resa.id, fut_catalogue_id: l.fut_id, quantite: l.quantite, prix_unitaire_ttc: fut?.prix_vente_ttc || 0, montant_consigne: fut?.montant_consigne || 0 }
+            return { reservation_id: resa.id, fut_catalogue_id: l.fut_id, quantite: l.quantite, prix_unitaire_ttc: fut?.prix_vente_ttc || 0, montant_consigne: 0 }
           })
         )
         // Décrémenter stock
