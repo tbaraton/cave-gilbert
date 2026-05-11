@@ -42,8 +42,22 @@ export default function LocationPage() {
   const [showAnnulees, setShowAnnulees] = useState(false)
   const [showNouvelleCommande, setShowNouvelleCommande] = useState(false)
   const [dateLivraisonSouhaitee, setDateLivraisonSouhaitee] = useState('')
+  const [cmdReception, setCmdReception] = useState<any>(null)
+  const [qtesRecues, setQtesRecues] = useState<Record<string, number>>({})
   const [envoyerEnCours, setEnvoyerEnCours] = useState(false)
   const [ajouteAlertes, setAjouteAlertes] = useState<Set<string>>(new Set())
+
+  // Recalcule quels alertes sont couverts par la commande en attente
+  const alertesCouvertes = new Set(
+    alertes.filter((a: any) =>
+      a.manques.every((m: any) => {
+        const cmdEnAttente = commandesLoupiote.find((cmd: any) => cmd.statut === 'en_attente')
+        if (!cmdEnAttente) return false
+        const ligne = cmdEnAttente.lignes?.find((l: any) => l.fut_catalogue_id === m.fut.id)
+        return ligne && ligne.quantite >= m.manque
+      })
+    ).map((a: any) => a.resa.id)
+  )
   const [showRetourFuts, setShowRetourFuts] = useState<any>(null)
   const [showNouvelleConsigne, setShowNouvelleConsigne] = useState(false)
 
@@ -146,14 +160,14 @@ export default function LocationPage() {
       }
     }
     await recalculerTotaux(cmdId)
-    setAjouteAlertes(prev => new Set([...prev, resa.id]))
+    // badge computed from data
     await load()
   }
 
   const supprimerLigneCommande = async (ligneId: string, cmdId: string) => {
     await supabase.from('commandes_loupiote_lignes').delete().eq('id', ligneId)
     await recalculerTotaux(cmdId)
-    setAjouteAlertes(new Set()) // reset badges
+    // badge computed from data // reset badges
     await load()
   }
 
@@ -161,44 +175,125 @@ export default function LocationPage() {
     const lignes = cmd.lignes || []
     const totalHT_futs = lignes.reduce((a: number, l: any) => a + l.prix_achat_ht * l.quantite, 0)
     const totalConsignes = lignes.reduce((a: number, l: any) => a + 30 * l.quantite, 0)
-    const totalHT = totalHT_futs + totalConsignes
-    const tva = totalHT_futs * 0.20  // TVA 20% sur fûts uniquement, pas sur consignes
+    const tva = totalHT_futs * 0.20
     const totalTTC = totalHT_futs * 1.20 + totalConsignes
     return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>Bon de commande ${cmd.numero}</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: Arial, sans-serif; max-width: 820px; margin: 0 auto; padding: 40px; color: #1a2a3a; background: #fff; }
-  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 32px; padding-bottom: 20px; border-bottom: 3px solid #1a3a5c; }
-  .logo-wrap img { height: 64px; object-fit: contain; display: block; margin-bottom: 8px; }
-  .cave-name { font-size: 20px; color: #1a3a5c; font-family: Georgia, serif; letter-spacing: 1px; }
-  .cave-info { font-size: 11px; color: #5a7a9a; line-height: 1.8; margin-top: 4px; }
+  body {
+    font-family: 'Arial', sans-serif;
+    background: #0d0a08;
+    color: #e8e0d5;
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 48px 40px;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  @media print {
+    body { background: #0d0a08 !important; color: #e8e0d5 !important; }
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  }
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 40px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid rgba(201,169,110,0.3);
+  }
+  .logo-wrap img { height: 56px; object-fit: contain; display: block; margin-bottom: 10px; filter: brightness(1.1); }
+  .cave-name { font-size: 20px; color: #c9a96e; font-family: Georgia, serif; letter-spacing: 2px; }
+  .cave-info { font-size: 11px; color: rgba(232,224,213,0.4); line-height: 1.9; margin-top: 6px; }
   .doc-info { text-align: right; }
-  .doc-title { font-size: 24px; color: #1a3a5c; font-family: Georgia, serif; letter-spacing: 2px; margin-bottom: 8px; }
-  .doc-numero { font-size: 14px; font-weight: bold; color: #1a2a3a; }
-  .doc-date { font-size: 12px; color: #5a7a9a; margin-top: 4px; }
-  .livraison-badge { display: inline-block; background: #eaf2ff; border: 1px solid #1a3a5c; border-radius: 4px; padding: 4px 10px; font-size: 12px; color: #1a3a5c; margin-top: 8px; }
-  .fournisseur { background: #f0f6ff; border-left: 4px solid #1a3a5c; padding: 10px 16px; margin-bottom: 24px; font-size: 13px; color: #1a2a3a; border-radius: 0 6px 6px 0; }
-  .fournisseur strong { color: #1a3a5c; }
+  .doc-title { font-size: 11px; letter-spacing: 4px; text-transform: uppercase; color: rgba(201,169,110,0.6); margin-bottom: 6px; }
+  .doc-numero { font-size: 22px; color: #c9a96e; font-family: Georgia, serif; }
+  .doc-date { font-size: 12px; color: rgba(232,224,213,0.4); margin-top: 6px; }
+  .livraison-badge {
+    display: inline-block;
+    background: rgba(201,169,110,0.1);
+    border: 0.5px solid rgba(201,169,110,0.4);
+    border-radius: 4px;
+    padding: 5px 12px;
+    font-size: 12px;
+    color: #c9a96e;
+    margin-top: 10px;
+  }
+  .fournisseur {
+    background: rgba(255,255,255,0.03);
+    border-left: 3px solid rgba(201,169,110,0.4);
+    padding: 12px 18px;
+    margin-bottom: 32px;
+    font-size: 13px;
+    color: rgba(232,224,213,0.7);
+    border-radius: 0 6px 6px 0;
+  }
+  .fournisseur strong { color: #c9a96e; }
   table { width: 100%; border-collapse: collapse; margin-bottom: 0; }
-  thead tr { background: #1a3a5c; }
-  thead th { padding: 11px 12px; text-align: left; font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: #fff; font-weight: 600; }
-  tbody tr:nth-child(even) { background: #f5f9ff; }
-  tbody tr:nth-child(odd) { background: #fff; }
-  td { padding: 11px 12px; border-bottom: 1px solid #dce8f5; vertical-align: top; font-size: 13px; }
-  .produit-nom { font-weight: 600; color: #1a2a3a; }
-  .produit-type { font-size: 10px; color: #5a7a9a; margin-top: 2px; text-transform: uppercase; letter-spacing: 0.5px; }
-  .consigne-note { font-size: 10px; color: #5a7a9a; margin-top: 4px; font-style: italic; }
-  .totaux { border-top: 2px solid #1a3a5c; }
-  .total-line { display: flex; justify-content: space-between; padding: 8px 12px; font-size: 13px; }
-  .total-line.sub { color: #5a7a9a; background: #f5f9ff; }
-  .total-line.tva { color: #1a2a3a; background: #eaf2ff; font-weight: 600; }
-  .total-line.grand { background: #1a3a5c; color: #fff; font-size: 16px; font-weight: bold; padding: 12px 16px; }
-  .signature-zone { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-top: 40px; }
-  .sig-box { border-top: 2px solid #1a3a5c; padding-top: 10px; font-size: 11px; color: #5a7a9a; min-height: 70px; }
-  .sig-title { color: #1a3a5c; font-weight: 600; font-size: 12px; margin-bottom: 4px; }
-  .footer { margin-top: 24px; padding-top: 16px; border-top: 1px solid #dce8f5; font-size: 11px; color: #5a7a9a; line-height: 1.8; }
-  @media print { body { padding: 20px; } }
+  thead tr { border-bottom: 1px solid rgba(201,169,110,0.3); }
+  thead th {
+    padding: 10px 14px;
+    text-align: left;
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: rgba(201,169,110,0.5);
+    font-weight: 400;
+  }
+  tbody tr { border-bottom: 0.5px solid rgba(255,255,255,0.05); }
+  tbody tr:hover { background: rgba(255,255,255,0.02); }
+  td { padding: 14px; vertical-align: top; font-size: 13px; }
+  .produit-nom { font-weight: 600; color: #f0e8d8; margin-bottom: 3px; }
+  .produit-type { font-size: 10px; color: rgba(232,224,213,0.3); text-transform: uppercase; letter-spacing: 1px; }
+  .consigne-note { font-size: 10px; color: rgba(201,169,110,0.4); margin-top: 5px; font-style: italic; }
+  .totaux { margin-top: 0; border-top: 1px solid rgba(201,169,110,0.2); }
+  .total-line { display: flex; justify-content: space-between; padding: 10px 14px; font-size: 13px; }
+  .total-line.sub { color: rgba(232,224,213,0.4); }
+  .total-line.tva { color: rgba(232,224,213,0.6); border-top: 0.5px solid rgba(255,255,255,0.05); }
+  .total-line.grand {
+    background: rgba(201,169,110,0.08);
+    border: 0.5px solid rgba(201,169,110,0.2);
+    border-radius: 6px;
+    margin: 12px 0 0;
+    font-size: 18px;
+    font-weight: 700;
+    color: #c9a96e;
+    font-family: Georgia, serif;
+    padding: 14px;
+  }
+  .signature-zone { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-top: 48px; }
+  .sig-box {
+    border-top: 0.5px solid rgba(201,169,110,0.3);
+    padding-top: 12px;
+    font-size: 11px;
+    color: rgba(232,224,213,0.3);
+    min-height: 80px;
+  }
+  .sig-title { color: rgba(201,169,110,0.6); font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 6px; }
+  .footer {
+    margin-top: 40px;
+    padding-top: 16px;
+    border-top: 0.5px solid rgba(255,255,255,0.06);
+    font-size: 10px;
+    color: rgba(232,224,213,0.2);
+    line-height: 2;
+    letter-spacing: 0.5px;
+  }
+  .watermark {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotate(-35deg);
+    font-size: 80px;
+    color: rgba(255,255,255,0.03);
+    font-family: Georgia, serif;
+    letter-spacing: 8px;
+    pointer-events: none;
+    white-space: nowrap;
+  }
 </style></head><body>
+
+<div class="watermark">CAVE DE GILBERT</div>
 
 <div class="header">
   <div class="logo-wrap">
@@ -206,20 +301,20 @@ export default function LocationPage() {
     <div class="cave-name">Cave de Gilbert</div>
     <div class="cave-info">
       Avenue Jean Colomb — 69280 Marcy l'Étoile<br>
-      Tél : 04 22 91 41 09 · contact@cavedegilbert.fr<br>
-      Mar-Sam : 9h30–13h / 15h30–19h
+      04 22 91 41 09 · contact@cavedegilbert.fr<br>
+      Mar–Sam : 9h30–13h / 15h30–19h
     </div>
   </div>
   <div class="doc-info">
-    <div class="doc-title">Bon de commande</div>
+    <div class="doc-title">Bon de commande fournisseur</div>
     <div class="doc-numero">${cmd.numero}</div>
-    <div class="doc-date">Date : ${new Date(cmd.date_commande).toLocaleDateString('fr-FR', {day:'2-digit', month:'long', year:'numeric'})}</div>
-    ${dateLiv ? `<div class="livraison-badge">📦 Livraison souhaitée avant le<br>${new Date(dateLiv).toLocaleDateString('fr-FR', {day:'2-digit', month:'long', year:'numeric'})}</div>` : ''}
+    <div class="doc-date">${new Date(cmd.date_commande).toLocaleDateString('fr-FR', {day:'2-digit', month:'long', year:'numeric'})}</div>
+    ${dateLiv ? `<div class="livraison-badge">📦 Livraison avant le ${new Date(dateLiv).toLocaleDateString('fr-FR', {day:'2-digit', month:'long', year:'numeric'})}</div>` : ''}
   </div>
 </div>
 
 <div class="fournisseur">
-  <strong>Fournisseur :</strong> La Loupiote Brasserie &nbsp;·&nbsp; commandelaloupiote@gmail.com
+  <strong>Fournisseur :</strong>&nbsp; La Loupiote Brasserie &nbsp;·&nbsp; commandelaloupiote@gmail.com
 </div>
 
 <table>
@@ -227,9 +322,9 @@ export default function LocationPage() {
     <tr>
       <th>Désignation</th>
       <th>Contenance</th>
-      <th style="text-align:center">Quantité</th>
-      <th>Prix HT / fût</th>
-      <th>Total HT</th>
+      <th style="text-align:center">Qté</th>
+      <th style="text-align:right">Prix HT / fût</th>
+      <th style="text-align:right">Total HT</th>
     </tr>
   </thead>
   <tbody>
@@ -238,27 +333,26 @@ export default function LocationPage() {
       <td>
         <div class="produit-nom">${l.fut?.nom_cuvee || ''}</div>
         <div class="produit-type">${l.fut?.type_biere || ''}</div>
-        <div class="consigne-note">Consigne HT : 30,00 € × ${l.quantite} fût(s) = ${(30 * l.quantite).toFixed(2)} € (hors TVA)</div>
+        <div class="consigne-note">Consigne : 30,00 € HT × ${l.quantite} fût(s) = ${(30 * l.quantite).toFixed(2)} € (non soumise à TVA)</div>
       </td>
-      <td>${l.fut?.contenance_litres}L</td>
-      <td style="text-align:center;font-weight:600">${l.quantite}</td>
-      <td>${Number(l.prix_achat_ht).toFixed(2)} €</td>
-      <td style="font-weight:600;color:#1a3a5c">${(l.prix_achat_ht * l.quantite).toFixed(2)} €</td>
+      <td style="color:rgba(232,224,213,0.6)">${l.fut?.contenance_litres}L</td>
+      <td style="text-align:center;font-weight:700;color:#c9a96e">${l.quantite}</td>
+      <td style="text-align:right;color:rgba(232,224,213,0.7)">${Number(l.prix_achat_ht).toFixed(2)} €</td>
+      <td style="text-align:right;font-weight:600;color:#f0e8d8">${(l.prix_achat_ht * l.quantite).toFixed(2)} €</td>
     </tr>`).join('')}
   </tbody>
 </table>
 
 <div class="totaux">
   <div class="total-line sub"><span>Total HT fûts</span><span>${totalHT_futs.toFixed(2)} €</span></div>
-  <div class="total-line tva"><span>TVA 20% (sur fûts uniquement)</span><span>${tva.toFixed(2)} €</span></div>
-  <div class="total-line sub" style="border-top:1px dashed #dce8f5"><span>Consignes HT (exonérées de TVA)</span><span>${totalConsignes.toFixed(2)} €</span></div>
+  <div class="total-line tva"><span>TVA 20 % (sur fûts)</span><span>${tva.toFixed(2)} €</span></div>
+  <div class="total-line sub" style="border-top:0.5px solid rgba(255,255,255,0.05)"><span>Consignes HT — exonérées TVA</span><span>${totalConsignes.toFixed(2)} €</span></div>
   <div class="total-line grand"><span>TOTAL TTC</span><span>${totalTTC.toFixed(2)} €</span></div>
 </div>
 
 <div class="signature-zone">
   <div class="sig-box">
     <div class="sig-title">Bon pour accord — Cave de Gilbert</div>
-    <div style="font-family:Georgia,serif;font-size:18px;color:#1a3a5c;margin-top:8px">Cave de Gilbert</div>
   </div>
   <div class="sig-box">
     <div class="sig-title">Accusé de réception — La Loupiote</div>
@@ -266,11 +360,11 @@ export default function LocationPage() {
 </div>
 
 <div class="footer">
-  <p>Cave de Gilbert — Avenue Jean Colomb, 69280 Marcy l'Étoile — contact@cavedegilbert.fr — 04 22 91 41 09</p>
-  <p>Merci de confirmer la réception de cette commande ainsi que la date de livraison prévue.</p>
+  Cave de Gilbert · Avenue Jean Colomb, 69280 Marcy l'Étoile · contact@cavedegilbert.fr · 04 22 91 41 09
 </div>
+
 </body></html>`
-  }
+  } }
 
   const envoyerCommande = async (cmd: any) => {
     setEnvoyerEnCours(true)
@@ -361,11 +455,17 @@ export default function LocationPage() {
                           <div style={{ fontSize: 12, color: '#c96e6e', fontWeight: 600 }}>
                             {clientNom(a.resa)} · {new Date(a.resa.date_debut).toLocaleDateString('fr-FR')}
                           </div>
-                          <button onClick={async () => {
-                            await ajouterACommande(a.resa, a.manques)
-                          }} style={{ fontSize: 10, background: ajouteAlertes.has(a.resa.id) ? 'rgba(110,201,110,0.15)' : 'rgba(201,169,110,0.15)', border: `0.5px solid ${ajouteAlertes.has(a.resa.id) ? 'rgba(110,201,110,0.4)' : 'rgba(201,169,110,0.3)'}`, borderRadius: 4, color: ajouteAlertes.has(a.resa.id) ? '#6ec96e' : '#c9a96e', padding: '2px 8px', cursor: 'pointer', whiteSpace: 'nowrap' as const, marginLeft: 6 }}>
-                            {ajouteAlertes.has(a.resa.id) ? '✓ Ajouté' : '+ Ajouter à la commande'}
-                          </button>
+                          {!alertesCouvertes.has(a.resa.id) && (
+                            <button onClick={async () => { await ajouterACommande(a.resa, a.manques) }}
+                              style={{ fontSize: 10, background: 'rgba(201,169,110,0.15)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 4, color: '#c9a96e', padding: '2px 8px', cursor: 'pointer', whiteSpace: 'nowrap' as const, marginLeft: 6 }}>
+                              + Ajouter à la commande
+                            </button>
+                          )}
+                          {alertesCouvertes.has(a.resa.id) && (
+                            <span style={{ fontSize: 10, background: 'rgba(110,201,110,0.15)', border: '0.5px solid rgba(110,201,110,0.3)', borderRadius: 4, color: '#6ec96e', padding: '2px 8px', marginLeft: 6, whiteSpace: 'nowrap' as const }}>
+                              ✓ En commande
+                            </span>
+                          )}
                         </div>
                         <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 4, marginTop: 4 }}>
                           {a.manques.map((m: any, j: number) => (
@@ -664,7 +764,7 @@ export default function LocationPage() {
                         if (!confirm('Supprimer cette commande ?')) return
                         await supabase.from('commandes_loupiote_lignes').delete().eq('commande_id', cmd.id)
                         await supabase.from('commandes_loupiote').delete().eq('id', cmd.id)
-                        setAjouteAlertes(new Set())
+                        // badge computed from data
                         load()
                       }} style={{ background: 'transparent', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 6, color: '#c96e6e', padding: '3px 10px', fontSize: 11, cursor: 'pointer' }}>
                         🗑 Supprimer
@@ -694,7 +794,7 @@ export default function LocationPage() {
                                 onChange={async e => {
                                   const q = parseInt(e.target.value) || 1
                                   await supabase.from('commandes_loupiote_lignes').update({ quantite: q }).eq('id', l.id)
-                                  setAjouteAlertes(new Set())
+                                  // badge computed from data
                                   await recalculerTotaux(cmd.id)
                                   load()
                                 }}
@@ -767,6 +867,18 @@ export default function LocationPage() {
                       </div>
                     </div>
                   )}
+                  {cmd.statut === 'commandée' && (
+                    <div style={{ marginTop: 12 }}>
+                      <button onClick={() => {
+                        setCmdReception(cmd)
+                        const init: Record<string, number> = {}
+                        cmd.lignes?.forEach((l: any) => { init[l.id] = l.quantite })
+                        setQtesRecues(init)
+                      }} style={{ width: '100%', background: 'rgba(110,201,110,0.1)', border: '0.5px solid rgba(110,201,110,0.3)', borderRadius: 8, color: '#6ec96e', padding: '10px', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>
+                        📦 Réceptionner la livraison
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -814,6 +926,53 @@ export default function LocationPage() {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Modal réception commande */}
+      {cmdReception && (
+        <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, fontFamily: "'DM Sans', system-ui, sans-serif" }}>
+          <div style={{ background: '#18130e', border: '0.5px solid rgba(110,201,110,0.3)', borderRadius: 16, padding: 32, maxWidth: 560, width: '90%', maxHeight: '90vh', overflowY: 'auto' as const }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
+              <div style={{ fontFamily: 'Georgia, serif', fontSize: 20, color: '#6ec96e' }}>📦 Réception — {cmdReception.numero}</div>
+              <button onClick={() => setCmdReception(null)} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.4)', fontSize: 22, cursor: 'pointer' }}>✕</button>
+            </div>
+            <div style={{ fontSize: 13, color: 'rgba(232,224,213,0.5)', marginBottom: 20 }}>Vérifiez et ajustez les quantités réellement reçues avant de valider l'entrée en stock.</div>
+            {cmdReception.lignes?.map((l: any) => (
+              <div key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, padding: '12px 16px', background: 'rgba(255,255,255,0.03)', borderRadius: 8 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 14, color: '#f0e8d8' }}>{l.fut?.nom_cuvee} {l.fut?.contenance_litres}L</div>
+                  <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)' }}>Commandé : {l.quantite} fût(s)</div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>Reçu :</span>
+                  <input type="number" min={0} value={qtesRecues[l.id] ?? l.quantite}
+                    onChange={e => setQtesRecues(prev => ({ ...prev, [l.id]: parseInt(e.target.value) || 0 }))}
+                    style={{ width: 65, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(110,201,110,0.3)', borderRadius: 6, color: '#f0e8d8', fontSize: 15, padding: '8px', textAlign: 'center' as const }} />
+                  <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>fût(s)</span>
+                </div>
+              </div>
+            ))}
+            <button onClick={async () => {
+              // Incrémenter le stock pour chaque ligne reçue
+              for (const l of (cmdReception.lignes || [])) {
+                const qteRecue = qtesRecues[l.id] ?? l.quantite
+                if (qteRecue > 0) {
+                  const { data: fut } = await supabase.from('futs_catalogue').select('stock_actuel').eq('id', l.fut_catalogue_id).single()
+                  if (fut) await supabase.from('futs_catalogue').update({ stock_actuel: fut.stock_actuel + qteRecue }).eq('id', l.fut_catalogue_id)
+                }
+              }
+              // Passer la commande en "livrée"
+              await supabase.from('commandes_loupiote').update({
+                statut: 'livrée',
+                date_livraison_reelle: new Date().toISOString().split('T')[0],
+              }).eq('id', cmdReception.id)
+              setCmdReception(null)
+              await load()
+            }} style={{ width: '100%', background: '#6ec96e', border: 'none', borderRadius: 10, color: '#0d0a08', padding: '14px', fontSize: 15, cursor: 'pointer', fontWeight: 700, marginTop: 12 }}>
+              ✓ Valider l'entrée en stock
+            </button>
+          </div>
         </div>
       )}
 
