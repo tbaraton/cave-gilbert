@@ -202,9 +202,29 @@ export default function LocationPage() {
                       </div>
                       <div>
                         <div style={{ fontSize: 14, color: '#f0e8d8', marginBottom: 4 }}>{clientNom(r)}</div>
-                        <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>
+                        <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
                           {r.reservation_futs?.reduce((a: number, l: any) => a + l.quantite, 0)} fût(s) ·
                           {' '}{r.reservation_tireuses?.length || 0} tireuse(s)
+                          {(() => {
+                            // Calculer stock dispo pour chaque fût de cette réservation
+                            const stockOk = (r.reservation_futs || []).every((rf: any) => {
+                              const fut = futs.find((f: any) => f.id === rf.fut_catalogue_id)
+                              if (!fut) return true
+                              // Fûts déjà pris par d'autres réservations actives sur la même période
+                              const dejaPris = reservations
+                                .filter((other: any) => other.id !== r.id && !['annulée','terminée'].includes(other.statut))
+                                .reduce((acc: number, other: any) => {
+                                  const overlap = new Date(other.date_debut) <= new Date(r.date_fin) && new Date(other.date_fin) >= new Date(r.date_debut)
+                                  if (!overlap) return acc
+                                  const autreRf = (other.reservation_futs || []).find((x: any) => x.fut_catalogue_id === rf.fut_catalogue_id)
+                                  return acc + (autreRf?.quantite || 0)
+                                }, 0)
+                              return fut.stock_actuel - dejaPris >= rf.quantite
+                            })
+                            return stockOk
+                              ? <span style={{ fontSize: 10, background: 'rgba(110,201,110,0.1)', color: '#6ec96e', padding: '2px 8px', borderRadius: 3 }}>✓ Stock OK</span>
+                              : <span style={{ fontSize: 10, background: 'rgba(201,110,110,0.15)', color: '#c96e6e', padding: '2px 8px', borderRadius: 3 }}>⚠ Stock insuffisant</span>
+                          })()}
                         </div>
                       </div>
                       <div>
