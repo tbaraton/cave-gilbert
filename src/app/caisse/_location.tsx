@@ -32,6 +32,7 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
   const [tireusesChoisies, setTireusesChoisies] = useState<string[]>([])
   const [cautionPayee, setCautionPayee] = useState(false)
   const [alertesStock, setAlertesStock] = useState<any[]>([])
+  const [conflitsTireuses, setConflitsTireuses] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
   const [resaCreee, setResaCreee] = useState<string | null>(null)
 
@@ -99,6 +100,29 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
 
   const passerEtapeTireuse = async () => {
     const alertes = await verifierStock()
+    // Vérifier conflits tireuses
+    if (dateDebut && dateFin) {
+      const { data: resasConflict } = await supabase
+        .from('reservation_tireuses')
+        .select(`tireuse_id, reservation:reservations_location!inner(statut, date_debut, date_fin, customer:customers(prenom, nom, raison_sociale, est_societe))`)
+        .neq('reservation.statut', 'annulée')
+        .neq('reservation.statut', 'terminée')
+      
+      const conflits: Record<string, string> = {}
+      for (const rt of (resasConflict || []) as any[]) {
+        const r = rt.reservation
+        if (!r) continue
+        const debutResa = new Date(r.date_debut)
+        const finResa = new Date(r.date_fin)
+        const debutDemande = new Date(dateDebut)
+        const finDemande = new Date(dateFin)
+        if (debutResa <= finDemande && finResa >= debutDemande) {
+          const clientNom = r.customer?.est_societe ? r.customer.raison_sociale : `${r.customer?.prenom || ''} ${r.customer?.nom || ''}`.trim()
+          conflits[rt.tireuse_id] = `${clientNom} (${new Date(r.date_debut).toLocaleDateString('fr-FR')} → ${new Date(r.date_fin).toLocaleDateString('fr-FR')})`
+        }
+      }
+      setConflitsTireuses(conflits)
+    }
     setEtape('tireuse')
   }
 
@@ -337,17 +361,23 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
           )}
 
           {tireuses.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 30, color: '#c96e6e' }}>⚠ Aucune tireuse disponible sur cette période</div>
-          ) : tireuses.map(t => (
-            <button key={t.id} onClick={() => setTireusesChoisies(prev => prev.includes(t.id) ? prev.filter(x => x !== t.id) : [...prev, t.id])}
-              style={{ width: '100%', background: tireusesChoisies.includes(t.id) ? 'rgba(201,169,110,0.12)' : 'rgba(255,255,255,0.04)', border: `1.5px solid ${tireusesChoisies.includes(t.id) ? '#c9a96e' : 'rgba(255,255,255,0.1)'}`, borderRadius: 12, padding: '16px', cursor: 'pointer', textAlign: 'left' as const, marginBottom: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <div style={{ fontSize: 16, color: tireusesChoisies.includes(t.id) ? '#c9a96e' : '#e8e0d5', marginBottom: 4 }}>{t.nom}</div>
-                <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>{t.modele} · {t.nb_tirages} tirage{t.nb_tirages > 1 ? 's' : ''}</div>
-              </div>
-              <div style={{ fontSize: 22 }}>{tireusesChoisies.includes(t.id) ? '✓' : '○'}</div>
-            </button>
-          ))}
+            <div style={{ textAlign: 'center', padding: 30, color: '#c96e6e' }}>⚠ Aucune tireuse disponible</div>
+          ) : tireuses.map(t => {
+            const conflit = conflitsTireuses[t.id]
+            const isSelected = tireusesChoisies.includes(t.id)
+            return (
+              <button key={t.id}
+                onClick={() => { if (!conflit) setTireusesChoisies(prev => prev.includes(t.id) ? prev.filter(x => x !== t.id) : [...prev, t.id]) }}
+                style={{ width: '100%', background: conflit ? 'rgba(201,110,110,0.05)' : isSelected ? 'rgba(201,169,110,0.12)' : 'rgba(255,255,255,0.04)', border: `1.5px solid ${conflit ? 'rgba(201,110,110,0.3)' : isSelected ? '#c9a96e' : 'rgba(255,255,255,0.1)'}`, borderRadius: 12, padding: '16px', cursor: conflit ? 'not-allowed' : 'pointer', textAlign: 'left' as const, marginBottom: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center', opacity: conflit ? 0.7 : 1 }}>
+                <div>
+                  <div style={{ fontSize: 16, color: conflit ? '#c96e6e' : isSelected ? '#c9a96e' : '#e8e0d5', marginBottom: 4 }}>{t.nom}</div>
+                  <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>{t.modele} · {t.nb_tirages} tirage{t.nb_tirages > 1 ? 's' : ''}</div>
+                  {conflit && <div style={{ fontSize: 12, color: '#c96e6e', marginTop: 6 }}>⚠ Déjà réservée — {conflit}</div>}
+                </div>
+                <div style={{ fontSize: 22 }}>{conflit ? '✕' : isSelected ? '✓' : '○'}</div>
+              </button>
+            )
+          })}
 
           {tireusesChoisies.length > 0 && (
             <div style={{ background: 'rgba(201,169,110,0.06)', borderRadius: 8, padding: '12px 16px', marginBottom: 16, marginTop: 8 }}>
