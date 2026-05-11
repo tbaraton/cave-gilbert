@@ -59,7 +59,9 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
     canvasRef.current = canvas
     const ctx = canvas.getContext('2d')
     if (!ctx) return
-    ctx.strokeStyle = '#1a1a1a'
+    ctx.fillStyle = '#0d0a08'
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    ctx.strokeStyle = '#f0e8d8'
     ctx.lineWidth = 2.5
     ctx.lineCap = 'round'
     ctx.lineJoin = 'round'
@@ -106,7 +108,10 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')
-    if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height)
+    if (ctx) {
+      ctx.fillStyle = '#0d0a08'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+    }
     setSignatureClient(null)
   }
 
@@ -304,120 +309,99 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
 
   const genererBonReservation = (sigClient?: string) => {
     const acompte30 = Math.round(totalTTC * 0.30 * 100) / 100
-    const lignesFutsStr = lignesFuts.filter(l => l.fut_id && l.quantite > 0).map(l => {
-      const fut = futs.find(f => f.id === l.fut_id)
-      return `${l.quantite}× ${fut?.nom_cuvee || ''} ${fut?.contenance_litres}L — ${fmt(getPrixLigne(l.fut_id) * l.quantite)}`
-    }).join('\n')
     const tireusesStr = tireusesChoisies.map(tid => {
       const t = tireuses.find(x => x.id === tid)
-      return `${t?.nom} (${t?.modele})`
+      return (t?.nom || '') + ' (' + (t?.modele || '') + ')'
     }).join(', ')
+    const lignesHtml = lignesFuts.filter(l => l.fut_id && l.quantite > 0).map(l => {
+      const fut = futs.find(f => f.id === l.fut_id)
+      const prix = getPrixLigne(l.fut_id)
+      return '<tr><td>' + (fut?.nom_cuvee || '') + ' ' + (fut?.contenance_litres || '') + 'L</td><td style="text-align:center;font-weight:700;color:#c9a96e">' + l.quantite + '</td><td style="text-align:right;color:rgba(232,224,213,0.7)">' + fmt(prix) + '</td><td style="text-align:right;font-weight:600;color:#f0e8d8">' + fmt(prix * l.quantite) + '</td></tr>'
+    }).join('')
+    const sigHtml = sigClient
+      ? '<img src="' + sigClient + '" style="max-width:200px;max-height:80px;border:0.5px solid rgba(201,169,110,0.3);border-radius:4px;background:#fff" />'
+      : '<div style="height:60px;border:0.5px dashed rgba(201,169,110,0.3);border-radius:4px"></div>'
 
-    const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
-<title>Bon de réservation ${resaCreee}</title>
-<style>
-  body { font-family: 'Arial', sans-serif; max-width: 800px; margin: 0 auto; padding: 32px; color: #1a1a1a; }
-  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 32px; border-bottom: 2px solid #8b4513; padding-bottom: 20px; }
-  .logo-area h1 { font-size: 24px; color: #5c2d0a; margin: 0 0 4px; font-family: Georgia, serif; }
-  .logo-area p { margin: 2px 0; font-size: 12px; color: #666; }
-  .doc-info { text-align: right; }
-  .doc-info h2 { font-size: 20px; color: #5c2d0a; margin: 0 0 8px; }
-  .doc-info p { margin: 2px 0; font-size: 13px; }
-  .numero { font-size: 16px; font-weight: bold; color: #8b4513; }
-  .section { margin-bottom: 24px; }
-  .section h3 { font-size: 13px; letter-spacing: 2px; text-transform: uppercase; color: #8b4513; border-bottom: 0.5px solid #ddd; padding-bottom: 6px; margin-bottom: 12px; }
-  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  .field label { font-size: 11px; color: #888; display: block; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 1px; }
-  .field span { font-size: 14px; font-weight: 600; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th { background: #f5f0eb; padding: 8px 12px; text-align: left; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: #666; }
-  td { padding: 10px 12px; border-bottom: 0.5px solid #eee; }
-  .total-row { background: #faf7f3; font-weight: bold; font-size: 16px; }
-  .conditions { background: #faf7f3; border: 1px solid #e8ddd0; border-radius: 8px; padding: 16px; font-size: 12px; color: #555; line-height: 1.6; }
-  .acompte-box { background: #f0f8f0; border: 1px solid #a8d5a8; border-radius: 8px; padding: 16px; margin-top: 16px; }
-  .signature { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-top: 32px; }
-  .sig-box { border-top: 1px solid #ccc; padding-top: 8px; font-size: 11px; color: #888; min-height: 60px; }
-  @media print { body { padding: 16px; } }
-</style></head><body>
-<div class="header">
-  <div class="logo-area">
-    <h1>🍷 Cave de Gilbert</h1>
-    <p>Avenue Jean Colomb — 69280 Marcy l'Étoile</p>
-    <p>📞 04 22 91 41 09 · ✉ contact@cavedegilbert.fr</p>
-    <p>Mar-Sam : 9h30-13h / 15h30-19h</p>
-  </div>
-  <div class="doc-info">
-    <h2>Bon de réservation</h2>
-    <p class="numero">${resaCreee}</p>
-    <p>Émis le ${new Date().toLocaleDateString('fr-FR')}</p>
-  </div>
-</div>
-
-<div class="section">
-  <h3>Client</h3>
-  <div class="field">
-    <label>Nom</label>
-    <span>${client ? (client.est_societe ? client.raison_sociale : `${client.prenom} ${client.nom}`) : 'Client anonyme'}</span>
-  </div>
-  ${client?.telephone ? `<div class="field" style="margin-top:8px"><label>Téléphone</label><span>${client.telephone}</span></div>` : ''}
-  ${client?.email ? `<div class="field" style="margin-top:8px"><label>Email</label><span>${client.email}</span></div>` : ''}
-</div>
-
-<div class="section">
-  <h3>Période de location</h3>
-  <div class="grid2">
-    <div class="field"><label>Retrait</label><span>${new Date(dateDebut).toLocaleDateString('fr-FR', { weekday:'long', day:'2-digit', month:'long', year:'numeric' })}</span>${siteRetrait ? `<br><small style="color:#5c2d0a">📍 ${SITE_LABELS_LOC[siteRetrait] || siteRetrait}</small>` : ''}</div>
-    <div class="field"><label>Retour</label><span>${new Date(dateFin).toLocaleDateString('fr-FR', { weekday:'long', day:'2-digit', month:'long', year:'numeric' })}</span>${siteRetour ? `<br><small style="color:#5c2d0a">📍 ${SITE_LABELS_LOC[siteRetour] || siteRetour}</small>` : ''}</div>
-  </div>
-</div>
-
-<div class="section">
-  <h3>Tireuse(s)</h3>
-  <p style="font-size:14px">${tireusesStr || '—'}</p>
-  <p style="font-size:12px;color:#888;margin-top:4px">Caution : <strong>${fmt(cautionTireuse)}</strong> par chèque (non encaissé — restitué au retour)</p>
-</div>
-
-<div class="section">
-  <h3>Fûts commandés</h3>
-  <table>
-    <thead><tr><th>Désignation</th><th>Qté</th><th>Prix u. TTC</th><th>Total TTC</th></tr></thead>
-    <tbody>
-      ${lignesFuts.filter(l => l.fut_id && l.quantite > 0).map(l => {
-        const fut = futs.find(f => f.id === l.fut_id)
-        const prix = getPrixLigne(l.fut_id)
-        return `<tr><td>${fut?.nom_cuvee || ''} ${fut?.contenance_litres}L</td><td>${l.quantite}</td><td>${fmt(prix)}</td><td>${fmt(prix * l.quantite)}</td></tr>`
-      }).join('')}
-      <tr class="total-row"><td colspan="3">Total TTC</td><td>${fmt(totalTTC)}</td></tr>
-    </tbody>
-  </table>
-  <div class="acompte-box" style="margin-top:16px">
-    <p style="margin:0 0 4px;font-size:13px"><strong>Acompte 30% à la commande :</strong> ${fmt(acompte30)}</p>
-    <p style="margin:0;font-size:12px;color:#555">Solde de <strong>${fmt(totalTTC - acompte30)}</strong> à régler au retour de la tireuse</p>
-  </div>
-</div>
-
-<div class="conditions">
-  <strong>Conditions de location :</strong><br>
-  • La caution de ${fmt(cautionTireuse)} par chèque est obligatoire et sera restituée intégralement au retour du matériel en bon état.<br>
-  • Les fûts non percutés (non entamés) sont remboursés au prix de vente TTC.<br>
-  • Le solde est exigible au retour de la tireuse et des fûts.<br>
-  • La tireuse doit être rendue propre et en bon état de fonctionnement.<br>
-  • Cave de Gilbert décline toute responsabilité en cas de mauvaise utilisation du matériel.
-</div>
-
-<div class="signature">
-  <div class="sig-box">
-    <div style="font-size:11px;color:#888;margin-bottom:8px">Signature client<br><em>(Bon pour accord)</em></div>
-    ${sigClient ? `<img src="${sigClient}" style="max-width:200px;max-height:80px;border:1px solid #ddd;border-radius:4px" />` : '<div style="height:60px;border:1px dashed #ccc;border-radius:4px"></div>'}
-  </div>
-  <div class="sig-box">
-    <div style="font-size:11px;color:#888;margin-bottom:8px">Cave de Gilbert</div>
-    <div style="font-family:Georgia,serif;font-size:18px;color:#5c2d0a;padding:8px 0">Cave de Gilbert</div>
-  </div>
-</div>
-</body></html>`
-    return html
-  }
+    return '<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>Bon de r\u00e9servation ' + resaCreee + '</title>' +
+      '<style>' +
+      '* { margin: 0; padding: 0; box-sizing: border-box; }' +
+      'body { font-family: Arial, sans-serif; background: #0d0a08; color: #e8e0d5; max-width: 860px; margin: 0 auto; padding: 48px 40px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }' +
+      '@media print { body { background: #0d0a08 !important; color: #e8e0d5 !important; } * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } }' +
+      '.header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 40px; padding-bottom: 24px; border-bottom: 1px solid rgba(201,169,110,0.3); }' +
+      '.logo-wrap img { height: 56px; object-fit: contain; display: block; margin-bottom: 10px; }' +
+      '.cave-name { font-size: 20px; color: #c9a96e; font-family: Georgia, serif; letter-spacing: 2px; }' +
+      '.cave-info { font-size: 11px; color: rgba(232,224,213,0.4); line-height: 1.9; margin-top: 6px; }' +
+      '.doc-info { text-align: right; }' +
+      '.doc-title { font-size: 11px; letter-spacing: 4px; text-transform: uppercase; color: rgba(201,169,110,0.6); margin-bottom: 6px; }' +
+      '.doc-numero { font-size: 22px; color: #c9a96e; font-family: Georgia, serif; }' +
+      '.doc-date { font-size: 12px; color: rgba(232,224,213,0.4); margin-top: 6px; }' +
+      '.section { margin-bottom: 24px; }' +
+      '.section-title { font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: rgba(201,169,110,0.5); margin-bottom: 10px; font-weight: 400; border-bottom: 0.5px solid rgba(201,169,110,0.2); padding-bottom: 6px; }' +
+      '.info-row { display: flex; gap: 12px; margin-bottom: 6px; font-size: 13px; }' +
+      '.info-label { color: rgba(232,224,213,0.35); width: 90px; flex-shrink: 0; font-size: 11px; }' +
+      '.info-val { color: #f0e8d8; }' +
+      'table { width: 100%; border-collapse: collapse; }' +
+      'thead tr { border-bottom: 1px solid rgba(201,169,110,0.3); }' +
+      'thead th { padding: 10px 14px; text-align: left; font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: rgba(201,169,110,0.5); font-weight: 400; }' +
+      'tbody tr { border-bottom: 0.5px solid rgba(255,255,255,0.05); }' +
+      'td { padding: 12px 14px; font-size: 13px; }' +
+      '.totaux { border-top: 1px solid rgba(201,169,110,0.2); margin-top: 0; }' +
+      '.total-line { display: flex; justify-content: space-between; padding: 8px 14px; font-size: 13px; color: rgba(232,224,213,0.4); }' +
+      '.total-line.grand { background: rgba(201,169,110,0.08); border: 0.5px solid rgba(201,169,110,0.2); border-radius: 6px; margin: 12px 0; font-size: 17px; font-weight: 700; color: #c9a96e; font-family: Georgia, serif; padding: 14px; }' +
+      '.acompte-box { background: rgba(110,201,110,0.06); border: 0.5px solid rgba(110,201,110,0.2); border-radius: 6px; padding: 12px 14px; margin-top: 12px; }' +
+      '.conditions { background: rgba(255,255,255,0.02); border-left: 3px solid rgba(201,169,110,0.3); padding: 14px 18px; font-size: 11px; color: rgba(232,224,213,0.4); line-height: 1.9; border-radius: 0 6px 6px 0; margin-bottom: 32px; }' +
+      '.signature-zone { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-top: 32px; }' +
+      '.sig-box { border-top: 0.5px solid rgba(201,169,110,0.3); padding-top: 12px; font-size: 11px; color: rgba(232,224,213,0.3); min-height: 80px; }' +
+      '.sig-title { color: rgba(201,169,110,0.6); font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 8px; }' +
+      '.footer { margin-top: 32px; padding-top: 16px; border-top: 0.5px solid rgba(255,255,255,0.06); font-size: 10px; color: rgba(232,224,213,0.2); line-height: 2; }' +
+      '.watermark { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-35deg); font-size: 80px; color: rgba(255,255,255,0.03); font-family: Georgia, serif; letter-spacing: 8px; pointer-events: none; white-space: nowrap; }' +
+      '</style></head><body>' +
+      '<div class="watermark">CAVE DE GILBERT</div>' +
+      '<div class="header">' +
+        '<div class="logo-wrap">' +
+          '<img src="https://cavedegilbert.vercel.app/logo.png" onerror="this.style.display='none'" />' +
+          '<div class="cave-name">Cave de Gilbert</div>' +
+          '<div class="cave-info">Avenue Jean Colomb \u2014 69280 Marcy l'\u00c9toile<br>04 22 91 41 09 \u00b7 contact@cavedegilbert.fr<br>Mar\u2013Sam : 9h30\u201313h / 15h30\u201319h</div>' +
+        '</div>' +
+        '<div class="doc-info">' +
+          '<div class="doc-title">Bon de r\u00e9servation</div>' +
+          '<div class="doc-numero">' + resaCreee + '</div>' +
+          '<div class="doc-date">\u00c9mis le ' + new Date().toLocaleDateString('fr-FR') + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="section">' +
+        '<div class="section-title">Client</div>' +
+        '<div class="info-row"><span class="info-label">Nom</span><span class="info-val">' + (client ? (client.est_societe ? client.raison_sociale : client.prenom + ' ' + client.nom) : 'Client anonyme') + '</span></div>' +
+        (client?.telephone ? '<div class="info-row"><span class="info-label">T\u00e9l\u00e9phone</span><span class="info-val">' + client.telephone + '</span></div>' : '') +
+        (client?.email ? '<div class="info-row"><span class="info-label">Email</span><span class="info-val">' + client.email + '</span></div>' : '') +
+      '</div>' +
+      '<div class="section">' +
+        '<div class="section-title">P\u00e9riode de location</div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">' +
+          '<div><div style="font-size:10px;color:rgba(201,169,110,0.5);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Retrait</div><div style="font-size:14px;color:#f0e8d8">' + new Date(dateDebut).toLocaleDateString('fr-FR', {weekday:'long',day:'2-digit',month:'long',year:'numeric'}) + '</div>' + (siteRetrait ? '<div style="font-size:11px;color:#6ec96e;margin-top:2px">\ud83d\udccd ' + (SITE_LABELS_LOC[siteRetrait] || siteRetrait) + '</div>' : '') + '</div>' +
+          '<div><div style="font-size:10px;color:rgba(201,169,110,0.5);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Retour</div><div style="font-size:14px;color:#f0e8d8">' + new Date(dateFin).toLocaleDateString('fr-FR', {weekday:'long',day:'2-digit',month:'long',year:'numeric'}) + '</div>' + (siteRetour ? '<div style="font-size:11px;color:#c9b06e;margin-top:2px">\ud83d\udccd ' + (SITE_LABELS_LOC[siteRetour] || siteRetour) + '</div>' : '') + '</div>' +
+        '</div>' +
+      '</div>' +
+      (tireusesStr ? '<div class="section"><div class="section-title">Tireuse(s)</div><div style="font-size:14px;color:#f0e8d8">' + tireusesStr + '</div><div style="font-size:11px;color:rgba(232,224,213,0.4);margin-top:4px">Caution : <strong style="color:#c9a96e">' + fmt(cautionTireuse) + '</strong> par ch\u00e8que (non encaiss\u00e9 \u2014 restitu\u00e9 au retour)</div></div>' : '') +
+      '<div class="section"><div class="section-title">F\u00fbts command\u00e9s</div>' +
+        '<table><thead><tr><th>D\u00e9signation</th><th style="text-align:center">Qté</th><th style="text-align:right">Prix u. TTC</th><th style="text-align:right">Total TTC</th></tr></thead><tbody>' + lignesHtml + '</tbody></table>' +
+        '<div class="totaux"><div class="total-line grand"><span>TOTAL TTC</span><span>' + fmt(totalTTC) + '</span></div></div>' +
+        '<div class="acompte-box"><div style="font-size:13px;color:#6ec96e;margin-bottom:4px"><strong>Acompte 30% \u00e0 la commande : ' + fmt(acompte30) + '</strong></div><div style="font-size:11px;color:rgba(232,224,213,0.4)">Solde de <strong style="color:#f0e8d8">' + fmt(totalTTC - acompte30) + '</strong> \u00e0 r\u00e9gler au retour de la tireuse</div></div>' +
+      '</div>' +
+      '<div class="conditions">' +
+        '\u2022 La caution de ' + fmt(cautionTireuse) + ' par ch\u00e8que est obligatoire et sera restitu\u00e9e au retour du mat\u00e9riel en bon \u00e9tat.<br>' +
+        '\u2022 Les f\u00fbts non percut\u00e9s (non entam\u00e9s) sont rembours\u00e9s au prix de vente TTC.<br>' +
+        '\u2022 Le solde est exigible au retour de la tireuse et des f\u00fbts.<br>' +
+        '\u2022 La tireuse doit \u00eatre rendue propre et en bon \u00e9tat de fonctionnement.<br>' +
+        '\u2022 Cave de Gilbert d\u00e9cline toute responsabilit\u00e9 en cas de mauvaise utilisation du mat\u00e9riel.' +
+      '</div>' +
+      '<div class="signature-zone">' +
+        '<div class="sig-box"><div class="sig-title">Signature client \u2014 Bon pour accord</div>' + sigHtml + '</div>' +
+        '<div class="sig-box"><div class="sig-title">Cave de Gilbert</div><div style="font-family:Georgia,serif;font-size:18px;color:#c9a96e;margin-top:8px">Cave de Gilbert</div></div>' +
+      '</div>' +
+      '<div class="footer">Cave de Gilbert \u00b7 Avenue Jean Colomb, 69280 Marcy l'\u00c9toile \u00b7 contact@cavedegilbert.fr \u00b7 04 22 91 41 09</div>' +
+      '</body></html>'
+  } }
 
   const imprimerBon = () => {
     const html = genererBonReservation(signatureClient || undefined)
@@ -534,7 +518,7 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
                 {client ? (client.est_societe ? client.raison_sociale : `${client.prenom} ${client.nom}`) : 'Client'} — {resaCreee}
               </div>
               <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', marginBottom: 8 }}>Signez ci-dessous avec votre doigt :</div>
-              <div style={{ background: 'white', borderRadius: 12, overflow: 'hidden', border: '2px solid rgba(201,169,110,0.4)', position: 'relative' as const }}>
+              <div style={{ background: '#0d0a08', borderRadius: 12, overflow: 'hidden', border: '0.5px solid rgba(201,169,110,0.3)', position: 'relative' as const }}>
                 <canvas
                   ref={initCanvas}
                   width={Math.min(window.innerWidth - 64, 600)}
@@ -550,7 +534,7 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
                 />
                 {!signatureClient && (
                   <div style={{ position: 'absolute' as const, inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' as const }}>
-                    <span style={{ color: 'rgba(0,0,0,0.15)', fontSize: 14 }}>← Signez ici →</span>
+                    <span style={{ color: 'rgba(232,224,213,0.15)', fontSize: 14 }}>← Signez ici →</span>
                   </div>
                 )}
               </div>
