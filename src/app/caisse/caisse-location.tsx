@@ -50,9 +50,9 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
   const [envoyerEnCours, setEnvoyerEnCours] = useState(false)
   const [emailEnvoye, setEmailEnvoye] = useState(false)
   const canvasRef = { current: null as HTMLCanvasElement | null }
-  let isDrawing = false
-  let lastX = 0
-  let lastY = 0
+  const isDrawingRef = { current: false }
+  const lastXRef = { current: 0 }
+  const lastYRef = { current: 0 }
 
   const initCanvas = (canvas: HTMLCanvasElement | null) => {
     if (!canvas || canvasRef.current === canvas) return
@@ -75,31 +75,38 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
 
   const startDraw = (e: any) => {
     e.preventDefault()
-    isDrawing = true
+    isDrawingRef.current = true
     const canvas = canvasRef.current
     if (!canvas) return
     const pos = getPos(e, canvas)
-    lastX = pos.x; lastY = pos.y
+    lastXRef.current = pos.x
+    lastYRef.current = pos.y
   }
 
   const draw = (e: any) => {
     e.preventDefault()
-    if (!isDrawing) return
+    if (!isDrawingRef.current) return
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
+    ctx.strokeStyle = '#f0e8d8'
+    ctx.lineWidth = 2.5
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
     const pos = getPos(e, canvas)
     ctx.beginPath()
-    ctx.moveTo(lastX, lastY)
+    ctx.moveTo(lastXRef.current, lastYRef.current)
     ctx.lineTo(pos.x, pos.y)
     ctx.stroke()
-    lastX = pos.x; lastY = pos.y
+    lastXRef.current = pos.x
+    lastYRef.current = pos.y
   }
 
   const stopDraw = (e: any) => {
     e.preventDefault()
-    isDrawing = false
+    if (!isDrawingRef.current) return
+    isDrawingRef.current = false
     const canvas = canvasRef.current
     if (canvas) setSignatureClient(canvas.toDataURL('image/png'))
   }
@@ -432,7 +439,7 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
 
   // Succès
   if (resaCreee) return (
-    <div style={{ ...container, overflowY: 'auto' as const }}>
+    <div style={{ height: '100dvh', maxHeight: '100dvh', background: '#0d0a08', fontFamily: "'DM Sans', system-ui, sans-serif", color: '#e8e0d5', display: 'flex', flexDirection: 'column' as const, overflowY: 'auto' as const }}>
       <div style={{ padding: '24px 16px' }}>
         <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.4)', fontSize: 13, cursor: 'pointer', padding: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: 6 }}>
           ← Retour à la caisse
