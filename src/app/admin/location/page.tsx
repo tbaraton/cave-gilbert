@@ -699,7 +699,7 @@ export default function LocationPage() {
                             ) : <span style={{ color: '#e8e0d5' }}>{Number(l.prix_achat_ht).toFixed(2)} €</span>}
                           </td>
                           <td style={{ padding: '8px', fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>
-                            36 € × {l.quantite} = {(36 * l.quantite).toFixed(2)} €
+                            36 € × {l.quantite} = {(30 * l.quantite).toFixed(2)} €
                           </td>
                           <td style={{ padding: '8px', color: '#c9a96e', fontFamily: 'Georgia, serif' }}>
                             {(l.prix_achat_ht * l.quantite).toFixed(2)} €
@@ -718,14 +718,17 @@ export default function LocationPage() {
 
                   {/* Totaux */}
                   <div style={{ background: 'rgba(201,169,110,0.05)', borderRadius: 6, padding: '10px 12px', marginBottom: 12 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'rgba(232,224,213,0.5)', marginBottom: 4 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'rgba(232,224,213,0.4)', marginBottom: 4 }}>
                       <span>Total HT fûts</span><span>{cmd.montant_total_ht?.toFixed(2)} €</span>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'rgba(232,224,213,0.5)', marginBottom: 4 }}>
-                      <span>Total consignes (36€/fût)</span><span>{(cmd.lignes||[]).reduce((a: number, l: any) => a + 36 * l.quantite, 0).toFixed(2)} €</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'rgba(232,224,213,0.4)', marginBottom: 4 }}>
+                      <span>TVA 20% (sur fûts)</span><span>{(cmd.montant_total_ht * 0.20)?.toFixed(2)} €</span>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 16, color: '#c9a96e', fontFamily: 'Georgia, serif', fontWeight: 700 }}>
-                      <span>TOTAL</span><span>{(cmd.montant_total_ht + (cmd.lignes||[]).reduce((a: number, l: any) => a + 36 * l.quantite, 0)).toFixed(2)} €</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'rgba(232,224,213,0.4)', marginBottom: 4 }}>
+                      <span>Consignes HT (30€/fût — exonérées TVA)</span><span>{(cmd.lignes||[]).reduce((a: number, l: any) => a + 30 * l.quantite, 0).toFixed(2)} €</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 16, color: '#c9a96e', fontFamily: 'Georgia, serif', fontWeight: 700, paddingTop: 8, borderTop: '0.5px solid rgba(255,255,255,0.06)' }}>
+                      <span>TOTAL TTC</span><span>{(cmd.montant_total_ht * 1.20 + (cmd.lignes||[]).reduce((a: number, l: any) => a + 30 * l.quantite, 0)).toFixed(2)} €</span>
                     </div>
                   </div>
 
