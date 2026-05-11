@@ -537,17 +537,55 @@ export default function LocationPage() {
                     r.reservation_tireuses?.some((rt: any) => rt.tireuse_id === t.id)
                   ).sort((a, b) => new Date(a.date_debut).getTime() - new Date(b.date_debut).getTime())
 
+                  const now = new Date()
+                  const resaEnCours = resasT.find(r => {
+                    const debut = new Date(r.date_debut)
+                    const fin = new Date(r.date_fin)
+                    fin.setHours(23, 59, 59)
+                    return debut <= now && now <= fin && r.statut === 'en_cours'
+                  })
+                  const clientNomResa = (r: any) => {
+                    if (!r.customer) return 'Client'
+                    return r.customer.est_societe ? r.customer.raison_sociale : `${r.customer.prenom} ${r.customer.nom}`
+                  }
+
                   return (
-                    <div key={t.id} style={{ background: '#18130e', borderRadius: 12, padding: 20, border: `0.5px solid ${t.statut === 'disponible' ? 'rgba(110,201,110,0.2)' : 'rgba(201,110,110,0.2)'}` }}>
+                    <div key={t.id} style={{ background: '#18130e', borderRadius: 12, padding: 20, border: `0.5px solid ${resaEnCours ? 'rgba(201,169,110,0.4)' : resasT.length > 0 ? 'rgba(201,110,110,0.2)' : 'rgba(110,201,110,0.2)'}` }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
                         <div>
                           <div style={{ fontSize: 15, color: '#f0e8d8', marginBottom: 2 }}>{t.nom}</div>
                           <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>{t.modele} · {t.nb_tirages} tirage{t.nb_tirages > 1 ? 's' : ''}</div>
                         </div>
-                        <span style={{ fontSize: 11, background: resasT.length > 0 ? 'rgba(201,110,110,0.1)' : 'rgba(110,201,110,0.1)', color: resasT.length > 0 ? '#c96e6e' : '#6ec96e', padding: '3px 10px', borderRadius: 4 }}>
-                          {resasT.length > 0 ? `⚠ ${resasT.length} réservation(s)` : '✓ Disponible'}
-                        </span>
+                        {resaEnCours ? (
+                          <span style={{ fontSize: 11, background: 'rgba(201,169,110,0.15)', color: '#c9a96e', padding: '3px 10px', borderRadius: 4, fontWeight: 600 }}>
+                            🏠 En location
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: 11, background: resasT.length > 0 ? 'rgba(201,110,110,0.1)' : 'rgba(110,201,110,0.1)', color: resasT.length > 0 ? '#c96e6e' : '#6ec96e', padding: '3px 10px', borderRadius: 4 }}>
+                            {resasT.length > 0 ? `⚠ ${resasT.length} réservation(s)` : '✓ Disponible'}
+                          </span>
+                        )}
                       </div>
+
+                      {/* Bandeau "Actuellement chez" */}
+                      {resaEnCours && (
+                        <div style={{ background: 'rgba(201,169,110,0.08)', border: '0.5px solid rgba(201,169,110,0.25)', borderRadius: 8, padding: '10px 14px', marginBottom: 12 }}>
+                          <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', marginBottom: 4, letterSpacing: 1, textTransform: 'uppercase' as const, fontSize: 9 }}>Actuellement chez</div>
+                          <div style={{ fontSize: 15, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{clientNomResa(resaEnCours)}</div>
+                          {resaEnCours.customer?.telephone && (
+                            <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', marginTop: 2 }}>📞 {resaEnCours.customer.telephone}</div>
+                          )}
+                          <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', marginTop: 6 }}>
+                            Retour prévu le <strong style={{ color: '#f0e8d8' }}>{new Date(resaEnCours.date_fin).toLocaleDateString('fr-FR', { weekday: 'long', day: '2-digit', month: 'long' })}</strong>
+                            {resaEnCours.site_retour && (
+                              <span style={{ marginLeft: 6, color: '#c9b06e' }}>
+                                — {resaEnCours.site_retour === 'cave_gilbert' ? 'Cave de Gilbert' : resaEnCours.site_retour === 'petite_cave' ? 'La Petite Cave' : resaEnCours.site_retour === 'entrepot' ? 'Entrepôt' : '🚚 Livraison'}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
                       {resasT.length === 0 ? (
                         <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.3)', fontStyle: 'italic' }}>Aucune réservation à venir</div>
                       ) : (
