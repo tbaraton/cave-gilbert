@@ -194,7 +194,7 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
     setSaving(false)
   }
 
-  const container = { minHeight: '100dvh', background: '#0d0a08', fontFamily: "'DM Sans', system-ui, sans-serif", color: '#e8e0d5', display: 'flex', flexDirection: 'column' as const }
+  const container = { height: '100dvh', maxHeight: '100dvh', background: '#0d0a08', fontFamily: "'DM Sans', system-ui, sans-serif", color: '#e8e0d5', display: 'flex', flexDirection: 'column' as const, overflow: 'hidden' }
   const header = { padding: '14px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', gap: 12, background: '#0d0a08' }
   const btnPrimary = { background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 12, padding: '16px', fontSize: 15, cursor: 'pointer', fontWeight: 700, width: '100%', touchAction: 'manipulation' as const }
 
