@@ -298,7 +298,8 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
 
       {/* ── ÉTAPE 2 : FÛTS ── */}
       {etape === 'futs' && (
-        <div style={{ flex: 1, padding: '20px 16px', overflowY: 'auto' as const }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' as const, overflow: 'hidden' }}>
+        <div style={{ flex: 1, padding: '20px 16px 8px', overflowY: 'auto' as const }}>
           <div style={{ fontSize: 18, fontFamily: 'Georgia, serif', color: '#f0e8d8', marginBottom: 20 }}>Sélection des fûts</div>
 
           {lignesFuts.map((l, i) => (
@@ -380,10 +381,13 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
             </div>
           )}
 
+        </div>
+        <div style={{ padding: '12px 16px', borderTop: '0.5px solid rgba(255,255,255,0.07)', background: '#0d0a08' }}>
           <button onClick={passerEtapeTireuse} disabled={!lignesFuts.some(l => l.fut_id && l.quantite > 0)}
             style={{ ...btnPrimary, opacity: !lignesFuts.some(l => l.fut_id && l.quantite > 0) ? 0.4 : 1, cursor: !lignesFuts.some(l => l.fut_id && l.quantite > 0) ? 'not-allowed' : 'pointer' }}>
             Suivant → Choisir la tireuse
           </button>
+        </div>
         </div>
       )}
 
@@ -504,18 +508,31 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
           </div>
 
           {/* Tireuses */}
-          {tireusesChoisies.length > 0 && (
-            <div style={{ background: '#18130e', borderRadius: 10, padding: '14px 16px', marginBottom: 12, border: '0.5px solid rgba(255,255,255,0.07)' }}>
-              <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)', marginBottom: 10, letterSpacing: 1 }}>TIREUSE(S)</div>
-              {tireusesChoisies.map(tid => {
-                const t = tireuses.find(x => x.id === tid)
-                return <div key={tid} style={{ fontSize: 13, color: '#e8e0d5', marginBottom: 4 }}>{t?.nom} — {t?.modele}</div>
-              })}
+          <div style={{ background: '#18130e', borderRadius: 10, padding: '14px 16px', marginBottom: 12, border: '0.5px solid rgba(255,255,255,0.07)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)', letterSpacing: 1 }}>TIREUSE(S)</div>
+              <button onClick={() => setEtape('tireuse')} style={{ fontSize: 11, color: '#c9a96e', background: 'transparent', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 4, padding: '2px 8px', cursor: 'pointer' }}>✎ Modifier</button>
+            </div>
+            {tireuses.map(t => (
+              <div key={t.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <div style={{ fontSize: 13, color: tireusesChoisies.includes(t.id) ? '#f0e8d8' : 'rgba(232,224,213,0.25)' }}>
+                  {t.nom} — {t.modele}
+                </div>
+                <button onClick={() => setTireusesChoisies(prev => prev.includes(t.id) ? prev.filter(x => x !== t.id) : [...prev, t.id])}
+                  style={{ fontSize: 12, background: tireusesChoisies.includes(t.id) ? 'rgba(201,110,110,0.1)' : 'rgba(110,201,110,0.1)', border: 'none', borderRadius: 4, color: tireusesChoisies.includes(t.id) ? '#c96e6e' : '#6ec96e', padding: '2px 8px', cursor: 'pointer' }}>
+                  {tireusesChoisies.includes(t.id) ? '✕ Retirer' : '+ Ajouter'}
+                </button>
+              </div>
+            ))}
+            {tireusesChoisies.length === 0 && (
+              <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.3)', fontStyle: 'italic' }}>Aucune tireuse sélectionnée</div>
+            )}
+            {tireusesChoisies.length > 0 && (
               <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)', marginTop: 6, paddingTop: 6, borderTop: '0.5px solid rgba(255,255,255,0.06)' }}>
                 Caution {fmt(cautionTireuse)} en chèque — non encaissée
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
           {/* Total */}
           <div style={{ background: 'rgba(201,169,110,0.08)', borderRadius: 10, padding: '16px', marginBottom: 24, border: '0.5px solid rgba(201,169,110,0.2)' }}>
