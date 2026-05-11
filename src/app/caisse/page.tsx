@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { ModuleLocation } from './location'
 import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
@@ -927,6 +928,8 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
   const [showHistorique, setShowHistorique] = useState(false)
   const [showAchatsClient, setShowAchatsClient] = useState(false)
   const [showDivers, setShowDivers] = useState(false)
+  const [showLocation, setShowLocation] = useState(false)
+  const [showLocation, setShowLocation] = useState(false)
   const [diversNom, setDiversNom] = useState('')
   const [diversPrix, setDiversPrix] = useState('')
   const [diversTva, setDiversTva] = useState<5.5 | 20>(20)
@@ -1294,6 +1297,7 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
       )}
       {showHistorique && <HistoriqueVentes session={session} onClose={() => setShowHistorique(false)} onAddToCart={handleAddFromHistorique} />}
       {showAchatsClient && client && <HistoriqueAchatsClient client={client} onClose={() => setShowAchatsClient(false)} onAddToCart={handleAddSingleAchat} />}
+      {showLocation && <div style={{ position: 'fixed' as const, inset: 0, zIndex: 600 }}><ModuleLocation session={session} user={vendeur} onClose={() => setShowLocation(false)} /></div>}
 
       {/* Fermeture caisse */}
       {showFermeture && (
@@ -1556,6 +1560,16 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
             <div>
               <div style={{ fontSize: 14, color: '#c9a96e' }}>Historique des ventes</div>
               <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', marginTop: 2 }}>Tickets, devis, factures, BL, commandes</div>
+            </div>
+            <span style={{ marginLeft: 'auto', color: 'rgba(232,224,213,0.3)', fontSize: 18 }}>→</span>
+          </button>
+
+          {/* Location tireuse */}
+          <button onClick={() => setShowLocation(true)} style={{ width: '100%', background: '#18130e', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 12, padding: '16px', cursor: 'pointer', textAlign: 'left' as const, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ fontSize: 22 }}>🍺</span>
+            <div>
+              <div style={{ fontSize: 14, color: '#c9a96e' }}>Location tireuse & fûts</div>
+              <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', marginTop: 2 }}>Créer une réservation de tireuse</div>
             </div>
             <span style={{ marginLeft: 'auto', color: 'rgba(232,224,213,0.3)', fontSize: 18 }}>→</span>
           </button>
