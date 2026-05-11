@@ -64,9 +64,10 @@ export default function LocationPage() {
     setCommandesLoupiote(commandesData || [])
     setConsignes(consignesData || [])
 
-    // Calculer alertes stock
-    const alertesTemp: any[] = []
+    // Calculer alertes stock — groupées par réservation
     const resasActives = (resasData || []).filter((r: any) => !['annulée', 'terminée'].includes(r.statut))
+    const alertesParResa: Record<string, any> = {}
+
     for (const fut of (futsData || [])) {
       const resasParFut = resasActives.filter((r: any) =>
         r.reservation_futs?.some((rf: any) => rf.fut_catalogue_id === fut.id)
@@ -77,14 +78,16 @@ export default function LocationPage() {
         const ligne = resa.reservation_futs.find((rf: any) => rf.fut_catalogue_id === fut.id)
         stockCumul -= ligne?.quantite || 0
         if (stockCumul < 0) {
-          alertesTemp.push({
-            fut, resa,
-            manque: Math.abs(stockCumul),
+          if (!alertesParResa[resa.id]) {
+            alertesParResa[resa.id] = { resa, manques: [] }
+          }
+          alertesParResa[resa.id].manques.push({
+            fut, manque: Math.abs(stockCumul), quantite: ligne?.quantite || 0
           })
         }
       }
     }
-    setAlertes(alertesTemp)
+    setAlertes(Object.values(alertesParResa))
     setLoading(false)
   }, [])
 
@@ -141,10 +144,19 @@ export default function LocationPage() {
           {alertes.length > 0 && (
             <div style={{ background: 'rgba(201,110,110,0.08)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 12, padding: 16, marginBottom: 24 }}>
               <div style={{ fontSize: 14, color: '#c96e6e', fontWeight: 600, marginBottom: 10 }}>⚠ Alertes stock insuffisant</div>
-              {alertes.map((a, i) => (
-                <div key={i} style={{ fontSize: 13, color: '#e8e0d5', marginBottom: 6, padding: '8px 12px', background: 'rgba(201,110,110,0.06)', borderRadius: 6 }}>
-                  <span style={{ color: '#c96e6e', fontWeight: 600 }}>Manque {a.manque} fût(s)</span> — {a.fut.nom_cuvee} {a.fut.contenance_litres}L
-                  {' '}pour réservation <span style={{ color: '#c9a96e' }}>{a.resa.numero}</span> ({clientNom(a.resa)}) le {new Date(a.resa.date_debut).toLocaleDateString('fr-FR')}
+              {alertes.map((a: any, i: number) => (
+                <div key={i} style={{ fontSize: 13, color: '#e8e0d5', marginBottom: 8, padding: '10px 14px', background: 'rgba(201,110,110,0.06)', borderRadius: 6, borderLeft: '3px solid rgba(201,110,110,0.4)' }}>
+                  <div style={{ color: '#c96e6e', fontWeight: 600, marginBottom: 6 }}>
+                    ⚠ {clientNom(a.resa)} — {new Date(a.resa.date_debut).toLocaleDateString('fr-FR')}
+                    <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', fontWeight: 400, marginLeft: 8 }}>{a.resa.numero}</span>
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {a.manques.map((m: any, j: number) => (
+                      <span key={j} style={{ fontSize: 12, background: 'rgba(201,110,110,0.1)', borderRadius: 4, padding: '2px 8px', color: '#e8a0a0' }}>
+                        manque {m.manque} × {m.fut.nom_cuvee} {m.fut.contenance_litres}L
+                      </span>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
@@ -221,9 +233,10 @@ export default function LocationPage() {
                                 }, 0)
                               return fut.stock_actuel - dejaPris >= rf.quantite
                             })
-                            return stockOk
+                            const alerteResa = alertes.find((a: any) => a.resa?.id === r.id)
+                            return !alerteResa
                               ? <span style={{ fontSize: 10, background: 'rgba(110,201,110,0.1)', color: '#6ec96e', padding: '2px 8px', borderRadius: 3 }}>✓ Stock OK</span>
-                              : <span style={{ fontSize: 10, background: 'rgba(201,110,110,0.15)', color: '#c96e6e', padding: '2px 8px', borderRadius: 3 }}>⚠ Stock insuffisant</span>
+                              : <span style={{ fontSize: 10, background: 'rgba(201,110,110,0.15)', color: '#c96e6e', padding: '2px 8px', borderRadius: 3 }}>⚠ {alerteResa.manques.length} fût(s) en rupture</span>
                           })()}
                         </div>
                       </div>
