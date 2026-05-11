@@ -328,7 +328,7 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
   }
 
   const envoyerEmail = async () => {
-    if (!client?.email) { alert('Pas d'email pour ce client'); return }
+    if (!client?.email) { alert("Pas d'email pour ce client"); return }
     alert(`Email envoyé à ${client.email}\n(fonctionnalité email à connecter)`)
   }
 
