@@ -556,11 +556,18 @@ function HistoriqueVentes({ session, onClose, onAddToCart }: {
 
   const searchClients = async (q: string) => {
     if (!q.trim()) { setClientsFound([]); return }
-    const { data } = await supabase.from('customers')
-      .select('id, prenom, nom, raison_sociale, est_societe, email')
-      .or(`nom.ilike.%${q}%,prenom.ilike.%${q}%,raison_sociale.ilike.%${q}%`)
-      .limit(6)
-    setClientsFound(data || [])
+    const [{ data: byNom }, { data: byPrenom }, { data: bySociete }] = await Promise.all([
+      supabase.from('customers').select('id, prenom, nom, raison_sociale, est_societe, email, telephone').ilike('nom', `%${q}%`).limit(6),
+      supabase.from('customers').select('id, prenom, nom, raison_sociale, est_societe, email, telephone').ilike('prenom', `%${q}%`).limit(6),
+      supabase.from('customers').select('id, prenom, nom, raison_sociale, est_societe, email, telephone').ilike('raison_sociale', `%${q}%`).limit(6),
+    ])
+    const seen = new Set<string>()
+    const merged = [...(byNom || []), ...(byPrenom || []), ...(bySociete || [])].filter(c => {
+      if (seen.has(c.id)) return false
+      seen.add(c.id)
+      return true
+    })
+    setClientsFound(merged.slice(0, 8))
   }
 
   const openDetail = async (v: any) => {
@@ -964,11 +971,19 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
   const searchClients = async (q: string) => {
     if (!q.trim()) { setClientsFound([]); return }
     setLoadingClients(true)
-    const { data } = await supabase.from('customers')
-      .select('id, prenom, nom, raison_sociale, est_societe, tarif_pro, remise_pct, email, telephone')
-      .or(`nom.ilike.%${q}%,prenom.ilike.%${q}%,raison_sociale.ilike.%${q}%,email.ilike.%${q}%`)
-      .limit(8)
-    setClientsFound(data || [])
+    const [{ data: byNom }, { data: byPrenom }, { data: bySociete }, { data: byEmail }] = await Promise.all([
+      supabase.from('customers').select('id, prenom, nom, raison_sociale, est_societe, tarif_pro, remise_pct, email, telephone').ilike('nom', `%${q}%`).limit(6),
+      supabase.from('customers').select('id, prenom, nom, raison_sociale, est_societe, tarif_pro, remise_pct, email, telephone').ilike('prenom', `%${q}%`).limit(6),
+      supabase.from('customers').select('id, prenom, nom, raison_sociale, est_societe, tarif_pro, remise_pct, email, telephone').ilike('raison_sociale', `%${q}%`).limit(6),
+      supabase.from('customers').select('id, prenom, nom, raison_sociale, est_societe, tarif_pro, remise_pct, email, telephone').ilike('email', `%${q}%`).limit(4),
+    ])
+    const seen = new Set()
+    const merged = [...(byNom||[]),...(byPrenom||[]),...(bySociete||[]),...(byEmail||[])].filter(x => {
+      if (seen.has(x.id)) return false
+      seen.add(x.id)
+      return true
+    })
+    setClientsFound(merged.slice(0, 8))
     setLoadingClients(false)
   }
 
@@ -1912,8 +1927,19 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
 
   const searchClients = async (q: string) => {
     if (!q.trim()) { setClientsFound([]); return }
-    const { data } = await supabase.from('customers').select('id, prenom, nom, raison_sociale, est_societe, tarif_pro, remise_pct, email, telephone').or(`nom.ilike.%${q}%,prenom.ilike.%${q}%,raison_sociale.ilike.%${q}%,email.ilike.%${q}%`).limit(8)
-    setClientsFound(data || [])
+    const [{ data: byNom }, { data: byPrenom }, { data: bySociete }, { data: byEmail }] = await Promise.all([
+      supabase.from('customers').select('id, prenom, nom, raison_sociale, est_societe, email, telephone').ilike('nom', `%${q}%`).limit(6),
+      supabase.from('customers').select('id, prenom, nom, raison_sociale, est_societe, email, telephone').ilike('prenom', `%${q}%`).limit(6),
+      supabase.from('customers').select('id, prenom, nom, raison_sociale, est_societe, email, telephone').ilike('raison_sociale', `%${q}%`).limit(6),
+      supabase.from('customers').select('id, prenom, nom, raison_sociale, est_societe, email, telephone').ilike('email', `%${q}%`).limit(4),
+    ])
+    const seen = new Set()
+    const merged = [...(byNom||[]),...(byPrenom||[]),...(bySociete||[]),...(byEmail||[])].filter(x => {
+      if (seen.has(x.id)) return false
+      seen.add(x.id)
+      return true
+    })
+    setClientsFound(merged.slice(0, 8))
   }
 
   const selectClient = async (c: Client | null) => {
@@ -2226,7 +2252,11 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
       {editingClient&&<ModalClientForm client={editingClient} onClose={()=>setEditingClient(null)} onSaved={(c)=>{if(client?.id===c.id)setClient(c);setEditingClient(null)}}/>}
       {showHistorique&&<HistoriqueVentes session={session} onClose={()=>setShowHistorique(false)} onAddToCart={handleAddFromHistorique}/>}
       {showAchatsClient&&client&&<HistoriqueAchatsClient client={client} onClose={()=>setShowAchatsClient(false)} onAddToCart={handleAddSingleAchat}/>}
-      {showLocation && <div style={{position:'fixed' as const,inset:0,zIndex:600}}><ModuleLocation session={session} user={vendeur} onClose={()=>setShowLocation(false)}/></div>}
+      {showLocation && (
+        <div style={{position:'fixed' as const,inset:0,zIndex:1000,background:'#0d0a08'}}>
+          <ModuleLocation session={session} user={vendeur} onClose={()=>setShowLocation(false)}/>
+        </div>
+      )}
     </div>
   )
 }
