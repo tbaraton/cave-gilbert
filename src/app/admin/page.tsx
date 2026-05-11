@@ -13,7 +13,7 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
-type Section = 'dashboard' | 'produits' | 'stock' | 'transferts' | 'locations' | 'biere'
+type Section = 'dashboard' | 'produits' | 'stock' | 'transferts'
 
 // ── Styles constants ─────────────────────────────────────────
 
@@ -1134,9 +1134,7 @@ export default function AdminPage() {
   const [produits, setProduits] = useState<any[]>([])
   const [stockParSite, setStockParSite] = useState<any[]>([])
   const [sites, setSites] = useState<any[]>([])
-  const [locations, setLocations] = useState<any[]>([])
-  const [tireuses, setTireuses] = useState<any[]>([])
-  const [kegStock, setKegStock] = useState<any[]>([])
+
   const [alertes, setAlertes] = useState<any[]>([])
   const [regions, setRegions] = useState<any[]>([])
   const [appellations, setAppellations] = useState<any[]>([])
@@ -1177,20 +1175,10 @@ export default function AdminPage() {
         { data: prods },
         { data: stock },
         { data: sitesData },
-        { data: locs },
-        { data: tirs },
-        { data: kegs },
       ] = await Promise.all([
         supabase.from('products').select('id, nom, nom_cuvee, contenance, millesime, couleur, prix_vente_ttc, prix_vente_pro, prix_achat_ht, actif, bio, vegan, casher, naturel, biodynamique, ia_generated, domaine_id, slug, region_id, appellation_id, description_courte, image_url').order('nom').limit(5000),
         supabase.from('v_stock_par_site').select('*'),
         supabase.from('sites').select('*').eq('actif', true).order('nom'),
-        supabase.from('beer_rentals').select(`
-          *, tap_unit:tap_units(numero_serie),
-          customer:customers(prenom, nom),
-          kegs:beer_rental_kegs(id)
-        `).order('date_depart', { ascending: true }),
-        supabase.from('tap_units').select('*, site:sites(nom)').order('numero_serie'),
-        supabase.from('v_keg_stock').select('*'),
       ])
 
       setProduits(prods || [])
@@ -1201,9 +1189,6 @@ export default function AdminPage() {
       }
       setStockParSite(stock || [])
       setSites(sitesData || [])
-      setLocations(locs || [])
-      setTireuses(tirs || [])
-      setKegStock(kegs || [])
 
       // Alertes : grouper par produit et sommer tous les sites (vins uniquement)
       const couleursVin = new Set(['rouge', 'blanc', 'rosé', 'champagne', 'effervescent'])
@@ -1260,7 +1245,6 @@ export default function AdminPage() {
     references: produits.filter(p => p.actif).length,
     stockTotal: stockParSite.reduce((acc: number, s: any) => acc + (s.quantite || 0), 0),
     ruptures: stockParSite.filter((s: any) => s.stock_statut === 'rupture').length,
-    locationsActives: locations.filter(l => ['confirmée', 'en_cours'].includes(l.statut)).length,
   }
 
   // ── Regroupement stock par produit et site ───────────────
@@ -1308,8 +1292,6 @@ export default function AdminPage() {
   const navItems: { id: Section; label: string; icon: string }[] = [
     { id: 'dashboard',  label: 'Tableau de bord',  icon: '⬡' },
     { id: 'produits',   label: 'Produits',          icon: '⬥' },
-    { id: 'locations',  label: 'Locations tireuse', icon: '⟁' },
-    { id: 'biere',      label: 'Stock fûts',        icon: '◉' },
   ]
 
   const navLinks = [
@@ -1410,12 +1392,11 @@ export default function AdminPage() {
             {loading ? <Spinner /> : (
               <>
                 {/* KPIs */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 32 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 32 }}>
                   {[
                     { label: 'Références actives', value: stats.references, color: '#c9a96e' },
                     { label: 'Stock total', value: stats.stockTotal, color: '#6ec9a0' },
                     { label: 'En rupture', value: stats.ruptures, color: '#c96e6e' },
-                    { label: 'Locations actives', value: stats.locationsActives, color: '#6e9ec9' },
                   ].map(({ label, value, color }) => (
                     <div key={label} style={{ background: '#18130e', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 6, padding: '20px 22px' }}>
                       <div style={{ fontSize: 10, letterSpacing: 2, color: 'rgba(232,224,213,0.35)', textTransform: 'uppercase' as const, marginBottom: 10 }}>{label}</div>
@@ -1470,6 +1451,20 @@ export default function AdminPage() {
                   </div>
                 )}
 
+                {/* Raccourci Location */}
+                <div style={{ marginBottom: 24 }}>
+                  <a href="/admin/location" style={{ display: 'flex', alignItems: 'center', gap: 14, background: '#18130e', border: '0.5px solid rgba(201,169,110,0.15)', borderRadius: 6, padding: '16px 20px', textDecoration: 'none' }}
+                    onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(201,169,110,0.35)')}
+                    onMouseLeave={e => (e.currentTarget.style.borderColor = 'rgba(201,169,110,0.15)')}>
+                    <span style={{ fontSize: 24 }}>🍺</span>
+                    <div>
+                      <div style={{ fontSize: 14, color: '#c9a96e', marginBottom: 2 }}>Location tireuses & fûts</div>
+                      <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.35)' }}>Réservations, stock fûts, commandes La Loupiote, consignes</div>
+                    </div>
+                    <span style={{ marginLeft: 'auto', color: 'rgba(232,224,213,0.3)', fontSize: 18 }}>→</span>
+                  </a>
+                </div>
+
                 {alertes.length === 0 && produits.length === 0 && (
                   <div style={{ background: '#18130e', border: '0.5px solid rgba(201,169,110,0.15)', borderRadius: 6, padding: '32px', textAlign: 'center' as const }}>
                     <p style={{ color: '#c9a96e', fontSize: 16, fontFamily: 'Georgia, serif', marginBottom: 8 }}>Base de données connectée ✓</p>
@@ -1480,33 +1475,7 @@ export default function AdminPage() {
                   </div>
                 )}
 
-                {/* Prochaines locations */}
-                {locations.filter(l => ['confirmée', 'en_cours', 'devis'].includes(l.statut)).length > 0 && (
-                  <div>
-                    <h2 style={{ fontSize: 11, letterSpacing: 2, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, marginBottom: 14 }}>Prochaines locations</h2>
-                    <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
-                      {locations.filter(l => ['confirmée', 'en_cours', 'devis'].includes(l.statut)).slice(0, 5).map(loc => (
-                        <div key={loc.id} style={{ background: '#18130e', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 5, padding: '14px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                          <div>
-                            <div style={{ fontSize: 13, marginBottom: 3 }}>
-                              {loc.customer ? `${loc.customer.prenom} ${loc.customer.nom}` : `${loc.client_prenom || ''} ${loc.client_nom || ''}`}
-                              {loc.nom_evenement && <span style={{ color: 'rgba(232,224,213,0.5)' }}> — {loc.nom_evenement}</span>}
-                            </div>
-                            <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)' }}>
-                              {loc.date_depart} → {loc.date_retour_prevue}
-                              {loc.tap_unit && ` · ${loc.tap_unit.numero_serie}`}
-                              {loc.kegs && ` · ${loc.kegs.length} fût${loc.kegs.length > 1 ? 's' : ''}`}
-                            </div>
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <Badge label={loc.statut} bg={STATUT_LOCATION[loc.statut]?.bg || '#222'} color={STATUT_LOCATION[loc.statut]?.color || '#888'} />
-                            {loc.total_ttc && <span style={{ fontSize: 14, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{loc.total_ttc}€</span>}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+
               </>
             )}
           </>
@@ -1825,138 +1794,6 @@ export default function AdminPage() {
                 <button style={{ background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '11px 24px', fontSize: 11, cursor: 'pointer', fontWeight: 500, letterSpacing: 1.5, textTransform: 'uppercase' as const }}>
                   Créer le transfert
                 </button>
-              </div>
-            )}
-          </>
-        )}
-
-        {/* ── LOCATIONS ── */}
-        {section === 'locations' && (
-          <>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 }}>
-              <div>
-                <h1 style={{ fontFamily: 'Georgia, serif', fontSize: 28, fontWeight: 300, color: '#f0e8d8', marginBottom: 4 }}>Locations tireuse</h1>
-                <p style={{ fontSize: 12, color: 'rgba(232,224,213,0.35)' }}>
-                  {tireuses.filter(t => t.statut === 'disponible').length} tireuse{tireuses.filter(t => t.statut === 'disponible').length > 1 ? 's' : ''} disponible{tireuses.filter(t => t.statut === 'disponible').length > 1 ? 's' : ''}
-                </p>
-              </div>
-              <button style={{ background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '11px 20px', fontSize: 11, letterSpacing: 2, cursor: 'pointer', fontWeight: 500, textTransform: 'uppercase' as const }}>
-                + Nouvelle location
-              </button>
-            </div>
-
-            {loading ? <Spinner /> : (
-              <>
-                {/* Tireuses */}
-                {tireuses.length === 0 ? (
-                  <div style={{ background: '#18130e', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 6, padding: '24px', marginBottom: 24, textAlign: 'center' as const }}>
-                    <p style={{ color: 'rgba(232,224,213,0.4)', fontSize: 13 }}>Aucune tireuse enregistrée.</p>
-                    <p style={{ color: 'rgba(232,224,213,0.3)', fontSize: 12 }}>Ajoutez vos tireuses dans Supabase → Table Editor → tap_units.</p>
-                  </div>
-                ) : (
-                  <div style={{ marginBottom: 28 }}>
-                    <h2 style={{ fontSize: 11, letterSpacing: 2, color: 'rgba(232,224,213,0.35)', textTransform: 'uppercase' as const, marginBottom: 12 }}>État des tireuses</h2>
-                    <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' as const }}>
-                      {tireuses.map(t => (
-                        <div key={t.id} style={{ background: '#18130e', border: `0.5px solid ${t.statut === 'disponible' ? 'rgba(110,201,110,0.2)' : t.statut === 'maintenance' ? 'rgba(201,176,110,0.2)' : 'rgba(110,158,201,0.2)'}`, borderRadius: 6, padding: '16px 20px', minWidth: 160 }}>
-                          <div style={{ fontSize: 14, color: '#f0e8d8', marginBottom: 3 }}>{t.numero_serie}</div>
-                          <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', marginBottom: 12 }}>{t.modele || '—'}{t.site ? ` · ${t.site.nom}` : ''}</div>
-                          <Badge
-                            label={t.statut === 'disponible' ? 'Disponible' : t.statut === 'maintenance' ? 'Maintenance' : t.statut === 'louee' ? 'Louée' : t.statut}
-                            bg={t.statut === 'disponible' ? '#1e2a1e' : t.statut === 'maintenance' ? '#2a2510' : '#1e202a'}
-                            color={t.statut === 'disponible' ? '#6ec96e' : t.statut === 'maintenance' ? '#c9b06e' : '#6e9ec9'}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Locations */}
-                {locations.length === 0 ? (
-                  <Empty message="Aucune location enregistrée. Créez votre première location avec le bouton ci-dessus." />
-                ) : (
-                  <div style={{ background: '#18130e', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 6, overflow: 'hidden' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse' as const }}>
-                      <thead>
-                        <tr style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
-                          {['Numéro', 'Client', 'Événement', 'Dates', 'Équipement', 'Total', 'Statut', ''].map(h => (
-                            <th key={h} style={{ padding: '12px 14px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', textTransform: 'uppercase' as const, fontWeight: 400 }}>{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {locations.map((loc, i) => (
-                          <tr key={loc.id} style={{ borderBottom: i < locations.length - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none' }}>
-                            <td style={{ padding: '13px 14px', fontSize: 11, color: 'rgba(232,224,213,0.4)', fontFamily: 'monospace' }}>{loc.numero}</td>
-                            <td style={{ padding: '13px 14px', fontSize: 13 }}>
-                              {loc.customer ? `${loc.customer.prenom} ${loc.customer.nom}` : `${loc.client_prenom || ''} ${loc.client_nom || ''}`.trim() || '—'}
-                            </td>
-                            <td style={{ padding: '13px 14px', fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>{loc.nom_evenement || '—'}</td>
-                            <td style={{ padding: '13px 14px', fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>{loc.date_depart}<br />{loc.date_retour_prevue}</td>
-                            <td style={{ padding: '13px 14px', fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>
-                              {loc.tap_unit?.numero_serie || '—'}
-                              {loc.kegs?.length > 0 && ` · ${loc.kegs.length} fût${loc.kegs.length > 1 ? 's' : ''}`}
-                            </td>
-                            <td style={{ padding: '13px 14px', fontSize: 14, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{loc.total_ttc ? `${loc.total_ttc}€` : '—'}</td>
-                            <td style={{ padding: '13px 14px' }}>
-                              <Badge label={loc.statut} bg={STATUT_LOCATION[loc.statut]?.bg || '#222'} color={STATUT_LOCATION[loc.statut]?.color || '#888'} />
-                            </td>
-                            <td style={{ padding: '13px 14px' }}>
-                              <button style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 3, padding: '5px 10px', fontSize: 10, cursor: 'pointer' }}>
-                                {loc.statut === 'devis' ? 'Confirmer' : loc.statut === 'confirmée' ? 'Départ →' : loc.statut === 'en_cours' ? 'Retour ←' : 'Voir'}
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </>
-            )}
-          </>
-        )}
-
-        {/* ── STOCK FÛTS ── */}
-        {section === 'biere' && (
-          <>
-            <h1 style={{ fontFamily: 'Georgia, serif', fontSize: 28, fontWeight: 300, color: '#f0e8d8', marginBottom: 28 }}>Stock fûts</h1>
-            {loading ? <Spinner /> : kegStock.length === 0 ? (
-              <div style={{ background: '#18130e', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 6, padding: '32px', textAlign: 'center' as const }}>
-                <p style={{ color: 'rgba(232,224,213,0.4)', fontSize: 13, marginBottom: 8 }}>Aucun fût enregistré.</p>
-                <p style={{ color: 'rgba(232,224,213,0.3)', fontSize: 12 }}>
-                  Ajoutez vos bières dans Supabase → Table Editor → beers,<br />puis créez vos références fûts dans keg_references.
-                </p>
-              </div>
-            ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 16 }}>
-                {kegStock.map((f: any) => (
-                  <div key={f.keg_reference_id + f.site_id} style={{ background: '#18130e', border: `0.5px solid ${f.quantite_plein === 0 ? 'rgba(201,110,110,0.2)' : 'rgba(255,255,255,0.07)'}`, borderRadius: 6, padding: '20px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
-                      <div>
-                        <div style={{ fontSize: 14, color: '#f0e8d8', marginBottom: 2 }}>{f.biere}</div>
-                        <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>{f.style || ''} · {f.contenance_litres}L · {f.site}</div>
-                      </div>
-                      <div style={{ textAlign: 'right' as const }}>
-                        <div style={{ fontSize: 15, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{f.prix_vente_ttc}€</div>
-                        <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.3)' }}>consigne {f.consigne_ttc}€</div>
-                      </div>
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-                      {[
-                        { label: 'Pleins', value: f.quantite_plein, color: f.quantite_plein === 0 ? '#c96e6e' : '#6ec96e' },
-                        { label: 'Vides', value: f.quantite_vide, color: '#c9b06e' },
-                        { label: 'Consigne', value: f.quantite_consigne, color: '#6e9ec9' },
-                      ].map(({ label, value, color }) => (
-                        <div key={label} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 4, padding: '10px 8px', textAlign: 'center' as const }}>
-                          <div style={{ fontSize: 20, color, fontFamily: 'Georgia, serif', fontWeight: 300 }}>{value}</div>
-                          <div style={{ fontSize: 9, color: 'rgba(232,224,213,0.3)', letterSpacing: 1, textTransform: 'uppercase' as const, marginTop: 2 }}>{label}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
               </div>
             )}
           </>
