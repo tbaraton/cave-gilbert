@@ -148,26 +148,59 @@ export default function LocationPage() {
         <div style={{ padding: 24 }}>
 
           {/* Alertes stock */}
-          {alertes.length > 0 && (
-            <div style={{ background: 'rgba(201,110,110,0.08)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 12, padding: 16, marginBottom: 24 }}>
-              <div style={{ fontSize: 14, color: '#c96e6e', fontWeight: 600, marginBottom: 10 }}>⚠ Alertes stock insuffisant</div>
-              {alertes.map((a: any, i: number) => (
-                <div key={i} style={{ fontSize: 13, color: '#e8e0d5', marginBottom: 8, padding: '10px 14px', background: 'rgba(201,110,110,0.06)', borderRadius: 6, borderLeft: '3px solid rgba(201,110,110,0.4)' }}>
-                  <div style={{ color: '#c96e6e', fontWeight: 600, marginBottom: 6 }}>
-                    ⚠ {clientNom(a.resa)} — {new Date(a.resa.date_debut).toLocaleDateString('fr-FR')}
-                    <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', fontWeight: 400, marginLeft: 8 }}>{a.resa.numero}</span>
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {a.manques.map((m: any, j: number) => (
-                      <span key={j} style={{ fontSize: 12, background: 'rgba(201,110,110,0.1)', borderRadius: 4, padding: '2px 8px', color: '#e8a0a0' }}>
-                        manque {m.manque} × {m.fut.nom_cuvee} {m.fut.contenance_litres}L
-                      </span>
+          {(() => {
+            const demain = new Date()
+            demain.setDate(demain.getDate() + 1)
+            const demainStr = demain.toISOString().split('T')[0]
+            const rappelsTireuses = reservations.filter(r =>
+              !['annulée','terminée'].includes(r.statut) && r.date_debut === demainStr && r.reservation_tireuses?.length > 0
+            )
+            const hasAlertes = alertes.length > 0
+            const hasRappels = rappelsTireuses.length > 0
+            if (!hasAlertes && !hasRappels) return null
+            return (
+              <div style={{ display: 'grid', gridTemplateColumns: hasAlertes && hasRappels ? '1fr 1fr' : '1fr', gap: 12, marginBottom: 20 }}>
+                {hasAlertes && (
+                  <div style={{ background: 'rgba(201,110,110,0.07)', border: '0.5px solid rgba(201,110,110,0.25)', borderRadius: 10, padding: 12 }}>
+                    <div style={{ fontSize: 12, color: '#c96e6e', fontWeight: 600, marginBottom: 8 }}>⚠ Stock insuffisant</div>
+                    {alertes.map((a: any, i: number) => (
+                      <div key={i} style={{ marginBottom: 6, padding: '6px 10px', background: 'rgba(201,110,110,0.05)', borderRadius: 6, borderLeft: '2px solid rgba(201,110,110,0.3)' }}>
+                        <div style={{ fontSize: 12, color: '#c96e6e', fontWeight: 600 }}>
+                          {clientNom(a.resa)} · {new Date(a.resa.date_debut).toLocaleDateString('fr-FR')}
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 4, marginTop: 4 }}>
+                          {a.manques.map((m: any, j: number) => (
+                            <span key={j} style={{ fontSize: 10, background: 'rgba(201,110,110,0.1)', borderRadius: 3, padding: '1px 6px', color: '#e8a0a0' }}>
+                              -{m.manque} {m.fut.nom_cuvee} {m.fut.contenance_litres}L
+                            </span>
+                          ))}
+                        </div>
+                      </div>
                     ))}
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
+                )}
+                {hasRappels && (
+                  <div style={{ background: 'rgba(110,158,201,0.07)', border: '0.5px solid rgba(110,158,201,0.25)', borderRadius: 10, padding: 12 }}>
+                    <div style={{ fontSize: 12, color: '#6e9ec9', fontWeight: 600, marginBottom: 8 }}>🔔 Tireuses à déplacer demain</div>
+                    {rappelsTireuses.map((r: any) => (
+                      <div key={r.id} style={{ marginBottom: 6, padding: '6px 10px', background: 'rgba(110,158,201,0.05)', borderRadius: 6, borderLeft: '2px solid rgba(110,158,201,0.3)' }}>
+                        <div style={{ fontSize: 12, color: '#6e9ec9', fontWeight: 600 }}>
+                          {new Date(r.date_debut).toLocaleDateString('fr-FR')} — {clientNom(r)}
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 4, marginTop: 4 }}>
+                          {r.reservation_tireuses?.map((rt: any) => (
+                            <span key={rt.id} style={{ fontSize: 10, background: 'rgba(110,158,201,0.1)', borderRadius: 3, padding: '1px 6px', color: '#a0c0e8' }}>
+                              {rt.tireuse?.nom} → {SITE_LABELS[r.site_retrait] || '⚠ site ?'}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })()}
 
           {/* ── RÉSERVATIONS ── */}
           {onglet === 'reservations' && (
@@ -279,31 +312,24 @@ export default function LocationPage() {
                         <div style={{ fontSize: 13, color: '#e8e0d5' }}>
                           {new Date(r.date_debut).toLocaleDateString('fr-FR')} → {new Date(r.date_fin).toLocaleDateString('fr-FR')}
                         </div>
-                        <div style={{ fontSize: 11, marginTop: 6, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' as const }}>
-                          <select value={r.site_retrait || ''} onChange={async e => {
-                            e.stopPropagation()
-                            await supabase.from('reservations_location').update({ site_retrait: e.target.value || null }).eq('id', r.id)
-                            setReservations((prev: any[]) => prev.map((x: any) => x.id === r.id ? { ...x, site_retrait: e.target.value } : x))
-                          }} onClick={e => e.stopPropagation()}
-                            style={{ background: '#1a1408', border: `0.5px solid ${r.site_retrait ? 'rgba(110,201,110,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 4, color: r.site_retrait ? '#6ec96e' : 'rgba(232,224,213,0.3)', fontSize: 10, padding: '2px 6px', cursor: 'pointer' }}>
-                            <option value="">↓ Retrait ?</option>
-                            <option value="cave_gilbert">↓ Cave de Gilbert</option>
-                            <option value="petite_cave">↓ La Petite Cave</option>
-                            <option value="entrepot">↓ Entrepôt</option>
-                            <option value="livraison">↓ 🚚 À livrer</option>
-                          </select>
-                          <select value={r.site_retour || ''} onChange={async e => {
-                            e.stopPropagation()
-                            await supabase.from('reservations_location').update({ site_retour: e.target.value || null }).eq('id', r.id)
-                            setReservations((prev: any[]) => prev.map((x: any) => x.id === r.id ? { ...x, site_retour: e.target.value } : x))
-                          }} onClick={e => e.stopPropagation()}
-                            style={{ background: '#1a1408', border: `0.5px solid ${r.site_retour ? 'rgba(201,176,110,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 4, color: r.site_retour ? '#c9b06e' : 'rgba(232,224,213,0.3)', fontSize: 10, padding: '2px 6px', cursor: 'pointer' }}>
-                            <option value="">↑ Retour ?</option>
-                            <option value="cave_gilbert">↑ Cave de Gilbert</option>
-                            <option value="petite_cave">↑ La Petite Cave</option>
-                            <option value="entrepot">↑ Entrepôt</option>
-                            <option value="livraison">↑ 🚚 À livrer</option>
-                          </select>
+                        <div style={{ display: 'flex', gap: 4, marginTop: 4, flexWrap: 'wrap' as const }}>
+                          {[
+                            { key: 'site_retrait', prefix: '↓', color: r.site_retrait ? '#6ec96e' : 'rgba(232,224,213,0.25)', border: r.site_retrait ? 'rgba(110,201,110,0.3)' : 'rgba(255,255,255,0.08)' },
+                            { key: 'site_retour', prefix: '↑', color: r.site_retour ? '#c9b06e' : 'rgba(232,224,213,0.25)', border: r.site_retour ? 'rgba(201,176,110,0.3)' : 'rgba(255,255,255,0.08)' },
+                          ].map(({ key, prefix, color, border }) => (
+                            <select key={key} value={(r as any)[key] || ''} onChange={async e => {
+                              e.stopPropagation()
+                              await supabase.from('reservations_location').update({ [key]: e.target.value || null }).eq('id', r.id)
+                              setReservations((prev: any[]) => prev.map((x: any) => x.id === r.id ? { ...x, [key]: e.target.value } : x))
+                            }} onClick={e => e.stopPropagation()}
+                              style={{ background: '#0f0b08', border: `0.5px solid ${border}`, borderRadius: 3, color, fontSize: 10, padding: '1px 4px', cursor: 'pointer', maxWidth: 110 }}>
+                              <option value="">{prefix} Site ?</option>
+                              <option value="cave_gilbert">{prefix} C. Gilbert</option>
+                              <option value="petite_cave">{prefix} Petite Cave</option>
+                              <option value="entrepot">{prefix} Entrepôt</option>
+                              <option value="livraison">{prefix} 🚚 Livraison</option>
+                            </select>
+                          ))}
                         </div>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
