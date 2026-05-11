@@ -37,10 +37,12 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
 
   useEffect(() => {
     const load = async () => {
-      const [{ data: futsData }, { data: tireusesData }] = await Promise.all([
-        supabase.from('futs_catalogue').select('*').eq('actif', true).order('type_biere').order('contenance_litres', { ascending: false }),
-        supabase.from('tireuses').select('*').eq('statut', 'disponible').order('nom'),
+      const [{ data: futsData, error: futsError }, { data: tireusesData }] = await Promise.all([
+        supabase.from('futs_catalogue').select('*').order('type_biere').order('contenance_litres', { ascending: false }),
+        supabase.from('tireuses').select('*').order('nom'),
       ])
+      if (futsError) console.error('Futs error:', futsError)
+      console.log('Futs loaded:', futsData?.length, futsData)
       setFuts(futsData || [])
       setTireuses(tireusesData || [])
     }
