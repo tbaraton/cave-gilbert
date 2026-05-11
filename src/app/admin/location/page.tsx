@@ -309,7 +309,7 @@ export default function LocationPage() {
     <div class="doc-title">Bon de commande fournisseur</div>
     <div class="doc-numero">${cmd.numero}</div>
     <div class="doc-date">${new Date(cmd.date_commande).toLocaleDateString('fr-FR', {day:'2-digit', month:'long', year:'numeric'})}</div>
-    ${dateLiv ? `<div class="livraison-badge">📦 Livraison avant le ${new Date(dateLiv).toLocaleDateString('fr-FR', {day:'2-digit', month:'long', year:'numeric'})}</div>` : ''}
+    ${dateLiv ? '<div class="livraison-badge">📦 Livraison avant le ' + new Date(dateLiv).toLocaleDateString('fr-FR', {day:'2-digit', month:'long', year:'numeric'}) + '</div>' : ''}
   </div>
 </div>
 
