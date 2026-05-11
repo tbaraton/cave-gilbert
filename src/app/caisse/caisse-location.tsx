@@ -401,7 +401,7 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
       '</div>' +
       '<div class="footer">Cave de Gilbert \u00b7 Avenue Jean Colomb, 69280 Marcy l\u2019\u00c9toile \u00b7 contact@cavedegilbert.fr \u00b7 04 22 91 41 09</div>' +
       '</body></html>'
-  } }
+  }
 
   const imprimerBon = () => {
     const html = genererBonReservation(signatureClient || undefined)
