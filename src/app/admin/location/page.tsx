@@ -48,16 +48,7 @@ export default function LocationPage() {
   const [ajouteAlertes, setAjouteAlertes] = useState<Set<string>>(new Set())
 
   // Recalcule quels alertes sont couverts par la commande en attente
-  const alertesCouvertes = new Set(
-    alertes.filter((a: any) =>
-      a.manques.every((m: any) => {
-        const cmdEnAttente = commandesLoupiote.find((cmd: any) => cmd.statut === 'en_attente')
-        if (!cmdEnAttente) return false
-        const ligne = cmdEnAttente.lignes?.find((l: any) => l.fut_catalogue_id === m.fut.id)
-        return ligne && ligne.quantite >= m.manque
-      })
-    ).map((a: any) => a.resa.id)
-  )
+  const alertesCouvertes = ajouteAlertes
   const [showRetourFuts, setShowRetourFuts] = useState<any>(null)
   const [showNouvelleConsigne, setShowNouvelleConsigne] = useState(false)
 
@@ -111,7 +102,9 @@ export default function LocationPage() {
         }
       }
     }
-    setAlertes(Object.values(alertesParResa))
+    setAlertes(Object.values(alertesParResa).sort((a: any, b: any) =>
+      new Date(a.resa.date_debut).getTime() - new Date(b.resa.date_debut).getTime()
+    ))
     setLoading(false)
   }, [])
 
