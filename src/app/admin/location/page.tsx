@@ -88,18 +88,20 @@ export default function LocationPage() {
         r.reservation_futs?.some((rf: any) => rf.fut_catalogue_id === fut.id)
       ).sort((a: any, b: any) => new Date(a.date_debut).getTime() - new Date(b.date_debut).getTime())
 
-      let stockCumul = fut.stock_actuel
+      let stockDisponible = fut.stock_actuel
       for (const resa of resasParFut) {
         const ligne = resa.reservation_futs.find((rf: any) => rf.fut_catalogue_id === fut.id)
-        stockCumul -= ligne?.quantite || 0
-        if (stockCumul < 0) {
+        const qte = ligne?.quantite || 0
+        if (stockDisponible < qte) {
+          // Le manque = ce qui manque spécifiquement pour cette réservation
+          const manque = qte - Math.max(0, stockDisponible)
           if (!alertesParResa[resa.id]) {
             alertesParResa[resa.id] = { resa, manques: [] }
           }
-          alertesParResa[resa.id].manques.push({
-            fut, manque: Math.abs(stockCumul), quantite: ligne?.quantite || 0
-          })
+          alertesParResa[resa.id].manques.push({ fut, manque, quantite: qte })
         }
+        // Le stock restant après cette réservation (peut aller en négatif pour les suivantes)
+        stockDisponible -= qte
       }
     }
     setAlertes(Object.values(alertesParResa).sort((a: any, b: any) =>
