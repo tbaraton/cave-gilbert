@@ -927,6 +927,7 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
   const [editingClient, setEditingClient] = useState<Client | null>(null)
   const [showHistorique, setShowHistorique] = useState(false)
   const [showAchatsClient, setShowAchatsClient] = useState(false)
+  const [showLocation, setShowLocation] = useState(false)
   const [showDivers, setShowDivers] = useState(false)
   const [showLocation, setShowLocation] = useState(false)
   const [diversNom, setDiversNom] = useState('')
