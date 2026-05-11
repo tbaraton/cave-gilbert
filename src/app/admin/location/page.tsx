@@ -279,13 +279,32 @@ export default function LocationPage() {
                         <div style={{ fontSize: 13, color: '#e8e0d5' }}>
                           {new Date(r.date_debut).toLocaleDateString('fr-FR')} → {new Date(r.date_fin).toLocaleDateString('fr-FR')}
                         </div>
-                        {r.site_retrait && (
-                          <div style={{ fontSize: 11, marginTop: 4, display: 'flex', gap: 8 }}>
-                            <span style={{ color: '#6ec96e' }}>↓ {SITE_LABELS[r.site_retrait] || r.site_retrait}</span>
-                            <span style={{ color: 'rgba(232,224,213,0.3)' }}>·</span>
-                            <span style={{ color: '#c9b06e' }}>↑ {SITE_LABELS[r.site_retour] || r.site_retour}</span>
-                          </div>
-                        )}
+                        <div style={{ fontSize: 11, marginTop: 6, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' as const }}>
+                          <select value={r.site_retrait || ''} onChange={async e => {
+                            e.stopPropagation()
+                            await supabase.from('reservations_location').update({ site_retrait: e.target.value || null }).eq('id', r.id)
+                            setReservations((prev: any[]) => prev.map((x: any) => x.id === r.id ? { ...x, site_retrait: e.target.value } : x))
+                          }} onClick={e => e.stopPropagation()}
+                            style={{ background: '#1a1408', border: `0.5px solid ${r.site_retrait ? 'rgba(110,201,110,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 4, color: r.site_retrait ? '#6ec96e' : 'rgba(232,224,213,0.3)', fontSize: 10, padding: '2px 6px', cursor: 'pointer' }}>
+                            <option value="">↓ Retrait ?</option>
+                            <option value="cave_gilbert">↓ Cave de Gilbert</option>
+                            <option value="petite_cave">↓ La Petite Cave</option>
+                            <option value="entrepot">↓ Entrepôt</option>
+                            <option value="livraison">↓ 🚚 À livrer</option>
+                          </select>
+                          <select value={r.site_retour || ''} onChange={async e => {
+                            e.stopPropagation()
+                            await supabase.from('reservations_location').update({ site_retour: e.target.value || null }).eq('id', r.id)
+                            setReservations((prev: any[]) => prev.map((x: any) => x.id === r.id ? { ...x, site_retour: e.target.value } : x))
+                          }} onClick={e => e.stopPropagation()}
+                            style={{ background: '#1a1408', border: `0.5px solid ${r.site_retour ? 'rgba(201,176,110,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 4, color: r.site_retour ? '#c9b06e' : 'rgba(232,224,213,0.3)', fontSize: 10, padding: '2px 6px', cursor: 'pointer' }}>
+                            <option value="">↑ Retour ?</option>
+                            <option value="cave_gilbert">↑ Cave de Gilbert</option>
+                            <option value="petite_cave">↑ La Petite Cave</option>
+                            <option value="entrepot">↑ Entrepôt</option>
+                            <option value="livraison">↑ 🚚 À livrer</option>
+                          </select>
+                        </div>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <span style={{ fontSize: 11, background: `${statutColor[r.statut]}22`, color: statutColor[r.statut], padding: '3px 10px', borderRadius: 4, textTransform: 'capitalize' }}>{r.statut}</span>
