@@ -55,7 +55,7 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
   let lastY = 0
 
   const initCanvas = (canvas: HTMLCanvasElement | null) => {
-    if (!canvas) return
+    if (!canvas || canvasRef.current === canvas) return
     canvasRef.current = canvas
     const ctx = canvas.getContext('2d')
     if (!ctx) return
@@ -434,6 +434,9 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
   if (resaCreee) return (
     <div style={{ ...container, overflowY: 'auto' as const }}>
       <div style={{ padding: '24px 16px' }}>
+        <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.4)', fontSize: 13, cursor: 'pointer', padding: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: 6 }}>
+          ← Retour à la caisse
+        </button>
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
           <div style={{ fontSize: 48, marginBottom: 8 }}>🍺</div>
           <div style={{ fontFamily: 'Georgia, serif', fontSize: 20, color: '#6ec96e', marginBottom: 4 }}>Réservation confirmée</div>
