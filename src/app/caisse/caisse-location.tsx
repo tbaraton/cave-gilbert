@@ -215,8 +215,7 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
     const lignesFutsStr = lignesFuts.filter(l => l.fut_id && l.quantite > 0).map(l => {
       const fut = futs.find(f => f.id === l.fut_id)
       return `${l.quantite}× ${fut?.nom_cuvee || ''} ${fut?.contenance_litres}L — ${fmt(getPrixLigne(l.fut_id) * l.quantite)}`
-    }).join('
-')
+    }).join('\n')
     const tireusesStr = tireusesChoisies.map(tid => {
       const t = tireuses.find(x => x.id === tid)
       return `${t?.nom} (${t?.modele})`
