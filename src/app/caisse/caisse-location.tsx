@@ -399,7 +399,7 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
         '<div class="sig-box"><div class="sig-title">Signature client \u2014 Bon pour accord</div>' + sigHtml + '</div>' +
         '<div class="sig-box"><div class="sig-title">Cave de Gilbert</div><div style="font-family:Georgia,serif;font-size:18px;color:#c9a96e;margin-top:8px">Cave de Gilbert</div></div>' +
       '</div>' +
-      '<div class="footer">Cave de Gilbert \u00b7 Avenue Jean Colomb, 69280 Marcy l'\u00c9toile \u00b7 contact@cavedegilbert.fr \u00b7 04 22 91 41 09</div>' +
+      '<div class="footer">Cave de Gilbert \u00b7 Avenue Jean Colomb, 69280 Marcy l\u2019\u00c9toile \u00b7 contact@cavedegilbert.fr \u00b7 04 22 91 41 09</div>' +
       '</body></html>'
   } }
 
