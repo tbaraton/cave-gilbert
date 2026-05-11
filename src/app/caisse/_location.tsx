@@ -33,6 +33,9 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
   const [cautionPayee, setCautionPayee] = useState(false)
   const [alertesStock, setAlertesStock] = useState<any[]>([])
   const [conflitsTireuses, setConflitsTireuses] = useState<Record<string, string>>({})
+  const [remiseType, setRemiseType] = useState<'pct' | 'eur'>('pct')
+  const [remiseVal, setRemiseVal] = useState('')
+  const [prixCustom, setPrixCustom] = useState<Record<string, number>>({})
   const [saving, setSaving] = useState(false)
   const [resaCreee, setResaCreee] = useState<string | null>(null)
 
@@ -134,16 +137,19 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
 
   const passerRecapitulatif = () => setEtape('recapitulatif')
 
-  const totalFuts = lignesFuts.reduce((acc, l) => {
-    const fut = futs.find(f => f.id === l.fut_id)
-    return acc + (fut ? fut.prix_vente_ttc * l.quantite : 0)
-  }, 0)
+  const getPrixLigne = (fut_id: string) => {
+    const fut = futs.find(f => f.id === fut_id)
+    return prixCustom[fut_id] !== undefined ? prixCustom[fut_id] : (fut?.prix_vente_ttc || 0)
+  }
+  const totalFuts = lignesFuts.reduce((acc, l) => acc + getPrixLigne(l.fut_id) * l.quantite, 0)
+  const remise = remiseVal ? parseFloat(remiseVal) : 0
+  const totalApresRemise = remiseType === 'pct' ? totalFuts * (1 - remise / 100) : Math.max(0, totalFuts - remise)
   const totalConsignesFuts = lignesFuts.reduce((acc, l) => {
     const fut = futs.find(f => f.id === l.fut_id)
     return acc + (fut ? fut.montant_consigne * l.quantite : 0)
   }, 0)
   const cautionTireuse = tireusesChoisies.length * 900
-  const totalTTC = totalFuts  // Caution et consignes gérées séparément
+  const totalTTC = totalApresRemise  // Caution et consignes gérées séparément
 
   const creerReservation = async () => {
     setSaving(true)
@@ -317,10 +323,23 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
                 </div>
                 {l.fut_id && (
                   <span style={{ fontSize: 14, color: '#c9a96e', fontFamily: 'Georgia, serif', marginLeft: 'auto' }}>
-                    {fmt((futs.find(f => f.id === l.fut_id)?.prix_vente_ttc || 0) * l.quantite)}
+                    {fmt(getPrixLigne(l.fut_id) * l.quantite)}
                   </span>
                 )}
               </div>
+              {l.fut_id && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                  <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>Prix u. TTC :</span>
+                  <input type="number" step="0.01" value={getPrixLigne(l.fut_id)}
+                    onChange={e => setPrixCustom(p => ({ ...p, [l.fut_id]: parseFloat(e.target.value) || 0 }))}
+                    style={{ width: 85, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 6, color: '#f0e8d8', fontSize: 14, padding: '5px 8px' }} />
+                  <span style={{ fontSize: 11, color: '#c9a96e' }}>€</span>
+                  {prixCustom[l.fut_id] !== undefined && (
+                    <button onClick={() => setPrixCustom(p => { const n = { ...p }; delete n[l.fut_id]; return n })}
+                      style={{ fontSize: 10, color: 'rgba(232,224,213,0.3)', background: 'transparent', border: 'none', cursor: 'pointer' }}>reset</button>
+                  )}
+                </div>
+              )}
             </div>
           ))}
 
@@ -331,9 +350,29 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
 
           {lignesFuts.some(l => l.fut_id) && (
             <div style={{ background: 'rgba(201,169,110,0.06)', borderRadius: 8, padding: '12px 16px', marginBottom: 16 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 15, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>
-                <span>Sous-total fûts</span><span>{fmt(totalFuts)}</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: 'rgba(232,224,213,0.5)', marginBottom: 8 }}>
+                <span>Sous-total</span><span>{fmt(totalFuts)}</span>
               </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: remiseVal ? 8 : 0 }}>
+                <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>Remise :</span>
+                <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', borderRadius: 6, overflow: 'hidden' }}>
+                  {(['pct','eur'] as const).map(t => (
+                    <button key={t} onClick={() => setRemiseType(t)} style={{ background: remiseType === t ? 'rgba(201,169,110,0.2)' : 'transparent', border: 'none', color: remiseType === t ? '#c9a96e' : 'rgba(232,224,213,0.4)', padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}>{t === 'pct' ? '%' : '€'}</button>
+                  ))}
+                </div>
+                <input type="number" step="0.01" value={remiseVal} onChange={e => setRemiseVal(e.target.value)} placeholder="0"
+                  style={{ width: 70, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 6, color: '#f0e8d8', fontSize: 14, padding: '4px 8px' }} />
+              </div>
+              {remiseVal && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 16, color: '#c9a96e', fontFamily: 'Georgia, serif', paddingTop: 8, borderTop: '0.5px solid rgba(255,255,255,0.06)' }}>
+                  <span>Total après remise</span><span>{fmt(totalApresRemise)}</span>
+                </div>
+              )}
+              {!remiseVal && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 16, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>
+                  <span>Total</span><span>{fmt(totalFuts)}</span>
+                </div>
+              )}
             </div>
           )}
 
