@@ -161,6 +161,7 @@ export default function LocationPage() {
                 {hasAlertes && (
                   <div style={{ background: 'rgba(201,110,110,0.07)', border: '0.5px solid rgba(201,110,110,0.25)', borderRadius: 10, padding: 12 }}>
                     <div style={{ fontSize: 12, color: '#c96e6e', fontWeight: 600, marginBottom: 8 }}>⚠ Stock insuffisant</div>
+                    <div style={{ maxHeight: 200, overflowY: 'auto' as const }}>
                     {alertes.map((a: any, i: number) => (
                       <div key={i} style={{ marginBottom: 6, padding: '6px 10px', background: 'rgba(201,110,110,0.05)', borderRadius: 6, borderLeft: '2px solid rgba(201,110,110,0.3)' }}>
                         <div style={{ fontSize: 12, color: '#c96e6e', fontWeight: 600 }}>
@@ -175,10 +176,12 @@ export default function LocationPage() {
                         </div>
                       </div>
                     ))}
+                    </div>
                   </div>
                 )}
                 <div style={{ background: 'rgba(110,158,201,0.07)', border: '0.5px solid rgba(110,158,201,0.25)', borderRadius: 10, padding: 12 }}>
                   <div style={{ fontSize: 12, color: '#6e9ec9', fontWeight: 600, marginBottom: 8 }}>🚛 Tireuses à déplacer</div>
+                  <div style={{ maxHeight: 200, overflowY: 'auto' as const }}>
                   {resasAvecTireuses.length === 0 ? (
                     <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.3)', fontStyle: 'italic' }}>Aucun déplacement prévu</div>
                   ) : resasAvecTireuses.map((r: any) => (
@@ -199,6 +202,7 @@ export default function LocationPage() {
                       </div>
                     </div>
                   ))}
+                  </div>
                 </div>
               </div>
             )
