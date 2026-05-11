@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { ModuleLocation } from '@/components/LocationCaisse'
+import { ModuleLocation } from '../../components/LocationCaisse'
 import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
