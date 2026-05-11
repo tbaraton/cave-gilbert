@@ -75,17 +75,23 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
   const verifierStock = async () => {
     const alertes: any[] = []
     for (const ligne of lignesFuts.filter(l => l.fut_id && l.quantite > 0)) {
-      const { data } = await supabase.rpc('check_stock_futs', {
-        p_fut_id: ligne.fut_id,
-        p_date_debut: dateDebut,
-        p_date_fin: dateFin,
-      })
       const fut = futs.find(f => f.id === ligne.fut_id)
-      if (data && data[0]) {
-        const dispo = data[0].stock_disponible - ligne.quantite
-        if (dispo < 0) {
-          alertes.push({ fut, manque: Math.abs(dispo), demande: ligne.quantite, dispo: data[0].stock_disponible })
-        }
+      if (!fut) continue
+      // Stock dispo = stock réel - fûts déjà réservés sur la période (confirmés ou en cours)
+      const { data: resasConflict } = await supabase
+        .from('reservation_futs')
+        .select('quantite, reservation:reservations_location!inner(statut, date_debut, date_fin)')
+        .eq('fut_catalogue_id', ligne.fut_id)
+        .in('reservation.statut', ['confirmée', 'en_cours'])
+      const qteDejaPrise = (resasConflict || []).reduce((acc: number, rf: any) => {
+        const r = rf.reservation
+        if (!r) return acc
+        const overlap = new Date(r.date_debut) <= new Date(dateFin) && new Date(r.date_fin) >= new Date(dateDebut)
+        return overlap ? acc + rf.quantite : acc
+      }, 0)
+      const dispo = fut.stock_actuel - qteDejaPrise
+      if (dispo < ligne.quantite) {
+        alertes.push({ fut, manque: ligne.quantite - dispo, demande: ligne.quantite, dispo })
       }
     }
     setAlertesStock(alertes)
@@ -160,11 +166,7 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
             return { reservation_id: resa.id, fut_catalogue_id: l.fut_id, quantite: l.quantite, prix_unitaire_ttc: fut?.prix_vente_ttc || 0, montant_consigne: 0 }
           })
         )
-        // Décrémenter stock
-        for (const l of lignesValides) {
-          const { data: f } = await supabase.from('futs_catalogue').select('stock_actuel').eq('id', l.fut_id).single()
-          if (f) await supabase.from('futs_catalogue').update({ stock_actuel: Math.max(0, f.stock_actuel - l.quantite) }).eq('id', l.fut_id)
-        }
+        // Stock décrémenté uniquement au départ physique des fûts (statut en_cours) via le backoffice
       }
       // Tireuses
       if (tireusesChoisies.length) {
