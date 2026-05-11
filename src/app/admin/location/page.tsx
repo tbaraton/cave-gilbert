@@ -270,7 +270,7 @@ export default function LocationPage() {
   <p>Merci de confirmer la réception de cette commande ainsi que la date de livraison prévue.</p>
 </div>
 </body></html>`
-  } }
+  }
 
   const envoyerCommande = async (cmd: any) => {
     setEnvoyerEnCours(true)
