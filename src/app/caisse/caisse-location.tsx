@@ -40,6 +40,10 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
   const [siteRetour, setSiteRetour] = useState('')
   const [saving, setSaving] = useState(false)
   const [resaCreee, setResaCreee] = useState<string | null>(null)
+  const [resaId, setResaId] = useState<string | null>(null)
+  const [showAcompte, setShowAcompte] = useState(false)
+  const [acompteMode, setAcompteMode] = useState('cb')
+  const [acompteMontant, setAcompteMontant] = useState('')
 
   useEffect(() => {
     const load = async () => {
@@ -185,6 +189,7 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
         )
       }
       setResaCreee(numero)
+      if (resa) setResaId(resa.id)
     }
     setSaving(false)
   }
@@ -193,28 +198,225 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
   const header = { padding: '14px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', gap: 12, background: '#0d0a08' }
   const btnPrimary = { background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 12, padding: '16px', fontSize: 15, cursor: 'pointer', fontWeight: 700, width: '100%', touchAction: 'manipulation' as const }
 
+  const MODES_PAIEMENT = [
+    { id: 'cb', label: '💳 CB' },
+    { id: 'especes', label: '💶 Espèces' },
+    { id: 'cheque', label: '📝 Chèque' },
+    { id: 'virement', label: '🏦 Virement' },
+  ]
+
+  const SITE_LABELS_LOC: Record<string, string> = {
+    cave_gilbert: 'Cave de Gilbert', petite_cave: 'La Petite Cave',
+    entrepot: 'Entrepôt', livraison: '🚚 À livrer',
+  }
+
+  const genererBonReservation = () => {
+    const acompte30 = Math.round(totalTTC * 0.30 * 100) / 100
+    const lignesFutsStr = lignesFuts.filter(l => l.fut_id && l.quantite > 0).map(l => {
+      const fut = futs.find(f => f.id === l.fut_id)
+      return `${l.quantite}× ${fut?.nom_cuvee || ''} ${fut?.contenance_litres}L — ${fmt(getPrixLigne(l.fut_id) * l.quantite)}`
+    }).join('
+')
+    const tireusesStr = tireusesChoisies.map(tid => {
+      const t = tireuses.find(x => x.id === tid)
+      return `${t?.nom} (${t?.modele})`
+    }).join(', ')
+
+    const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
+<title>Bon de réservation ${resaCreee}</title>
+<style>
+  body { font-family: 'Arial', sans-serif; max-width: 800px; margin: 0 auto; padding: 32px; color: #1a1a1a; }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 32px; border-bottom: 2px solid #8b4513; padding-bottom: 20px; }
+  .logo-area h1 { font-size: 24px; color: #5c2d0a; margin: 0 0 4px; font-family: Georgia, serif; }
+  .logo-area p { margin: 2px 0; font-size: 12px; color: #666; }
+  .doc-info { text-align: right; }
+  .doc-info h2 { font-size: 20px; color: #5c2d0a; margin: 0 0 8px; }
+  .doc-info p { margin: 2px 0; font-size: 13px; }
+  .numero { font-size: 16px; font-weight: bold; color: #8b4513; }
+  .section { margin-bottom: 24px; }
+  .section h3 { font-size: 13px; letter-spacing: 2px; text-transform: uppercase; color: #8b4513; border-bottom: 0.5px solid #ddd; padding-bottom: 6px; margin-bottom: 12px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .field label { font-size: 11px; color: #888; display: block; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 1px; }
+  .field span { font-size: 14px; font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { background: #f5f0eb; padding: 8px 12px; text-align: left; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: #666; }
+  td { padding: 10px 12px; border-bottom: 0.5px solid #eee; }
+  .total-row { background: #faf7f3; font-weight: bold; font-size: 16px; }
+  .conditions { background: #faf7f3; border: 1px solid #e8ddd0; border-radius: 8px; padding: 16px; font-size: 12px; color: #555; line-height: 1.6; }
+  .acompte-box { background: #f0f8f0; border: 1px solid #a8d5a8; border-radius: 8px; padding: 16px; margin-top: 16px; }
+  .signature { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-top: 32px; }
+  .sig-box { border-top: 1px solid #ccc; padding-top: 8px; font-size: 11px; color: #888; min-height: 60px; }
+  @media print { body { padding: 16px; } }
+</style></head><body>
+<div class="header">
+  <div class="logo-area">
+    <h1>🍷 Cave de Gilbert</h1>
+    <p>Avenue Jean Colomb — 69280 Marcy l'Étoile</p>
+    <p>📞 04 22 91 41 09 · ✉ contact@cavedegilbert.fr</p>
+    <p>Mar-Sam : 9h30-13h / 15h30-19h</p>
+  </div>
+  <div class="doc-info">
+    <h2>Bon de réservation</h2>
+    <p class="numero">${resaCreee}</p>
+    <p>Émis le ${new Date().toLocaleDateString('fr-FR')}</p>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Client</h3>
+  <div class="field">
+    <label>Nom</label>
+    <span>${client ? (client.est_societe ? client.raison_sociale : `${client.prenom} ${client.nom}`) : 'Client anonyme'}</span>
+  </div>
+  ${client?.telephone ? `<div class="field" style="margin-top:8px"><label>Téléphone</label><span>${client.telephone}</span></div>` : ''}
+  ${client?.email ? `<div class="field" style="margin-top:8px"><label>Email</label><span>${client.email}</span></div>` : ''}
+</div>
+
+<div class="section">
+  <h3>Période de location</h3>
+  <div class="grid2">
+    <div class="field"><label>Retrait</label><span>${new Date(dateDebut).toLocaleDateString('fr-FR', { weekday:'long', day:'2-digit', month:'long', year:'numeric' })}</span>${siteRetrait ? `<br><small style="color:#5c2d0a">📍 ${SITE_LABELS_LOC[siteRetrait] || siteRetrait}</small>` : ''}</div>
+    <div class="field"><label>Retour</label><span>${new Date(dateFin).toLocaleDateString('fr-FR', { weekday:'long', day:'2-digit', month:'long', year:'numeric' })}</span>${siteRetour ? `<br><small style="color:#5c2d0a">📍 ${SITE_LABELS_LOC[siteRetour] || siteRetour}</small>` : ''}</div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Tireuse(s)</h3>
+  <p style="font-size:14px">${tireusesStr || '—'}</p>
+  <p style="font-size:12px;color:#888;margin-top:4px">Caution : <strong>${fmt(cautionTireuse)}</strong> par chèque (non encaissé — restitué au retour)</p>
+</div>
+
+<div class="section">
+  <h3>Fûts commandés</h3>
+  <table>
+    <thead><tr><th>Désignation</th><th>Qté</th><th>Prix u. TTC</th><th>Total TTC</th></tr></thead>
+    <tbody>
+      ${lignesFuts.filter(l => l.fut_id && l.quantite > 0).map(l => {
+        const fut = futs.find(f => f.id === l.fut_id)
+        const prix = getPrixLigne(l.fut_id)
+        return `<tr><td>${fut?.nom_cuvee || ''} ${fut?.contenance_litres}L</td><td>${l.quantite}</td><td>${fmt(prix)}</td><td>${fmt(prix * l.quantite)}</td></tr>`
+      }).join('')}
+      <tr class="total-row"><td colspan="3">Total TTC</td><td>${fmt(totalTTC)}</td></tr>
+    </tbody>
+  </table>
+  <div class="acompte-box" style="margin-top:16px">
+    <p style="margin:0 0 4px;font-size:13px"><strong>Acompte 30% à la commande :</strong> ${fmt(acompte30)}</p>
+    <p style="margin:0;font-size:12px;color:#555">Solde de <strong>${fmt(totalTTC - acompte30)}</strong> à régler au retour de la tireuse</p>
+  </div>
+</div>
+
+<div class="conditions">
+  <strong>Conditions de location :</strong><br>
+  • La caution de ${fmt(cautionTireuse)} par chèque est obligatoire et sera restituée intégralement au retour du matériel en bon état.<br>
+  • Les fûts non percutés (non entamés) sont remboursés au prix de vente TTC.<br>
+  • Le solde est exigible au retour de la tireuse et des fûts.<br>
+  • La tireuse doit être rendue propre et en bon état de fonctionnement.<br>
+  • Cave de Gilbert décline toute responsabilité en cas de mauvaise utilisation du matériel.
+</div>
+
+<div class="signature">
+  <div class="sig-box">Signature client<br><em>(Bon pour accord)</em></div>
+  <div class="sig-box">Cachet Cave de Gilbert</div>
+</div>
+</body></html>`
+    return html
+  }
+
+  const imprimerBon = () => {
+    const html = genererBonReservation()
+    const w = window.open('', '_blank')
+    if (w) { w.document.write(html); w.document.close(); w.print() }
+  }
+
+  const envoyerEmail = async () => {
+    if (!client?.email) { alert('Pas d'email pour ce client'); return }
+    alert(`Email envoyé à ${client.email}\n(fonctionnalité email à connecter)`)
+  }
+
+  const enregistrerAcompte = async () => {
+    if (!resaId || !acompteMontant) return
+    const montant = parseFloat(acompteMontant)
+    await supabase.from('reservations_location').update({
+      acompte_ttc: montant,
+      acompte_mode: acompteMode,
+      acompte_paye_le: new Date().toISOString().split('T')[0],
+    }).eq('id', resaId)
+    setShowAcompte(false)
+    alert(`Acompte de ${fmt(montant)} enregistré (${acompteMode})`)
+  }
+
   // Succès
   if (resaCreee) return (
-    <div style={{ ...container, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-      <div style={{ textAlign: 'center' }}>
-        <div style={{ fontSize: 64, marginBottom: 16 }}>🍺</div>
-        <div style={{ fontFamily: 'Georgia, serif', fontSize: 22, color: '#6ec96e', marginBottom: 8 }}>Réservation créée !</div>
-        <div style={{ fontSize: 16, color: '#c9a96e', fontFamily: 'monospace', marginBottom: 8 }}>{resaCreee}</div>
-        <div style={{ fontSize: 14, color: 'rgba(232,224,213,0.5)', marginBottom: 32 }}>
-          {new Date(dateDebut).toLocaleDateString('fr-FR')} → {new Date(dateFin).toLocaleDateString('fr-FR')}
+    <div style={{ ...container, overflowY: 'auto' as const }}>
+      <div style={{ padding: '24px 16px' }}>
+        <div style={{ textAlign: 'center', marginBottom: 24 }}>
+          <div style={{ fontSize: 48, marginBottom: 8 }}>🍺</div>
+          <div style={{ fontFamily: 'Georgia, serif', fontSize: 20, color: '#6ec96e', marginBottom: 4 }}>Réservation confirmée</div>
+          <div style={{ fontSize: 15, color: '#c9a96e', fontFamily: 'monospace' }}>{resaCreee}</div>
+          <div style={{ fontSize: 13, color: 'rgba(232,224,213,0.5)', marginTop: 4 }}>
+            {new Date(dateDebut).toLocaleDateString('fr-FR')} → {new Date(dateFin).toLocaleDateString('fr-FR')}
+          </div>
         </div>
+
         {alertesStock.length > 0 && (
-          <div style={{ background: 'rgba(201,110,110,0.1)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 10, padding: 16, marginBottom: 20 }}>
-            <div style={{ color: '#c96e6e', fontSize: 14, fontWeight: 600, marginBottom: 8 }}>⚠ Stock insuffisant</div>
+          <div style={{ background: 'rgba(201,110,110,0.1)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 10, padding: 14, marginBottom: 16 }}>
+            <div style={{ color: '#c96e6e', fontSize: 13, fontWeight: 600, marginBottom: 6 }}>⚠ Stock insuffisant</div>
             {alertesStock.map((a, i) => (
-              <div key={i} style={{ fontSize: 13, color: '#e8e0d5' }}>
-                {a.fut?.nom_cuvee} {a.fut?.contenance_litres}L — manque {a.manque} fût(s)
-              </div>
+              <div key={i} style={{ fontSize: 12, color: '#e8e0d5' }}>{a.fut?.nom_cuvee} {a.fut?.contenance_litres}L — manque {a.manque} fût(s)</div>
             ))}
-            <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', marginTop: 8 }}>Pensez à commander à La Loupiote</div>
           </div>
         )}
-        <button onClick={onClose} style={{ ...btnPrimary, maxWidth: 300 }}>✓ Retour à la caisse</button>
+
+        {/* Acompte */}
+        <div style={{ background: '#18130e', borderRadius: 12, padding: 16, marginBottom: 16, border: '0.5px solid rgba(201,169,110,0.2)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <div>
+              <div style={{ fontSize: 14, color: '#f0e8d8' }}>Acompte 30%</div>
+              <div style={{ fontSize: 20, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{fmt(Math.round(totalTTC * 0.30 * 100) / 100)}</div>
+            </div>
+            <button onClick={() => setShowAcompte(!showAcompte)}
+              style={{ background: showAcompte ? 'rgba(201,110,110,0.1)' : 'rgba(201,169,110,0.15)', border: `0.5px solid ${showAcompte ? 'rgba(201,110,110,0.3)' : 'rgba(201,169,110,0.3)'}`, borderRadius: 8, color: showAcompte ? '#c96e6e' : '#c9a96e', padding: '8px 14px', fontSize: 13, cursor: 'pointer' }}>
+              {showAcompte ? '✕ Annuler' : '💰 Encaisser acompte'}
+            </button>
+          </div>
+          {showAcompte && (
+            <div>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' as const }}>
+                {MODES_PAIEMENT.map(m => (
+                  <button key={m.id} onClick={() => setAcompteMode(m.id)}
+                    style={{ flex: 1, background: acompteMode === m.id ? 'rgba(201,169,110,0.2)' : 'rgba(255,255,255,0.05)', border: `1px solid ${acompteMode === m.id ? '#c9a96e' : 'rgba(255,255,255,0.1)'}`, borderRadius: 8, color: acompteMode === m.id ? '#c9a96e' : 'rgba(232,224,213,0.5)', padding: '8px 4px', fontSize: 12, cursor: 'pointer' }}>
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input type="number" step="0.01" value={acompteMontant} onChange={e => setAcompteMontant(e.target.value)}
+                  placeholder={`${Math.round(totalTTC * 0.30 * 100) / 100}`}
+                  style={{ flex: 1, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 8, color: '#f0e8d8', fontSize: 16, padding: '10px' }} />
+                <button onClick={enregistrerAcompte}
+                  style={{ background: '#c9a96e', border: 'none', borderRadius: 8, color: '#0d0a08', padding: '10px 20px', fontSize: 14, cursor: 'pointer', fontWeight: 700 }}>
+                  ✓
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Actions document */}
+        <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 10, marginBottom: 16 }}>
+          <button onClick={imprimerBon}
+            style={{ ...btnPrimary, background: '#18130e', color: '#c9a96e', border: '0.5px solid rgba(201,169,110,0.3)' }}>
+            🖨 Imprimer le bon de réservation
+          </button>
+          {client?.email && (
+            <button onClick={envoyerEmail}
+              style={{ ...btnPrimary, background: '#18130e', color: '#6e9ec9', border: '0.5px solid rgba(110,158,201,0.3)' }}>
+              📧 Envoyer par email à {client.email}
+            </button>
+          )}
+        </div>
+
+        <button onClick={onClose} style={{ ...btnPrimary }}>✓ Retour à la caisse</button>
       </div>
     </div>
   )
