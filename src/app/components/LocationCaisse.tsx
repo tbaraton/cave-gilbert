@@ -32,6 +32,12 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
   const [tireusesChoisies, setTireusesChoisies] = useState<string[]>([])
   const [cautionPayee, setCautionPayee] = useState(false)
   const [alertesStock, setAlertesStock] = useState<any[]>([])
+  const [conflitsTireuses, setConflitsTireuses] = useState<Record<string, string>>({})
+  const [remiseType, setRemiseType] = useState<'pct' | 'eur'>('pct')
+  const [remiseVal, setRemiseVal] = useState('')
+  const [prixCustom, setPrixCustom] = useState<Record<string, number>>({})
+  const [siteRetrait, setSiteRetrait] = useState('')
+  const [siteRetour, setSiteRetour] = useState('')
   const [saving, setSaving] = useState(false)
   const [resaCreee, setResaCreee] = useState<string | null>(null)
 
@@ -74,17 +80,23 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
   const verifierStock = async () => {
     const alertes: any[] = []
     for (const ligne of lignesFuts.filter(l => l.fut_id && l.quantite > 0)) {
-      const { data } = await supabase.rpc('check_stock_futs', {
-        p_fut_id: ligne.fut_id,
-        p_date_debut: dateDebut,
-        p_date_fin: dateFin,
-      })
       const fut = futs.find(f => f.id === ligne.fut_id)
-      if (data && data[0]) {
-        const dispo = data[0].stock_disponible - ligne.quantite
-        if (dispo < 0) {
-          alertes.push({ fut, manque: Math.abs(dispo), demande: ligne.quantite, dispo: data[0].stock_disponible })
-        }
+      if (!fut) continue
+      // Stock dispo = stock réel - fûts déjà réservés sur la période (confirmés ou en cours)
+      const { data: resasConflict } = await supabase
+        .from('reservation_futs')
+        .select('quantite, reservation:reservations_location!inner(statut, date_debut, date_fin)')
+        .eq('fut_catalogue_id', ligne.fut_id)
+        .in('reservation.statut', ['confirmée', 'en_cours'])
+      const qteDejaPrise = (resasConflict || []).reduce((acc: number, rf: any) => {
+        const r = rf.reservation
+        if (!r) return acc
+        const overlap = new Date(r.date_debut) <= new Date(dateFin) && new Date(r.date_fin) >= new Date(dateDebut)
+        return overlap ? acc + rf.quantite : acc
+      }, 0)
+      const dispo = fut.stock_actuel - qteDejaPrise
+      if (dispo < ligne.quantite) {
+        alertes.push({ fut, manque: ligne.quantite - dispo, demande: ligne.quantite, dispo })
       }
     }
     setAlertesStock(alertes)
@@ -99,21 +111,47 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
 
   const passerEtapeTireuse = async () => {
     const alertes = await verifierStock()
+    // Vérifier conflits tireuses
+    if (dateDebut && dateFin) {
+      const { data: resasConflict } = await supabase
+        .from('reservation_tireuses')
+        .select(`tireuse_id, reservation:reservations_location!inner(statut, date_debut, date_fin, customer:customers(prenom, nom, raison_sociale, est_societe))`)
+        .neq('reservation.statut', 'annulée')
+        .neq('reservation.statut', 'terminée')
+      
+      const conflits: Record<string, string> = {}
+      for (const rt of (resasConflict || []) as any[]) {
+        const r = rt.reservation
+        if (!r) continue
+        const debutResa = new Date(r.date_debut)
+        const finResa = new Date(r.date_fin)
+        const debutDemande = new Date(dateDebut)
+        const finDemande = new Date(dateFin)
+        if (debutResa <= finDemande && finResa >= debutDemande) {
+          const clientNom = r.customer?.est_societe ? r.customer.raison_sociale : `${r.customer?.prenom || ''} ${r.customer?.nom || ''}`.trim()
+          conflits[rt.tireuse_id] = `${clientNom} (${new Date(r.date_debut).toLocaleDateString('fr-FR')} → ${new Date(r.date_fin).toLocaleDateString('fr-FR')})`
+        }
+      }
+      setConflitsTireuses(conflits)
+    }
     setEtape('tireuse')
   }
 
   const passerRecapitulatif = () => setEtape('recapitulatif')
 
-  const totalFuts = lignesFuts.reduce((acc, l) => {
-    const fut = futs.find(f => f.id === l.fut_id)
-    return acc + (fut ? fut.prix_vente_ttc * l.quantite : 0)
-  }, 0)
+  const getPrixLigne = (fut_id: string) => {
+    const fut = futs.find(f => f.id === fut_id)
+    return prixCustom[fut_id] !== undefined ? prixCustom[fut_id] : (fut?.prix_vente_ttc || 0)
+  }
+  const totalFuts = lignesFuts.reduce((acc, l) => acc + getPrixLigne(l.fut_id) * l.quantite, 0)
+  const remise = remiseVal ? parseFloat(remiseVal) : 0
+  const totalApresRemise = remiseType === 'pct' ? totalFuts * (1 - remise / 100) : Math.max(0, totalFuts - remise)
   const totalConsignesFuts = lignesFuts.reduce((acc, l) => {
     const fut = futs.find(f => f.id === l.fut_id)
     return acc + (fut ? fut.montant_consigne * l.quantite : 0)
   }, 0)
   const cautionTireuse = tireusesChoisies.length * 900
-  const totalTTC = totalFuts + totalConsignesFuts + cautionTireuse
+  const totalTTC = totalApresRemise  // Caution et consignes gérées séparément
 
   const creerReservation = async () => {
     setSaving(true)
@@ -122,8 +160,10 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
     const { data: resa } = await supabase.from('reservations_location').insert({
       numero, customer_id: client?.id || null, site_id: session.site_id, user_id: user.id,
       date_debut: dateDebut, date_fin: dateFin, statut: 'confirmée',
-      caution_tireuse_ttc: cautionTireuse, caution_payee: cautionPayee,
+      caution_tireuse_ttc: cautionTireuse, caution_payee: false,
       total_ttc: totalTTC,
+      site_retrait: siteRetrait || null,
+      site_retour: siteRetour || null,
     }).select('id').single()
 
     if (resa) {
@@ -133,14 +173,10 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
         await supabase.from('reservation_futs').insert(
           lignesValides.map(l => {
             const fut = futs.find(f => f.id === l.fut_id)
-            return { reservation_id: resa.id, fut_catalogue_id: l.fut_id, quantite: l.quantite, prix_unitaire_ttc: fut?.prix_vente_ttc || 0, montant_consigne: fut?.montant_consigne || 0 }
+            return { reservation_id: resa.id, fut_catalogue_id: l.fut_id, quantite: l.quantite, prix_unitaire_ttc: fut?.prix_vente_ttc || 0, montant_consigne: 0 }
           })
         )
-        // Décrémenter stock
-        for (const l of lignesValides) {
-          const { data: f } = await supabase.from('futs_catalogue').select('stock_actuel').eq('id', l.fut_id).single()
-          if (f) await supabase.from('futs_catalogue').update({ stock_actuel: Math.max(0, f.stock_actuel - l.quantite) }).eq('id', l.fut_id)
-        }
+        // Stock décrémenté uniquement au départ physique des fûts (statut en_cours) via le backoffice
       }
       // Tireuses
       if (tireusesChoisies.length) {
@@ -291,10 +327,23 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
                 </div>
                 {l.fut_id && (
                   <span style={{ fontSize: 14, color: '#c9a96e', fontFamily: 'Georgia, serif', marginLeft: 'auto' }}>
-                    {fmt((futs.find(f => f.id === l.fut_id)?.prix_vente_ttc || 0) * l.quantite)}
+                    {fmt(getPrixLigne(l.fut_id) * l.quantite)}
                   </span>
                 )}
               </div>
+              {l.fut_id && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                  <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>Prix u. TTC :</span>
+                  <input type="number" step="0.01" value={getPrixLigne(l.fut_id)}
+                    onChange={e => setPrixCustom(p => ({ ...p, [l.fut_id]: parseFloat(e.target.value) || 0 }))}
+                    style={{ width: 85, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 6, color: '#f0e8d8', fontSize: 14, padding: '5px 8px' }} />
+                  <span style={{ fontSize: 11, color: '#c9a96e' }}>€</span>
+                  {prixCustom[l.fut_id] !== undefined && (
+                    <button onClick={() => setPrixCustom(p => { const n = { ...p }; delete n[l.fut_id]; return n })}
+                      style={{ fontSize: 10, color: 'rgba(232,224,213,0.3)', background: 'transparent', border: 'none', cursor: 'pointer' }}>reset</button>
+                  )}
+                </div>
+              )}
             </div>
           ))}
 
@@ -305,12 +354,29 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
 
           {lignesFuts.some(l => l.fut_id) && (
             <div style={{ background: 'rgba(201,169,110,0.06)', borderRadius: 8, padding: '12px 16px', marginBottom: 16 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'rgba(232,224,213,0.5)', marginBottom: 4 }}>
-                <span>Fûts TTC</span><span>{fmt(totalFuts)}</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: 'rgba(232,224,213,0.5)', marginBottom: 8 }}>
+                <span>Sous-total</span><span>{fmt(totalFuts)}</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'rgba(232,224,213,0.5)' }}>
-                <span>Consignes fûts</span><span>{fmt(totalConsignesFuts)}</span>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: remiseVal ? 8 : 0 }}>
+                <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>Remise :</span>
+                <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', borderRadius: 6, overflow: 'hidden' }}>
+                  {(['pct','eur'] as const).map(t => (
+                    <button key={t} onClick={() => setRemiseType(t)} style={{ background: remiseType === t ? 'rgba(201,169,110,0.2)' : 'transparent', border: 'none', color: remiseType === t ? '#c9a96e' : 'rgba(232,224,213,0.4)', padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}>{t === 'pct' ? '%' : '€'}</button>
+                  ))}
+                </div>
+                <input type="number" step="0.01" value={remiseVal} onChange={e => setRemiseVal(e.target.value)} placeholder="0"
+                  style={{ width: 70, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 6, color: '#f0e8d8', fontSize: 14, padding: '4px 8px' }} />
               </div>
+              {remiseVal && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 16, color: '#c9a96e', fontFamily: 'Georgia, serif', paddingTop: 8, borderTop: '0.5px solid rgba(255,255,255,0.06)' }}>
+                  <span>Total après remise</span><span>{fmt(totalApresRemise)}</span>
+                </div>
+              )}
+              {!remiseVal && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 16, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>
+                  <span>Total</span><span>{fmt(totalFuts)}</span>
+                </div>
+              )}
             </div>
           )}
 
@@ -340,33 +406,31 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
           )}
 
           {tireuses.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 30, color: '#c96e6e' }}>⚠ Aucune tireuse disponible sur cette période</div>
-          ) : tireuses.map(t => (
-            <button key={t.id} onClick={() => setTireusesChoisies(prev => prev.includes(t.id) ? prev.filter(x => x !== t.id) : [...prev, t.id])}
-              style={{ width: '100%', background: tireusesChoisies.includes(t.id) ? 'rgba(201,169,110,0.12)' : 'rgba(255,255,255,0.04)', border: `1.5px solid ${tireusesChoisies.includes(t.id) ? '#c9a96e' : 'rgba(255,255,255,0.1)'}`, borderRadius: 12, padding: '16px', cursor: 'pointer', textAlign: 'left' as const, marginBottom: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <div style={{ fontSize: 16, color: tireusesChoisies.includes(t.id) ? '#c9a96e' : '#e8e0d5', marginBottom: 4 }}>{t.nom}</div>
-                <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>{t.modele} · {t.nb_tirages} tirage{t.nb_tirages > 1 ? 's' : ''}</div>
-              </div>
-              <div style={{ fontSize: 22 }}>{tireusesChoisies.includes(t.id) ? '✓' : '○'}</div>
-            </button>
-          ))}
+            <div style={{ textAlign: 'center', padding: 30, color: '#c96e6e' }}>⚠ Aucune tireuse disponible</div>
+          ) : tireuses.map(t => {
+            const conflit = conflitsTireuses[t.id]
+            const isSelected = tireusesChoisies.includes(t.id)
+            return (
+              <button key={t.id}
+                onClick={() => { if (!conflit) setTireusesChoisies(prev => prev.includes(t.id) ? prev.filter(x => x !== t.id) : [...prev, t.id]) }}
+                style={{ width: '100%', background: conflit ? 'rgba(201,110,110,0.05)' : isSelected ? 'rgba(201,169,110,0.12)' : 'rgba(255,255,255,0.04)', border: `1.5px solid ${conflit ? 'rgba(201,110,110,0.3)' : isSelected ? '#c9a96e' : 'rgba(255,255,255,0.1)'}`, borderRadius: 12, padding: '16px', cursor: conflit ? 'not-allowed' : 'pointer', textAlign: 'left' as const, marginBottom: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center', opacity: conflit ? 0.7 : 1 }}>
+                <div>
+                  <div style={{ fontSize: 16, color: conflit ? '#c96e6e' : isSelected ? '#c9a96e' : '#e8e0d5', marginBottom: 4 }}>{t.nom}</div>
+                  <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>{t.modele} · {t.nb_tirages} tirage{t.nb_tirages > 1 ? 's' : ''}</div>
+                  {conflit && <div style={{ fontSize: 12, color: '#c96e6e', marginTop: 6 }}>⚠ Déjà réservée — {conflit}</div>}
+                </div>
+                <div style={{ fontSize: 22 }}>{conflit ? '✕' : isSelected ? '✓' : '○'}</div>
+              </button>
+            )
+          })}
 
           {tireusesChoisies.length > 0 && (
             <div style={{ background: 'rgba(201,169,110,0.06)', borderRadius: 8, padding: '12px 16px', marginBottom: 16, marginTop: 8 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: 'rgba(232,224,213,0.6)' }}>
-                <span>Caution tireuse(s)</span>
-                <span style={{ color: '#c9a96e' }}>{fmt(cautionTireuse)}</span>
+              <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>
+                ℹ️ Caution tireuse : {fmt(cautionTireuse)} — chèque physique conservé, restitué au retour
               </div>
             </div>
           )}
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
-            <div onClick={() => setCautionPayee(!cautionPayee)} style={{ width: 22, height: 22, borderRadius: 4, border: `2px solid ${cautionPayee ? '#c9a96e' : 'rgba(255,255,255,0.3)'}`, background: cautionPayee ? '#c9a96e' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
-              {cautionPayee && <span style={{ fontSize: 13, color: '#0d0a08', fontWeight: 700 }}>✓</span>}
-            </div>
-            <span style={{ fontSize: 14, color: 'rgba(232,224,213,0.7)' }}>Caution encaissée</span>
-          </div>
 
           <button onClick={passerRecapitulatif}
             style={{ ...btnPrimary }}>
@@ -384,6 +448,38 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
           <div style={{ background: '#18130e', borderRadius: 10, padding: '14px 16px', marginBottom: 12, border: '0.5px solid rgba(255,255,255,0.07)' }}>
             <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)', marginBottom: 6, letterSpacing: 1 }}>CLIENT</div>
             <div style={{ fontSize: 15, color: '#f0e8d8' }}>{client ? (client.est_societe ? client.raison_sociale : `${client.prenom} ${client.nom}`) : 'Client anonyme'}</div>
+          </div>
+
+          {/* Site retrait / retour */}
+          <div style={{ background: '#18130e', borderRadius: 10, padding: '14px 16px', marginBottom: 12, border: '0.5px solid rgba(255,255,255,0.07)' }}>
+            <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)', marginBottom: 10, letterSpacing: 1 }}>RETRAIT & RETOUR</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div>
+                <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', marginBottom: 6 }}>Retrait</div>
+                <select value={siteRetrait} onChange={e => setSiteRetrait(e.target.value)}
+                  style={{ width: '100%', background: '#1a1408', border: `0.5px solid ${siteRetrait ? 'rgba(201,169,110,0.4)' : 'rgba(255,255,255,0.15)'}`, borderRadius: 8, color: siteRetrait ? '#c9a96e' : 'rgba(232,224,213,0.4)', fontSize: 13, padding: '10px 8px' }}>
+                  <option value="">— Choisir —</option>
+                  <option value="cave_gilbert">Cave de Gilbert</option>
+                  <option value="petite_cave">La Petite Cave</option>
+                  <option value="entrepot">Entrepôt</option>
+                  <option value="livraison">🚚 À livrer</option>
+                </select>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', marginBottom: 6 }}>Retour</div>
+                <select value={siteRetour} onChange={e => setSiteRetour(e.target.value)}
+                  style={{ width: '100%', background: '#1a1408', border: `0.5px solid ${siteRetour ? 'rgba(201,169,110,0.4)' : 'rgba(255,255,255,0.15)'}`, borderRadius: 8, color: siteRetour ? '#c9a96e' : 'rgba(232,224,213,0.4)', fontSize: 13, padding: '10px 8px' }}>
+                  <option value="">— Choisir —</option>
+                  <option value="cave_gilbert">Cave de Gilbert</option>
+                  <option value="petite_cave">La Petite Cave</option>
+                  <option value="entrepot">Entrepôt</option>
+                  <option value="livraison">🚚 À livrer</option>
+                </select>
+              </div>
+            </div>
+            {(!siteRetrait || !siteRetour) && (
+              <div style={{ fontSize: 11, color: '#c9b06e', marginTop: 8 }}>⚠ Veuillez indiquer le site de retrait et de retour</div>
+            )}
           </div>
 
           {/* Dates */}
@@ -404,9 +500,7 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
                 </div>
               )
             })}
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'rgba(232,224,213,0.4)', marginTop: 6, paddingTop: 6, borderTop: '0.5px solid rgba(255,255,255,0.06)' }}>
-              <span>Consignes fûts</span><span>{fmt(totalConsignesFuts)}</span>
-            </div>
+
           </div>
 
           {/* Tireuses */}
@@ -417,22 +511,20 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
                 const t = tireuses.find(x => x.id === tid)
                 return <div key={tid} style={{ fontSize: 13, color: '#e8e0d5', marginBottom: 4 }}>{t?.nom} — {t?.modele}</div>
               })}
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'rgba(232,224,213,0.4)', marginTop: 6, paddingTop: 6, borderTop: '0.5px solid rgba(255,255,255,0.06)' }}>
-                <span>Caution {cautionPayee ? '✓ encaissée' : '(à encaisser)'}</span><span>{fmt(cautionTireuse)}</span>
+              <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)', marginTop: 6, paddingTop: 6, borderTop: '0.5px solid rgba(255,255,255,0.06)' }}>
+                Caution {fmt(cautionTireuse)} en chèque — non encaissée
               </div>
             </div>
           )}
 
           {/* Total */}
           <div style={{ background: 'rgba(201,169,110,0.08)', borderRadius: 10, padding: '16px', marginBottom: 24, border: '0.5px solid rgba(201,169,110,0.2)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'rgba(232,224,213,0.5)', marginBottom: 4 }}><span>Fûts TTC</span><span>{fmt(totalFuts)}</span></div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'rgba(232,224,213,0.5)', marginBottom: 4 }}><span>Consignes fûts</span><span>{fmt(totalConsignesFuts)}</span></div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'rgba(232,224,213,0.5)', marginBottom: 8 }}><span>Caution tireuse</span><span>{fmt(cautionTireuse)}</span></div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 22, color: '#c9a96e', fontFamily: 'Georgia, serif', fontWeight: 700 }}><span>TOTAL</span><span>{fmt(totalTTC)}</span></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 22, color: '#c9a96e', fontFamily: 'Georgia, serif', fontWeight: 700, marginBottom: 8 }}><span>TOTAL TTC</span><span>{fmt(totalTTC)}</span></div>
+            {tireusesChoisies.length > 0 && <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>+ Caution {fmt(cautionTireuse)} en chèque (non encaissé)</div>}
           </div>
 
-          <button onClick={creerReservation} disabled={saving}
-            style={{ ...btnPrimary, background: saving ? '#2a2a1e' : '#c9a96e', color: saving ? '#555' : '#0d0a08' }}>
+          <button onClick={creerReservation} disabled={saving || !siteRetrait || !siteRetour}
+            style={{ ...btnPrimary, background: (saving || !siteRetrait || !siteRetour) ? '#2a2a1e' : '#c9a96e', color: (saving || !siteRetrait || !siteRetour) ? '#555' : '#0d0a08', opacity: (!siteRetrait || !siteRetour) ? 0.5 : 1 }}>
             {saving ? '⟳ Création...' : '✓ Confirmer la réservation'}
           </button>
         </div>
