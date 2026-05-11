@@ -642,10 +642,10 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
             </div>
           )}
 
-          <button onClick={passerRecapitulatif}
-            style={{ ...btnPrimary }}>
-            Suivant → Récapitulatif
-          </button>
+        </div>
+        <div style={{ padding: "12px 16px", borderTop: "0.5px solid rgba(255,255,255,0.07)", background: "#0d0a08" }}>
+          <button onClick={passerRecapitulatif} style={{ ...btnPrimary }}>Suivant → Récapitulatif</button>
+        </div>
         </div>
       )}
 
