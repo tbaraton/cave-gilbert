@@ -699,7 +699,7 @@ export default function LocationPage() {
                             ) : <span style={{ color: '#e8e0d5' }}>{Number(l.prix_achat_ht).toFixed(2)} €</span>}
                           </td>
                           <td style={{ padding: '8px', fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>
-                            36 € × {l.quantite} = {(30 * l.quantite).toFixed(2)} €
+                            30 € × {l.quantite} = {(30 * l.quantite).toFixed(2)} €
                           </td>
                           <td style={{ padding: '8px', color: '#c9a96e', fontFamily: 'Georgia, serif' }}>
                             {(l.prix_achat_ht * l.quantite).toFixed(2)} €
