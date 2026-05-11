@@ -10,6 +10,13 @@ const supabase = createClient(
 
 const fmt = (n: number) => n.toFixed(2) + '€'
 
+const SITE_LABELS: Record<string, string> = {
+  cave_gilbert: 'Cave de Gilbert',
+  petite_cave: 'La Petite Cave',
+  entrepot: 'Entrepôt',
+  livraison: '🚚 À livrer',
+}
+
 const TYPE_LABELS: Record<string, string> = {
   blonde: '🍺 Blonde', blanche: '🌾 Blanche', ambree: '🍂 Ambrée',
   IPA: '🌿 IPA', triple: '⚡ Triple', neipa: '🌴 Neipa', blanche_framboise: '🍓 Blanche Framboise'
@@ -200,6 +207,33 @@ export default function LocationPage() {
                   {showAnnulees ? '✕ Masquer annulées/terminées' : `Voir annulées/terminées (${reservations.filter(r => ['annulée','terminée'].includes(r.statut)).length})`}
                 </button>
               </div>
+              {/* Alertes J-1 */}
+              {(() => {
+                const demain = new Date()
+                demain.setDate(demain.getDate() + 1)
+                const demainStr = demain.toISOString().split('T')[0]
+                const alertesJ1 = reservations.filter(r =>
+                  !['annulée','terminée'].includes(r.statut) &&
+                  (r.date_debut === demainStr || r.date_fin === demainStr)
+                )
+                if (alertesJ1.length === 0) return null
+                return (
+                  <div style={{ background: 'rgba(201,176,110,0.08)', border: '0.5px solid rgba(201,176,110,0.3)', borderRadius: 10, padding: 14, marginBottom: 16 }}>
+                    <div style={{ fontSize: 13, color: '#c9b06e', fontWeight: 600, marginBottom: 8 }}>🔔 Rappel J-1</div>
+                    {alertesJ1.map((r: any) => (
+                      <div key={r.id} style={{ fontSize: 13, color: '#e8e0d5', marginBottom: 6, padding: '8px 12px', background: 'rgba(201,176,110,0.06)', borderRadius: 6 }}>
+                        {r.date_debut === demainStr ? (
+                          <span><span style={{ color: '#6ec96e', fontWeight: 600 }}>↓ Retrait demain</span> — {clientNom(r)} · {SITE_LABELS[r.site_retrait] || '⚠ site non défini'}</span>
+                        ) : (
+                          <span><span style={{ color: '#c9b06e', fontWeight: 600 }}>↑ Retour demain</span> — {clientNom(r)} · {SITE_LABELS[r.site_retour] || '⚠ site non défini'}</span>
+                        )}
+                        <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)', marginLeft: 8 }}>{r.numero}</span>
+                      </div>
+                    ))}
+                  </div>
+                )
+              })()}
+
               {reservations.filter(r => showAnnulees ? ['annulée','terminée'].includes(r.statut) : !['annulée','terminée'].includes(r.statut)).length === 0 ? (
                 <div style={{ textAlign: 'center', padding: 40, color: 'rgba(232,224,213,0.3)' }}>Aucune réservation</div>
               ) : (
@@ -245,6 +279,13 @@ export default function LocationPage() {
                         <div style={{ fontSize: 13, color: '#e8e0d5' }}>
                           {new Date(r.date_debut).toLocaleDateString('fr-FR')} → {new Date(r.date_fin).toLocaleDateString('fr-FR')}
                         </div>
+                        {r.site_retrait && (
+                          <div style={{ fontSize: 11, marginTop: 4, display: 'flex', gap: 8 }}>
+                            <span style={{ color: '#6ec96e' }}>↓ {SITE_LABELS[r.site_retrait] || r.site_retrait}</span>
+                            <span style={{ color: 'rgba(232,224,213,0.3)' }}>·</span>
+                            <span style={{ color: '#c9b06e' }}>↑ {SITE_LABELS[r.site_retour] || r.site_retour}</span>
+                          </div>
+                        )}
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <span style={{ fontSize: 11, background: `${statutColor[r.statut]}22`, color: statutColor[r.statut], padding: '3px 10px', borderRadius: 4, textTransform: 'capitalize' }}>{r.statut}</span>
@@ -563,10 +604,12 @@ function ModalDetailResa({ resa, onClose, futs, tireuses }: { resa: any; onClose
           <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: '12px 16px' }}>
             <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)', marginBottom: 4 }}>DÉPART</div>
             <div style={{ fontSize: 16, color: '#f0e8d8' }}>{new Date(r.date_debut).toLocaleDateString('fr-FR', { weekday: 'long', day: '2-digit', month: 'long' })}</div>
+            {r.site_retrait && <div style={{ fontSize: 12, color: '#6ec96e', marginTop: 4 }}>↓ {SITE_LABELS[r.site_retrait] || r.site_retrait}</div>}
           </div>
           <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: '12px 16px' }}>
             <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)', marginBottom: 4 }}>RETOUR</div>
             <div style={{ fontSize: 16, color: '#f0e8d8' }}>{new Date(r.date_fin).toLocaleDateString('fr-FR', { weekday: 'long', day: '2-digit', month: 'long' })}</div>
+            {r.site_retour && <div style={{ fontSize: 12, color: '#c9b06e', marginTop: 4 }}>↑ {SITE_LABELS[r.site_retour] || r.site_retour}</div>}
           </div>
         </div>
 
