@@ -155,8 +155,8 @@ export default function LocationPage() {
       }
     }
     await recalculerTotaux(cmdId)
-    // badge computed from data
     await load()
+    setAjouteAlertes(prev => new Set([...prev, resa.id]))
   }
 
   const supprimerLigneCommande = async (ligneId: string, cmdId: string) => {
