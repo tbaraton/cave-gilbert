@@ -929,7 +929,6 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
   const [showAchatsClient, setShowAchatsClient] = useState(false)
   const [showDivers, setShowDivers] = useState(false)
   const [showLocation, setShowLocation] = useState(false)
-  const [showLocation, setShowLocation] = useState(false)
   const [diversNom, setDiversNom] = useState('')
   const [diversPrix, setDiversPrix] = useState('')
   const [diversTva, setDiversTva] = useState<5.5 | 20>(20)
