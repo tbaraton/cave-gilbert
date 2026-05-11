@@ -105,35 +105,55 @@ export default function LocationPage() {
 
   const commandeEnAttente = commandesLoupiote.find((cmd: any) => cmd.statut === 'en_attente')
 
+  const getOuCreerCommandeEnAttente = async (): Promise<string | null> => {
+    // Cherche la commande en attente en base directement (pas depuis le state)
+    const { data: existing } = await supabase.from('commandes_loupiote')
+      .select('id').eq('statut', 'en_attente').order('created_at').limit(1).single()
+    if (existing) return existing.id
+    // Créer une nouvelle commande globale
+    const numero = 'CMD-LPT-' + new Date().getFullYear() + String(new Date().getMonth()+1).padStart(2,'0') + '-' + String(Math.floor(Math.random()*9999)).padStart(4,'0')
+    const { data } = await supabase.from('commandes_loupiote').insert({
+      numero, statut: 'en_attente',
+      date_commande: new Date().toISOString().split('T')[0],
+      montant_total_ht: 0, montant_consignes: 0,
+    }).select('id').single()
+    return data?.id || null
+  }
+
+  const recalculerTotaux = async (cmdId: string) => {
+    const { data: lignes } = await supabase.from('commandes_loupiote_lignes')
+      .select('quantite, prix_achat_ht, montant_consigne_unitaire').eq('commande_id', cmdId)
+    const totalHT = (lignes||[]).reduce((a: number, l: any) => a + l.quantite * l.prix_achat_ht, 0)
+    const totalC = (lignes||[]).reduce((a: number, l: any) => a + l.quantite * 36, 0)
+    await supabase.from('commandes_loupiote').update({ montant_total_ht: totalHT, montant_consignes: totalC }).eq('id', cmdId)
+  }
+
   const ajouterACommande = async (resa: any, manques: any[]) => {
-    let cmd: any = commandeEnAttente
-    if (!cmd) {
-      const numero = 'CMD-LPT-' + Date.now()
-      const { data } = await supabase.from('commandes_loupiote').insert({
-        numero, statut: 'en_attente',
-        date_commande: new Date().toISOString().split('T')[0],
-        montant_total_ht: 0, montant_consignes: 0,
-      }).select('id').single()
-      if (!data) return
-      cmd = { id: data.id, lignes: [] }
-    }
-    const { data: lignesExist } = await supabase.from('commandes_loupiote_lignes').select('*').eq('commande_id', cmd.id)
+    const cmdId = await getOuCreerCommandeEnAttente()
+    if (!cmdId) return
+    const { data: lignesExist } = await supabase.from('commandes_loupiote_lignes')
+      .select('*').eq('commande_id', cmdId)
     for (const m of manques) {
       const exist = (lignesExist || []).find((l: any) => l.fut_catalogue_id === m.fut.id)
       if (exist) {
-        await supabase.from('commandes_loupiote_lignes').update({ quantite: exist.quantite + m.manque }).eq('id', exist.id)
+        await supabase.from('commandes_loupiote_lignes')
+          .update({ quantite: exist.quantite + m.manque }).eq('id', exist.id)
       } else {
         await supabase.from('commandes_loupiote_lignes').insert({
-          commande_id: cmd.id, fut_catalogue_id: m.fut.id,
+          commande_id: cmdId, fut_catalogue_id: m.fut.id,
           quantite: m.manque, prix_achat_ht: m.fut.prix_achat_ht, montant_consigne_unitaire: 36,
         })
       }
     }
-    const { data: lignes } = await supabase.from('commandes_loupiote_lignes').select('quantite, prix_achat_ht, montant_consigne_unitaire').eq('commande_id', cmd.id)
-    const totalHT = (lignes||[]).reduce((a: number, l: any) => a + l.quantite * l.prix_achat_ht, 0)
-    const totalC = (lignes||[]).reduce((a: number, l: any) => a + l.quantite * l.montant_consigne_unitaire, 0)
-    await supabase.from('commandes_loupiote').update({ montant_total_ht: totalHT, montant_consignes: totalC }).eq('id', cmd.id)
+    await recalculerTotaux(cmdId)
     setAjouteAlertes(prev => new Set([...prev, resa.id]))
+    await load()
+  }
+
+  const supprimerLigneCommande = async (ligneId: string, cmdId: string) => {
+    await supabase.from('commandes_loupiote_lignes').delete().eq('id', ligneId)
+    await recalculerTotaux(cmdId)
+    setAjouteAlertes(new Set()) // reset badges
     await load()
   }
 
@@ -589,7 +609,7 @@ td{padding:10px 12px;border-bottom:.5px solid #eee;vertical-align:top}
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginBottom: 12 }}>
                     <thead>
                       <tr style={{ borderBottom: '0.5px solid rgba(255,255,255,0.08)' }}>
-                        {['Désignation', 'Qté', 'Prix HT', 'Consigne', 'Total'].map(h => (
+                        {['Désignation', 'Qté', 'Prix HT', 'Consigne', 'Total', ''].map(h => (
                           <th key={h} style={{ padding: '6px 8px', textAlign: 'left', fontSize: 10, color: 'rgba(232,224,213,0.35)', letterSpacing: 1, fontWeight: 400 }}>{h}</th>
                         ))}
                       </tr>
@@ -607,8 +627,8 @@ td{padding:10px 12px;border-bottom:.5px solid #eee;vertical-align:top}
                                 onChange={async e => {
                                   const q = parseInt(e.target.value) || 1
                                   await supabase.from('commandes_loupiote_lignes').update({ quantite: q }).eq('id', l.id)
-                                  // Check if alerte was fulfilled - reset badge
                                   setAjouteAlertes(new Set())
+                                  await recalculerTotaux(cmd.id)
                                   load()
                                 }}
                                 style={{ width: 50, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 4, color: '#f0e8d8', fontSize: 13, padding: '4px 6px', textAlign: 'center' }} />
@@ -621,6 +641,7 @@ td{padding:10px 12px;border-bottom:.5px solid #eee;vertical-align:top}
                                   onChange={async e => {
                                     const p = parseFloat(e.target.value) || 0
                                     await supabase.from('commandes_loupiote_lignes').update({ prix_achat_ht: p }).eq('id', l.id)
+                                    await recalculerTotaux(cmd.id)
                                     load()
                                   }}
                                   style={{ width: 70, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 4, color: '#f0e8d8', fontSize: 13, padding: '4px 6px' }} />
@@ -633,6 +654,13 @@ td{padding:10px 12px;border-bottom:.5px solid #eee;vertical-align:top}
                           </td>
                           <td style={{ padding: '8px', color: '#c9a96e', fontFamily: 'Georgia, serif' }}>
                             {(l.prix_achat_ht * l.quantite).toFixed(2)} €
+                          </td>
+                          <td style={{ padding: '8px' }}>
+                            {cmd.statut === 'en_attente' && (
+                              <button onClick={() => supprimerLigneCommande(l.id, cmd.id)}
+                                style={{ background: 'transparent', border: 'none', color: '#c96e6e', fontSize: 16, cursor: 'pointer', padding: '2px 6px' }}
+                                title="Supprimer cette ligne">✕</button>
+                            )}
                           </td>
                         </tr>
                       ))}
