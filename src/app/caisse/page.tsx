@@ -1298,6 +1298,7 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
       {showAchatsClient && client && <HistoriqueAchatsClient client={client} onClose={() => setShowAchatsClient(false)} onAddToCart={handleAddSingleAchat} />}
       {showLocation && <div style={{ position: 'fixed' as const, inset: 0, zIndex: 600 }}><ModuleLocation session={session} user={vendeur} onClose={() => setShowLocation(false)} /></div>}
 
+
       {/* Fermeture caisse */}
       {showFermeture && (
         <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'flex-end', zIndex: 100 }}>
@@ -2053,6 +2054,7 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
             <button key={a.id} onClick={()=>reprendreAttente(a)} style={{background:'rgba(201,169,110,0.1)',border:'0.5px solid rgba(201,169,110,0.3)',borderRadius:6,color:'#c9a96e',padding:'5px 10px',fontSize:11,cursor:'pointer'}}>⏸ {a.label}</button>
           ))}
           <button onClick={()=>setShowHistorique(true)} style={{background:'transparent',border:'0.5px solid rgba(255,255,255,0.15)',color:'rgba(232,224,213,0.5)',borderRadius:4,padding:'6px 12px',fontSize:11,cursor:'pointer'}}>📋 Historique</button>
+          <button onClick={()=>setShowLocation(true)} style={{background:'transparent',border:'0.5px solid rgba(255,255,255,0.15)',color:'rgba(232,224,213,0.5)',borderRadius:4,padding:'6px 12px',fontSize:11,cursor:'pointer'}}>🍺 Location</button>
           <button onClick={()=>setShowGestion(!showGestion)} style={{background:noteGlobaleActive?'rgba(201,169,110,0.15)':'transparent',border:`0.5px solid ${noteGlobaleActive?'rgba(201,169,110,0.4)':'rgba(255,255,255,0.15)'}`,color:noteGlobaleActive?'#c9a96e':'rgba(232,224,213,0.5)',borderRadius:4,padding:'6px 12px',fontSize:11,cursor:'pointer'}}>📝 Intitulé{noteGlobaleActive?' ✓':''}</button>
           <button onClick={()=>setShowFermeture(true)} style={{background:'transparent',border:'0.5px solid rgba(201,110,110,0.3)',color:'#c96e6e',borderRadius:4,padding:'6px 12px',fontSize:11,cursor:'pointer'}}>Fermer</button>
         </div>
