@@ -1127,6 +1127,14 @@ function ModalDupliquer({ produit, onClose, onSaved }: {
 
 // ── Page principale ──────────────────────────────────────────
 
+const CATEGORIES = [
+  { id: 'vins',        label: 'Vins',               icon: '🍷', cat: 'vin' },
+  { id: 'bieres',      label: 'Bières',             icon: '🍺', cat: 'biere' },
+  { id: 'spiritueux',  label: 'Spiritueux',         icon: '🥃', cat: 'spiritueux' },
+  { id: 'sans_alcool', label: 'Boissons s/alcool',  icon: '🧃', cat: 'sans_alcool' },
+  { id: 'epicerie',    label: 'Épicerie',            icon: '🧀', cat: 'epicerie' },
+]
+
 export default function AdminPage() {
   const [section, setSection] = useState<Section>('dashboard')
 
@@ -1296,14 +1304,6 @@ export default function AdminPage() {
     })
 
   // ── Navigation ───────────────────────────────────────────
-
-  const CATEGORIES = [
-    { id: 'vins',       label: 'Vins',                icon: '🍷', cat: 'vin' },
-    { id: 'bieres',     label: 'Bières',              icon: '🍺', cat: 'biere' },
-    { id: 'spiritueux', label: 'Spiritueux',          icon: '🥃', cat: 'spiritueux' },
-    { id: 'sans_alcool',label: 'Boissons s/alcool',  icon: '🧃', cat: 'sans_alcool' },
-    { id: 'epicerie',   label: 'Épicerie',            icon: '🧀', cat: 'epicerie' },
-  ]
 
   const navItems: { id: Section; label: string; icon: string }[] = [
     { id: 'dashboard',  label: 'Tableau de bord',  icon: '⬡' },
