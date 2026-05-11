@@ -45,7 +45,19 @@ export default function LocationPage() {
   const [cmdReception, setCmdReception] = useState<any>(null)
   const [qtesRecues, setQtesRecues] = useState<Record<string, number>>({})
   const [envoyerEnCours, setEnvoyerEnCours] = useState(false)
-  const [ajouteAlertes, setAjouteAlertes] = useState<Set<string>>(new Set())
+  const [ajouteAlertes, setAjouteAlertesRaw] = useState<Set<string>>(() => {
+    try {
+      const saved = sessionStorage.getItem('ajouteAlertes')
+      return saved ? new Set(JSON.parse(saved)) : new Set()
+    } catch { return new Set() }
+  })
+  const setAjouteAlertes = (updater: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+    setAjouteAlertesRaw(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater
+      try { sessionStorage.setItem('ajouteAlertes', JSON.stringify([...next])) } catch {}
+      return next
+    })
+  }
 
   // Recalcule quels alertes sont couverts par la commande en attente
   const alertesCouvertes = ajouteAlertes
@@ -162,7 +174,7 @@ export default function LocationPage() {
   const supprimerLigneCommande = async (ligneId: string, cmdId: string) => {
     await supabase.from('commandes_loupiote_lignes').delete().eq('id', ligneId)
     await recalculerTotaux(cmdId)
-    // badge computed from data // reset badges
+    setAjouteAlertes(new Set()) // reset badges
     await load()
   }
 
@@ -542,7 +554,7 @@ export default function LocationPage() {
                     const debut = new Date(r.date_debut)
                     const fin = new Date(r.date_fin)
                     fin.setHours(23, 59, 59)
-                    return debut <= now && now <= fin && r.statut === 'en_cours'
+                    return debut <= now && now <= fin && ['en_cours', 'confirmée'].includes(r.statut)
                   })
                   const clientNomResa = (r: any) => {
                     if (!r.customer) return 'Client'
@@ -679,7 +691,7 @@ export default function LocationPage() {
                         if (!confirm('Supprimer cette commande ?')) return
                         await supabase.from('commandes_loupiote_lignes').delete().eq('commande_id', cmd.id)
                         await supabase.from('commandes_loupiote').delete().eq('id', cmd.id)
-                        // badge computed from data
+                        setAjouteAlertes(new Set())
                         load()
                       }} style={{ background: 'transparent', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 6, color: '#c96e6e', padding: '3px 10px', fontSize: 11, cursor: 'pointer' }}>
                         🗑 Supprimer
@@ -709,7 +721,7 @@ export default function LocationPage() {
                                 onChange={async e => {
                                   const q = parseInt(e.target.value) || 1
                                   await supabase.from('commandes_loupiote_lignes').update({ quantite: q }).eq('id', l.id)
-                                  // badge computed from data
+                                  setAjouteAlertes(new Set())
                                   await recalculerTotaux(cmd.id)
                                   load()
                                 }}
