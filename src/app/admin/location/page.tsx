@@ -177,194 +177,76 @@ export default function LocationPage() {
     const totalConsignes = lignes.reduce((a: number, l: any) => a + 30 * l.quantite, 0)
     const tva = totalHT_futs * 0.20
     const totalTTC = totalHT_futs * 1.20 + totalConsignes
-    return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>Bon de commande ${cmd.numero}</title>
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    font-family: 'Arial', sans-serif;
-    background: #0d0a08;
-    color: #e8e0d5;
-    max-width: 860px;
-    margin: 0 auto;
-    padding: 48px 40px;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
+    const lignesHtml = lignes.map((l: any) =>
+      '<tr><td><div class="produit-nom">' + (l.fut?.nom_cuvee || '') + '</div>' +
+      '<div class="produit-type">' + (l.fut?.type_biere || '') + '</div>' +
+      '<div class="consigne-note">Consigne : 30,00 \u20ac HT \u00d7 ' + l.quantite + ' f\u00fbt(s) = ' + (30 * l.quantite).toFixed(2) + ' \u20ac (non soumise \u00e0 TVA)</div></td>' +
+      '<td style="color:rgba(232,224,213,0.6)">' + l.fut?.contenance_litres + 'L</td>' +
+      '<td style="text-align:center;font-weight:700;color:#c9a96e">' + l.quantite + '</td>' +
+      '<td style="text-align:right;color:rgba(232,224,213,0.7)">' + Number(l.prix_achat_ht).toFixed(2) + ' \u20ac</td>' +
+      '<td style="text-align:right;font-weight:600;color:#f0e8d8">' + (l.prix_achat_ht * l.quantite).toFixed(2) + ' \u20ac</td></tr>'
+    ).join('')
+    const dateLivHtml = dateLiv ? '<div class="livraison-badge">\ud83d\udce6 Livraison avant le ' + new Date(dateLiv).toLocaleDateString('fr-FR', {day:'2-digit', month:'long', year:'numeric'}) + '</div>' : ''
+    return '<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>Bon de commande ' + cmd.numero + '</title>' +
+      '<style>* { margin: 0; padding: 0; box-sizing: border-box; }' +
+      'body { font-family: Arial, sans-serif; background: #0d0a08; color: #e8e0d5; max-width: 860px; margin: 0 auto; padding: 48px 40px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }' +
+      '@media print { body { background: #0d0a08 !important; color: #e8e0d5 !important; } * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } }' +
+      '.header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 40px; padding-bottom: 24px; border-bottom: 1px solid rgba(201,169,110,0.3); }' +
+      '.logo-wrap img { height: 56px; object-fit: contain; display: block; margin-bottom: 10px; }' +
+      '.cave-name { font-size: 20px; color: #c9a96e; font-family: Georgia, serif; letter-spacing: 2px; }' +
+      '.cave-info { font-size: 11px; color: rgba(232,224,213,0.4); line-height: 1.9; margin-top: 6px; }' +
+      '.doc-info { text-align: right; }' +
+      '.doc-title { font-size: 11px; letter-spacing: 4px; text-transform: uppercase; color: rgba(201,169,110,0.6); margin-bottom: 6px; }' +
+      '.doc-numero { font-size: 22px; color: #c9a96e; font-family: Georgia, serif; }' +
+      '.doc-date { font-size: 12px; color: rgba(232,224,213,0.4); margin-top: 6px; }' +
+      '.livraison-badge { display: inline-block; background: rgba(201,169,110,0.1); border: 0.5px solid rgba(201,169,110,0.4); border-radius: 4px; padding: 5px 12px; font-size: 12px; color: #c9a96e; margin-top: 10px; }' +
+      '.fournisseur { background: rgba(255,255,255,0.03); border-left: 3px solid rgba(201,169,110,0.4); padding: 12px 18px; margin-bottom: 32px; font-size: 13px; color: rgba(232,224,213,0.7); border-radius: 0 6px 6px 0; }' +
+      '.fournisseur strong { color: #c9a96e; }' +
+      'table { width: 100%; border-collapse: collapse; }' +
+      'thead tr { border-bottom: 1px solid rgba(201,169,110,0.3); }' +
+      'thead th { padding: 10px 14px; text-align: left; font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: rgba(201,169,110,0.5); font-weight: 400; }' +
+      'tbody tr { border-bottom: 0.5px solid rgba(255,255,255,0.05); }' +
+      'td { padding: 14px; vertical-align: top; font-size: 13px; }' +
+      '.produit-nom { font-weight: 600; color: #f0e8d8; margin-bottom: 3px; }' +
+      '.produit-type { font-size: 10px; color: rgba(232,224,213,0.3); text-transform: uppercase; letter-spacing: 1px; }' +
+      '.consigne-note { font-size: 10px; color: rgba(201,169,110,0.4); margin-top: 5px; font-style: italic; }' +
+      '.totaux { border-top: 1px solid rgba(201,169,110,0.2); }' +
+      '.total-line { display: flex; justify-content: space-between; padding: 10px 14px; font-size: 13px; }' +
+      '.total-line.sub { color: rgba(232,224,213,0.4); }' +
+      '.total-line.tva { color: rgba(232,224,213,0.6); border-top: 0.5px solid rgba(255,255,255,0.05); }' +
+      '.total-line.grand { background: rgba(201,169,110,0.08); border: 0.5px solid rgba(201,169,110,0.2); border-radius: 6px; margin: 12px 0 0; font-size: 18px; font-weight: 700; color: #c9a96e; font-family: Georgia, serif; padding: 14px; }' +
+      '.signature-zone { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-top: 48px; }' +
+      '.sig-box { border-top: 0.5px solid rgba(201,169,110,0.3); padding-top: 12px; font-size: 11px; color: rgba(232,224,213,0.3); min-height: 80px; }' +
+      '.sig-title { color: rgba(201,169,110,0.6); font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 6px; }' +
+      '.footer { margin-top: 40px; padding-top: 16px; border-top: 0.5px solid rgba(255,255,255,0.06); font-size: 10px; color: rgba(232,224,213,0.2); line-height: 2; }' +
+      '.watermark { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-35deg); font-size: 80px; color: rgba(255,255,255,0.03); font-family: Georgia, serif; letter-spacing: 8px; pointer-events: none; white-space: nowrap; }' +
+      '</style></head><body>' +
+      '<div class="watermark">CAVE DE GILBERT</div>' +
+      '<div class="header"><div class="logo-wrap">' +
+      '<img src="https://cavedegilbert.vercel.app/logo.png" onerror="this.style.display=\'none\'" />' +
+      '<div class="cave-name">Cave de Gilbert</div>' +
+      '<div class="cave-info">Avenue Jean Colomb \u2014 69280 Marcy l\'\u00c9toile<br>04 22 91 41 09 \u00b7 contact@cavedegilbert.fr<br>Mar\u2013Sam : 9h30\u201313h / 15h30\u201319h</div>' +
+      '</div><div class="doc-info">' +
+      '<div class="doc-title">Bon de commande fournisseur</div>' +
+      '<div class="doc-numero">' + cmd.numero + '</div>' +
+      '<div class="doc-date">' + new Date(cmd.date_commande).toLocaleDateString('fr-FR', {day:'2-digit', month:'long', year:'numeric'}) + '</div>' +
+      dateLivHtml +
+      '</div></div>' +
+      '<div class="fournisseur"><strong>Fournisseur :</strong>&nbsp; La Loupiote Brasserie &nbsp;\u00b7&nbsp; commandelaloupiote@gmail.com</div>' +
+      '<table><thead><tr>' +
+      '<th>D\u00e9signation</th><th>Contenance</th><th style="text-align:center">Qt\u00e9</th><th style="text-align:right">Prix HT / f\u00fbt</th><th style="text-align:right">Total HT</th>' +
+      '</tr></thead><tbody>' + lignesHtml + '</tbody></table>' +
+      '<div class="totaux">' +
+      '<div class="total-line sub"><span>Total HT f\u00fbts</span><span>' + totalHT_futs.toFixed(2) + ' \u20ac</span></div>' +
+      '<div class="total-line tva"><span>TVA 20 % (sur f\u00fbts)</span><span>' + tva.toFixed(2) + ' \u20ac</span></div>' +
+      '<div class="total-line sub" style="border-top:0.5px solid rgba(255,255,255,0.05)"><span>Consignes HT \u2014 exon\u00e9r\u00e9es TVA</span><span>' + totalConsignes.toFixed(2) + ' \u20ac</span></div>' +
+      '<div class="total-line grand"><span>TOTAL TTC</span><span>' + totalTTC.toFixed(2) + ' \u20ac</span></div>' +
+      '</div>' +
+      '<div class="signature-zone"><div class="sig-box"><div class="sig-title">Bon pour accord \u2014 Cave de Gilbert</div></div>' +
+      '<div class="sig-box"><div class="sig-title">Accus\u00e9 de r\u00e9ception \u2014 La Loupiote</div></div></div>' +
+      '<div class="footer"><p>Cave de Gilbert \u00b7 Avenue Jean Colomb, 69280 Marcy l\'É toile \u00b7 contact@cavedegilbert.fr \u00b7 04 22 91 41 09</p></div>' +
+      '</body></html>'
   }
-  @media print {
-    body { background: #0d0a08 !important; color: #e8e0d5 !important; }
-    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-  }
-  .header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 40px;
-    padding-bottom: 24px;
-    border-bottom: 1px solid rgba(201,169,110,0.3);
-  }
-  .logo-wrap img { height: 56px; object-fit: contain; display: block; margin-bottom: 10px; filter: brightness(1.1); }
-  .cave-name { font-size: 20px; color: #c9a96e; font-family: Georgia, serif; letter-spacing: 2px; }
-  .cave-info { font-size: 11px; color: rgba(232,224,213,0.4); line-height: 1.9; margin-top: 6px; }
-  .doc-info { text-align: right; }
-  .doc-title { font-size: 11px; letter-spacing: 4px; text-transform: uppercase; color: rgba(201,169,110,0.6); margin-bottom: 6px; }
-  .doc-numero { font-size: 22px; color: #c9a96e; font-family: Georgia, serif; }
-  .doc-date { font-size: 12px; color: rgba(232,224,213,0.4); margin-top: 6px; }
-  .livraison-badge {
-    display: inline-block;
-    background: rgba(201,169,110,0.1);
-    border: 0.5px solid rgba(201,169,110,0.4);
-    border-radius: 4px;
-    padding: 5px 12px;
-    font-size: 12px;
-    color: #c9a96e;
-    margin-top: 10px;
-  }
-  .fournisseur {
-    background: rgba(255,255,255,0.03);
-    border-left: 3px solid rgba(201,169,110,0.4);
-    padding: 12px 18px;
-    margin-bottom: 32px;
-    font-size: 13px;
-    color: rgba(232,224,213,0.7);
-    border-radius: 0 6px 6px 0;
-  }
-  .fournisseur strong { color: #c9a96e; }
-  table { width: 100%; border-collapse: collapse; margin-bottom: 0; }
-  thead tr { border-bottom: 1px solid rgba(201,169,110,0.3); }
-  thead th {
-    padding: 10px 14px;
-    text-align: left;
-    font-size: 9px;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: rgba(201,169,110,0.5);
-    font-weight: 400;
-  }
-  tbody tr { border-bottom: 0.5px solid rgba(255,255,255,0.05); }
-  tbody tr:hover { background: rgba(255,255,255,0.02); }
-  td { padding: 14px; vertical-align: top; font-size: 13px; }
-  .produit-nom { font-weight: 600; color: #f0e8d8; margin-bottom: 3px; }
-  .produit-type { font-size: 10px; color: rgba(232,224,213,0.3); text-transform: uppercase; letter-spacing: 1px; }
-  .consigne-note { font-size: 10px; color: rgba(201,169,110,0.4); margin-top: 5px; font-style: italic; }
-  .totaux { margin-top: 0; border-top: 1px solid rgba(201,169,110,0.2); }
-  .total-line { display: flex; justify-content: space-between; padding: 10px 14px; font-size: 13px; }
-  .total-line.sub { color: rgba(232,224,213,0.4); }
-  .total-line.tva { color: rgba(232,224,213,0.6); border-top: 0.5px solid rgba(255,255,255,0.05); }
-  .total-line.grand {
-    background: rgba(201,169,110,0.08);
-    border: 0.5px solid rgba(201,169,110,0.2);
-    border-radius: 6px;
-    margin: 12px 0 0;
-    font-size: 18px;
-    font-weight: 700;
-    color: #c9a96e;
-    font-family: Georgia, serif;
-    padding: 14px;
-  }
-  .signature-zone { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-top: 48px; }
-  .sig-box {
-    border-top: 0.5px solid rgba(201,169,110,0.3);
-    padding-top: 12px;
-    font-size: 11px;
-    color: rgba(232,224,213,0.3);
-    min-height: 80px;
-  }
-  .sig-title { color: rgba(201,169,110,0.6); font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 6px; }
-  .footer {
-    margin-top: 40px;
-    padding-top: 16px;
-    border-top: 0.5px solid rgba(255,255,255,0.06);
-    font-size: 10px;
-    color: rgba(232,224,213,0.2);
-    line-height: 2;
-    letter-spacing: 0.5px;
-  }
-  .watermark {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%) rotate(-35deg);
-    font-size: 80px;
-    color: rgba(255,255,255,0.03);
-    font-family: Georgia, serif;
-    letter-spacing: 8px;
-    pointer-events: none;
-    white-space: nowrap;
-  }
-</style></head><body>
-
-<div class="watermark">CAVE DE GILBERT</div>
-
-<div class="header">
-  <div class="logo-wrap">
-    <img src="https://cavedegilbert.vercel.app/logo.png" onerror="this.style.display='none'" />
-    <div class="cave-name">Cave de Gilbert</div>
-    <div class="cave-info">
-      Avenue Jean Colomb — 69280 Marcy l'Étoile<br>
-      04 22 91 41 09 · contact@cavedegilbert.fr<br>
-      Mar–Sam : 9h30–13h / 15h30–19h
-    </div>
-  </div>
-  <div class="doc-info">
-    <div class="doc-title">Bon de commande fournisseur</div>
-    <div class="doc-numero">${cmd.numero}</div>
-    <div class="doc-date">${new Date(cmd.date_commande).toLocaleDateString('fr-FR', {day:'2-digit', month:'long', year:'numeric'})}</div>
-    ${dateLiv ? '<div class="livraison-badge">📦 Livraison avant le ' + new Date(dateLiv).toLocaleDateString('fr-FR', {day:'2-digit', month:'long', year:'numeric'}) + '</div>' : ''}
-  </div>
-</div>
-
-<div class="fournisseur">
-  <strong>Fournisseur :</strong>&nbsp; La Loupiote Brasserie &nbsp;·&nbsp; commandelaloupiote@gmail.com
-</div>
-
-<table>
-  <thead>
-    <tr>
-      <th>Désignation</th>
-      <th>Contenance</th>
-      <th style="text-align:center">Qté</th>
-      <th style="text-align:right">Prix HT / fût</th>
-      <th style="text-align:right">Total HT</th>
-    </tr>
-  </thead>
-  <tbody>
-    ${lignes.map((l: any) => `
-    <tr>
-      <td>
-        <div class="produit-nom">${l.fut?.nom_cuvee || ''}</div>
-        <div class="produit-type">${l.fut?.type_biere || ''}</div>
-        <div class="consigne-note">Consigne : 30,00 € HT × ${l.quantite} fût(s) = ${(30 * l.quantite).toFixed(2)} € (non soumise à TVA)</div>
-      </td>
-      <td style="color:rgba(232,224,213,0.6)">${l.fut?.contenance_litres}L</td>
-      <td style="text-align:center;font-weight:700;color:#c9a96e">${l.quantite}</td>
-      <td style="text-align:right;color:rgba(232,224,213,0.7)">${Number(l.prix_achat_ht).toFixed(2)} €</td>
-      <td style="text-align:right;font-weight:600;color:#f0e8d8">${(l.prix_achat_ht * l.quantite).toFixed(2)} €</td>
-    </tr>`).join('')}
-  </tbody>
-</table>
-
-<div class="totaux">
-  <div class="total-line sub"><span>Total HT fûts</span><span>${totalHT_futs.toFixed(2)} €</span></div>
-  <div class="total-line tva"><span>TVA 20 % (sur fûts)</span><span>${tva.toFixed(2)} €</span></div>
-  <div class="total-line sub" style="border-top:0.5px solid rgba(255,255,255,0.05)"><span>Consignes HT — exonérées TVA</span><span>${totalConsignes.toFixed(2)} €</span></div>
-  <div class="total-line grand"><span>TOTAL TTC</span><span>${totalTTC.toFixed(2)} €</span></div>
-</div>
-
-<div class="signature-zone">
-  <div class="sig-box">
-    <div class="sig-title">Bon pour accord — Cave de Gilbert</div>
-  </div>
-  <div class="sig-box">
-    <div class="sig-title">Accusé de réception — La Loupiote</div>
-  </div>
-</div>
-
-<div class="footer">
-  Cave de Gilbert · Avenue Jean Colomb, 69280 Marcy l'Étoile · contact@cavedegilbert.fr · 04 22 91 41 09
-</div>
-
-</body></html>`
-  } }
 
   const envoyerCommande = async (cmd: any) => {
     setEnvoyerEnCours(true)
