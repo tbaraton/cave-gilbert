@@ -32,6 +32,7 @@ export default function LocationPage() {
   // Modals
   const [showEditFut, setShowEditFut] = useState<any>(null)
   const [showDetailResa, setShowDetailResa] = useState<any>(null)
+  const [showAnnulees, setShowAnnulees] = useState(false)
   const [showNouvelleCommande, setShowNouvelleCommande] = useState(false)
   const [showRetourFuts, setShowRetourFuts] = useState<any>(null)
   const [showNouvelleConsigne, setShowNouvelleConsigne] = useState(false)
@@ -153,13 +154,21 @@ export default function LocationPage() {
           {onglet === 'reservations' && (
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-                <div style={{ fontFamily: 'Georgia, serif', fontSize: 18, color: '#f0e8d8' }}>Réservations</div>
+                <div style={{ fontFamily: 'Georgia, serif', fontSize: 18, color: '#f0e8d8' }}>
+                  Réservations
+                  <span style={{ fontSize: 13, color: 'rgba(232,224,213,0.4)', fontFamily: 'DM Sans, sans-serif', marginLeft: 12 }}>
+                    {reservations.filter(r => !['annulée','terminée'].includes(r.statut)).length} active{reservations.filter(r => !['annulée','terminée'].includes(r.statut)).length > 1 ? 's' : ''}
+                  </span>
+                </div>
+                <button onClick={() => setShowAnnulees(!showAnnulees)} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 6, color: 'rgba(232,224,213,0.35)', padding: '5px 12px', fontSize: 11, cursor: 'pointer' }}>
+                  {showAnnulees ? '✕ Masquer annulées/terminées' : `Voir annulées/terminées (${reservations.filter(r => ['annulée','terminée'].includes(r.statut)).length})`}
+                </button>
               </div>
-              {reservations.length === 0 ? (
+              {reservations.filter(r => showAnnulees ? ['annulée','terminée'].includes(r.statut) : !['annulée','terminée'].includes(r.statut)).length === 0 ? (
                 <div style={{ textAlign: 'center', padding: 40, color: 'rgba(232,224,213,0.3)' }}>Aucune réservation</div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {reservations.map(r => (
+                  {reservations.filter(r => showAnnulees ? ['annulée','terminée'].includes(r.statut) : !['annulée','terminée'].includes(r.statut)).map(r => (
                     <button key={r.id} onClick={() => setShowDetailResa(r)} style={{ background: '#18130e', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 10, padding: '16px 20px', cursor: 'pointer', textAlign: 'left', display: 'grid', gridTemplateColumns: '180px 1fr 200px 150px', gap: 16, alignItems: 'center' }}
                       onMouseEnter={e => (e.currentTarget.style.border = '0.5px solid rgba(201,169,110,0.2)')}
                       onMouseLeave={e => (e.currentTarget.style.border = '0.5px solid rgba(255,255,255,0.07)')}>
