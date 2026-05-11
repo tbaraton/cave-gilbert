@@ -1371,7 +1371,7 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
       {/* Onglets */}
       <div style={{ display: 'flex', borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
         {[{ id: 'caisse', label: '🛒 Caisse' }, { id: 'gestion', label: '⚙ Gestion' }].map(o => (
-          <button key={o.id} onClick={() => setOnglet(o.id as any)} style={{ flex: 1, background: onglet === o.id ? 'rgba(201,169,110,0.1)' : 'transparent', border: 'none', borderBottom: `2px solid ${onglet === o.id ? '#c9a96e' : 'transparent'}`, color: onglet === o.id ? '#c9a96e' : 'rgba(232,224,213,0.4)', padding: '12px', fontSize: 14, cursor: 'pointer' }}>
+          <button key={o.id} onClick={() => { setOnglet(o.id as any); setProduits([]); setSearch('') }} style={{ flex: 1, background: onglet === o.id ? 'rgba(201,169,110,0.1)' : 'transparent', border: 'none', borderBottom: `2px solid ${onglet === o.id ? '#c9a96e' : 'transparent'}`, color: onglet === o.id ? '#c9a96e' : 'rgba(232,224,213,0.4)', padding: '12px', fontSize: 14, cursor: 'pointer' }}>
             {o.label}
           </button>
         ))}
