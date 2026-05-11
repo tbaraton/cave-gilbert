@@ -57,6 +57,7 @@ export default function LocationPage() {
     ])
     setFuts(futsData || [])
     setTireuses(tireusesData || [])
+    console.log('Reservations loaded:', resasData?.length, resasData?.[0]?.reservation_tireuses)
     setReservations(resasData || [])
     setCommandesLoupiote(commandesData || [])
     setConsignes(consignesData || [])
@@ -196,7 +197,7 @@ export default function LocationPage() {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
                 {tireuses.map(t => {
                   const resasT = reservations.filter(r =>
-                    !['annulée', 'terminée'].includes(r.statut) &&
+                    !['annulée', 'annulee', 'terminée', 'terminee'].includes(r.statut) &&
                     r.reservation_tireuses?.some((rt: any) => rt.tireuse_id === t.id)
                   ).sort((a, b) => new Date(a.date_debut).getTime() - new Date(b.date_debut).getTime())
 
