@@ -52,7 +52,7 @@ export default function LocationPage() {
         *, customer:customers(prenom, nom, raison_sociale, est_societe, email, telephone),
         reservation_futs(*, fut:futs_catalogue(*)),
         reservation_tireuses(*, tireuse:tireuses(*))
-      `).order('date_debut', { ascending: false }).limit(100),
+      `).order('date_debut', { ascending: true }).limit(100),
       supabase.from('commandes_loupiote').select(`*, lignes:commandes_loupiote_lignes(*, fut:futs_catalogue(*))`).order('created_at', { ascending: false }),
       supabase.from('consignes_loupiote').select('*').order('date_retour_futs', { ascending: false }),
     ])
