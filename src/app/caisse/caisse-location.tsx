@@ -44,6 +44,98 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
   const [showAcompte, setShowAcompte] = useState(false)
   const [acompteMode, setAcompteMode] = useState('cb')
   const [acompteMontant, setAcompteMontant] = useState('')
+  const [showSignature, setShowSignature] = useState(false)
+  const [signatureClient, setSignatureClient] = useState<string | null>(null)
+  const [signatureCave] = useState<string>('Cave de Gilbert')
+  const [envoyerEnCours, setEnvoyerEnCours] = useState(false)
+  const [emailEnvoye, setEmailEnvoye] = useState(false)
+  const canvasRef = { current: null as HTMLCanvasElement | null }
+  let isDrawing = false
+  let lastX = 0
+  let lastY = 0
+
+  const initCanvas = (canvas: HTMLCanvasElement | null) => {
+    if (!canvas) return
+    canvasRef.current = canvas
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    ctx.strokeStyle = '#1a1a1a'
+    ctx.lineWidth = 2.5
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+  }
+
+  const getPos = (e: any, canvas: HTMLCanvasElement) => {
+    const rect = canvas.getBoundingClientRect()
+    const touch = e.touches ? e.touches[0] : e
+    return { x: touch.clientX - rect.left, y: touch.clientY - rect.top }
+  }
+
+  const startDraw = (e: any) => {
+    e.preventDefault()
+    isDrawing = true
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const pos = getPos(e, canvas)
+    lastX = pos.x; lastY = pos.y
+  }
+
+  const draw = (e: any) => {
+    e.preventDefault()
+    if (!isDrawing) return
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    const pos = getPos(e, canvas)
+    ctx.beginPath()
+    ctx.moveTo(lastX, lastY)
+    ctx.lineTo(pos.x, pos.y)
+    ctx.stroke()
+    lastX = pos.x; lastY = pos.y
+  }
+
+  const stopDraw = (e: any) => {
+    e.preventDefault()
+    isDrawing = false
+    const canvas = canvasRef.current
+    if (canvas) setSignatureClient(canvas.toDataURL('image/png'))
+  }
+
+  const clearCanvas = () => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height)
+    setSignatureClient(null)
+  }
+
+  const envoyerAvecSignature = async (emailDest: string) => {
+    if (!signatureClient) return
+    setEnvoyerEnCours(true)
+    try {
+      const html = genererBonReservation(signatureClient)
+      const res = await fetch('/api/envoyer-reservation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: emailDest,
+          numero: resaCreee,
+          clientNom: client ? (client.est_societe ? client.raison_sociale : `${client.prenom} ${client.nom}`) : 'Client',
+          html,
+        }),
+      })
+      if (res.ok) {
+        setEmailEnvoye(true)
+        setShowSignature(false)
+      } else {
+        alert('Erreur envoi email')
+      }
+    } catch {
+      alert('Erreur réseau')
+    }
+    setEnvoyerEnCours(false)
+  }
 
   useEffect(() => {
     const load = async () => {
@@ -210,7 +302,7 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
     entrepot: 'Entrepôt', livraison: '🚚 À livrer',
   }
 
-  const genererBonReservation = () => {
+  const genererBonReservation = (sigClient?: string) => {
     const acompte30 = Math.round(totalTTC * 0.30 * 100) / 100
     const lignesFutsStr = lignesFuts.filter(l => l.fut_id && l.quantite > 0).map(l => {
       const fut = futs.find(f => f.id === l.fut_id)
@@ -314,22 +406,32 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
 </div>
 
 <div class="signature">
-  <div class="sig-box">Signature client<br><em>(Bon pour accord)</em></div>
-  <div class="sig-box">Cachet Cave de Gilbert</div>
+  <div class="sig-box">
+    <div style="font-size:11px;color:#888;margin-bottom:8px">Signature client<br><em>(Bon pour accord)</em></div>
+    ${sigClient ? `<img src="${sigClient}" style="max-width:200px;max-height:80px;border:1px solid #ddd;border-radius:4px" />` : '<div style="height:60px;border:1px dashed #ccc;border-radius:4px"></div>'}
+  </div>
+  <div class="sig-box">
+    <div style="font-size:11px;color:#888;margin-bottom:8px">Cave de Gilbert</div>
+    <div style="font-family:Georgia,serif;font-size:18px;color:#5c2d0a;padding:8px 0">Cave de Gilbert</div>
+  </div>
 </div>
 </body></html>`
     return html
   }
 
   const imprimerBon = () => {
-    const html = genererBonReservation()
+    const html = genererBonReservation(signatureClient || undefined)
     const w = window.open('', '_blank')
     if (w) { w.document.write(html); w.document.close(); w.print() }
   }
 
   const envoyerEmail = async () => {
     if (!client?.email) { alert("Pas d'email pour ce client"); return }
-    alert(`Email envoyé à ${client.email}\n(fonctionnalité email à connecter)`)
+    if (!signatureClient) {
+      setShowSignature(true)
+      return
+    }
+    await envoyerAvecSignature(client.email)
   }
 
   const enregistrerAcompte = async () => {
@@ -407,13 +509,67 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
             style={{ ...btnPrimary, background: '#18130e', color: '#c9a96e', border: '0.5px solid rgba(201,169,110,0.3)' }}>
             🖨 Imprimer le bon de réservation
           </button>
-          {client?.email && (
-            <button onClick={envoyerEmail}
+          {client?.email && !emailEnvoye && (
+            <button onClick={() => setShowSignature(true)}
               style={{ ...btnPrimary, background: '#18130e', color: '#6e9ec9', border: '0.5px solid rgba(110,158,201,0.3)' }}>
-              📧 Envoyer par email à {client.email}
+              ✍ Faire signer & envoyer par email
             </button>
           )}
+          {emailEnvoye && (
+            <div style={{ background: 'rgba(110,201,110,0.1)', border: '0.5px solid rgba(110,201,110,0.3)', borderRadius: 10, padding: '12px 16px', fontSize: 13, color: '#6ec96e', textAlign: 'center' as const }}>
+              ✓ Document signé envoyé à {client?.email}
+            </div>
+          )}
         </div>
+
+        {/* Modal signature */}
+        {showSignature && (
+          <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.9)', zIndex: 1000, display: 'flex', flexDirection: 'column' as const }}>
+            <div style={{ padding: '16px', borderBottom: '0.5px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontFamily: 'Georgia, serif', fontSize: 18, color: '#c9a96e' }}>✍ Signature du client</div>
+              <button onClick={() => setShowSignature(false)} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.5)', fontSize: 24, cursor: 'pointer' }}>✕</button>
+            </div>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column' as const, padding: 16, overflow: 'auto' }}>
+              <div style={{ fontSize: 13, color: 'rgba(232,224,213,0.5)', marginBottom: 12, textAlign: 'center' as const }}>
+                {client ? (client.est_societe ? client.raison_sociale : `${client.prenom} ${client.nom}`) : 'Client'} — {resaCreee}
+              </div>
+              <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', marginBottom: 8 }}>Signez ci-dessous avec votre doigt :</div>
+              <div style={{ background: 'white', borderRadius: 12, overflow: 'hidden', border: '2px solid rgba(201,169,110,0.4)', position: 'relative' as const }}>
+                <canvas
+                  ref={initCanvas}
+                  width={Math.min(window.innerWidth - 64, 600)}
+                  height={180}
+                  style={{ display: 'block', touchAction: 'none', cursor: 'crosshair' }}
+                  onMouseDown={startDraw}
+                  onMouseMove={draw}
+                  onMouseUp={stopDraw}
+                  onMouseLeave={stopDraw}
+                  onTouchStart={startDraw}
+                  onTouchMove={draw}
+                  onTouchEnd={stopDraw}
+                />
+                {!signatureClient && (
+                  <div style={{ position: 'absolute' as const, inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' as const }}>
+                    <span style={{ color: 'rgba(0,0,0,0.15)', fontSize: 14 }}>← Signez ici →</span>
+                  </div>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                <button onClick={clearCanvas} style={{ flex: 1, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.15)', borderRadius: 8, color: 'rgba(232,224,213,0.5)', padding: '12px', fontSize: 13, cursor: 'pointer' }}>
+                  🗑 Effacer
+                </button>
+                <button onClick={() => envoyerAvecSignature(client?.email || '')}
+                  disabled={!signatureClient || envoyerEnCours}
+                  style={{ flex: 2, background: signatureClient ? '#6e9ec9' : '#2a2a1e', border: 'none', borderRadius: 8, color: signatureClient ? '#fff' : '#555', padding: '12px', fontSize: 14, cursor: signatureClient ? 'pointer' : 'not-allowed', fontWeight: 700 }}>
+                  {envoyerEnCours ? '⟳ Envoi...' : `📧 Envoyer à ${client?.email}`}
+                </button>
+              </div>
+              <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.3)', marginTop: 10, textAlign: 'center' as const }}>
+                Le document sera envoyé avec votre signature et celle de la Cave de Gilbert
+              </div>
+            </div>
+          </div>
+        )}
 
         <button onClick={onClose} style={{ ...btnPrimary }}>✓ Retour à la caisse</button>
       </div>
