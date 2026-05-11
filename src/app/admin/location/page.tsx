@@ -161,27 +161,28 @@ export default function LocationPage() {
                       {reservations.filter(r => !['annulée','terminée'].includes(r.statut)).length} active{reservations.filter(r => !['annulée','terminée'].includes(r.statut)).length > 1 ? 's' : ''}
                     </span>
                   </div>
-                  <div style={{ marginTop: 6, display: 'flex', gap: 20 }}>
-                    {[
-                      { label: 'Devis', statuts: ['devis'] },
-                      { label: 'Confirmées', statuts: ['confirmée'] },
-                      { label: 'En cours', statuts: ['en_cours'] },
-                    ].map(({ label, statuts }) => {
-                      const total = reservations.filter(r => statuts.includes(r.statut)).reduce((acc, r) => acc + (r.total_ttc || 0), 0)
-                      const count = reservations.filter(r => statuts.includes(r.statut)).length
-                      if (count === 0) return null
-                      return (
-                        <div key={label} style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>
-                          {label} : <span style={{ color: '#c9a96e', fontFamily: 'Georgia, serif', fontSize: 14 }}>{total.toFixed(2)}€</span>
-                          <span style={{ color: 'rgba(232,224,213,0.3)', marginLeft: 4 }}>({count})</span>
+                  {(() => {
+                    const resasActives = reservations.filter(r => !['annulée','terminée'].includes(r.statut))
+                    const totalTTC = resasActives.reduce((acc, r) => acc + (r.total_ttc || 0), 0)
+                    // Marge = total TTC / 1.20 - coût achat HT des fûts
+                    const totalAchatHT = resasActives.reduce((acc, r) =>
+                      acc + (r.reservation_futs || []).reduce((a: number, rf: any) =>
+                        a + ((rf.fut?.prix_achat_ht || 0) * rf.quantite), 0), 0)
+                    const totalHT = totalTTC / 1.20
+                    const margeEur = totalHT - totalAchatHT
+                    const margePct = totalHT > 0 ? (margeEur / totalHT) * 100 : 0
+                    return (
+                      <div style={{ marginTop: 8, display: 'flex', gap: 24, alignItems: 'baseline', flexWrap: 'wrap' as const }}>
+                        <div style={{ fontSize: 14, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>
+                          CA en cours = {totalTTC.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} € TTC
                         </div>
-                      )
-                    })}
-                    {(() => {
-                      const totalActif = reservations.filter(r => !['annulée','terminée'].includes(r.statut)).reduce((acc, r) => acc + (r.total_ttc || 0), 0)
-                      return <div style={{ fontSize: 13, color: '#c9a96e', fontFamily: 'Georgia, serif', fontWeight: 600 }}>= {totalActif.toFixed(2)}€ TTC</div>
-                    })()}
-                  </div>
+                        <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>
+                          Marge nette : <span style={{ color: '#6ec96e' }}>{margeEur.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €</span>
+                          <span style={{ color: 'rgba(232,224,213,0.3)', marginLeft: 6 }}>({margePct.toFixed(1)} %)</span>
+                        </div>
+                      </div>
+                    )
+                  })()}
                 </div>
                 <button onClick={() => setShowAnnulees(!showAnnulees)} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 6, color: 'rgba(232,224,213,0.35)', padding: '5px 12px', fontSize: 11, cursor: 'pointer' }}>
                   {showAnnulees ? '✕ Masquer annulées/terminées' : `Voir annulées/terminées (${reservations.filter(r => ['annulée','terminée'].includes(r.statut)).length})`}
