@@ -148,18 +148,16 @@ export default function LocationPage() {
         <div style={{ padding: 24 }}>
 
           {/* Alertes stock */}
+          {/* Alertes stock + Tireuses à déplacer */}
           {(() => {
-            const demain = new Date()
-            demain.setDate(demain.getDate() + 1)
-            const demainStr = demain.toISOString().split('T')[0]
-            const rappelsTireuses = reservations.filter(r =>
-              !['annulée','terminée'].includes(r.statut) && r.date_debut === demainStr && r.reservation_tireuses?.length > 0
-            )
             const hasAlertes = alertes.length > 0
-            const hasRappels = rappelsTireuses.length > 0
-            if (!hasAlertes && !hasRappels) return null
+            // Toutes réservations actives avec tireuses, triées par date
+            const resasAvecTireuses = reservations
+              .filter(r => !['annulée','terminée'].includes(r.statut) && r.reservation_tireuses?.length > 0)
+              .sort((a: any, b: any) => new Date(a.date_debut).getTime() - new Date(b.date_debut).getTime())
+
             return (
-              <div style={{ display: 'grid', gridTemplateColumns: hasAlertes && hasRappels ? '1fr 1fr' : '1fr', gap: 12, marginBottom: 20 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: hasAlertes ? '1fr 1fr' : '1fr', gap: 12, marginBottom: 20 }}>
                 {hasAlertes && (
                   <div style={{ background: 'rgba(201,110,110,0.07)', border: '0.5px solid rgba(201,110,110,0.25)', borderRadius: 10, padding: 12 }}>
                     <div style={{ fontSize: 12, color: '#c96e6e', fontWeight: 600, marginBottom: 8 }}>⚠ Stock insuffisant</div>
@@ -179,25 +177,29 @@ export default function LocationPage() {
                     ))}
                   </div>
                 )}
-                {hasRappels && (
-                  <div style={{ background: 'rgba(110,158,201,0.07)', border: '0.5px solid rgba(110,158,201,0.25)', borderRadius: 10, padding: 12 }}>
-                    <div style={{ fontSize: 12, color: '#6e9ec9', fontWeight: 600, marginBottom: 8 }}>🔔 Tireuses à déplacer demain</div>
-                    {rappelsTireuses.map((r: any) => (
-                      <div key={r.id} style={{ marginBottom: 6, padding: '6px 10px', background: 'rgba(110,158,201,0.05)', borderRadius: 6, borderLeft: '2px solid rgba(110,158,201,0.3)' }}>
-                        <div style={{ fontSize: 12, color: '#6e9ec9', fontWeight: 600 }}>
-                          {new Date(r.date_debut).toLocaleDateString('fr-FR')} — {clientNom(r)}
-                        </div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 4, marginTop: 4 }}>
-                          {r.reservation_tireuses?.map((rt: any) => (
-                            <span key={rt.id} style={{ fontSize: 10, background: 'rgba(110,158,201,0.1)', borderRadius: 3, padding: '1px 6px', color: '#a0c0e8' }}>
-                              {rt.tireuse?.nom} → {SITE_LABELS[r.site_retrait] || '⚠ site ?'}
-                            </span>
-                          ))}
-                        </div>
+                <div style={{ background: 'rgba(110,158,201,0.07)', border: '0.5px solid rgba(110,158,201,0.25)', borderRadius: 10, padding: 12 }}>
+                  <div style={{ fontSize: 12, color: '#6e9ec9', fontWeight: 600, marginBottom: 8 }}>🚛 Tireuses à déplacer</div>
+                  {resasAvecTireuses.length === 0 ? (
+                    <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.3)', fontStyle: 'italic' }}>Aucun déplacement prévu</div>
+                  ) : resasAvecTireuses.map((r: any) => (
+                    <div key={r.id} style={{ marginBottom: 8, padding: '6px 10px', background: 'rgba(110,158,201,0.05)', borderRadius: 6, borderLeft: '2px solid rgba(110,158,201,0.2)' }}>
+                      <div style={{ fontSize: 11, color: '#6e9ec9', marginBottom: 4 }}>
+                        {new Date(r.date_debut).toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: 'short' })} — {clientNom(r)}
                       </div>
-                    ))}
-                  </div>
-                )}
+                      <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 3 }}>
+                        {r.reservation_tireuses?.map((rt: any) => (
+                          <div key={rt.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}>
+                            <span style={{ color: '#a0c0e8' }}>📍 {rt.tireuse?.nom} ({rt.tireuse?.modele?.replace('Lenne ', '').replace(' Compresseur', '')})</span>
+                            <span style={{ color: 'rgba(232,224,213,0.3)' }}>→</span>
+                            <span style={{ color: r.site_retrait ? '#6ec96e' : '#c96e6e', fontWeight: 600 }}>
+                              {r.site_retrait ? (SITE_LABELS[r.site_retrait] || r.site_retrait) : '⚠ site non défini'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )
           })()}
