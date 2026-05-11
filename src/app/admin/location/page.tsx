@@ -398,9 +398,28 @@ function ModalDetailResa({ resa, onClose, futs, tireuses }: { resa: any; onClose
 
   const updateStatut = async (statut: string) => {
     setSaving(true)
+    const ancienStatut = r.statut
+
+    // Décrémenter stock quand les fûts partent physiquement
+    if (statut === 'en_cours' && ancienStatut !== 'en_cours') {
+      for (const ligne of r.reservation_futs || []) {
+        const { data: f } = await supabase.from('futs_catalogue').select('stock_actuel').eq('id', ligne.fut_catalogue_id).single()
+        if (f) await supabase.from('futs_catalogue').update({ stock_actuel: Math.max(0, f.stock_actuel - ligne.quantite) }).eq('id', ligne.fut_catalogue_id)
+      }
+    }
+
+    // Remettre en stock si annulation depuis en_cours
+    if (statut === 'annulée' && ancienStatut === 'en_cours') {
+      for (const ligne of r.reservation_futs || []) {
+        const { data: f } = await supabase.from('futs_catalogue').select('stock_actuel').eq('id', ligne.fut_catalogue_id).single()
+        if (f) await supabase.from('futs_catalogue').update({ stock_actuel: f.stock_actuel + ligne.quantite }).eq('id', ligne.fut_catalogue_id)
+      }
+    }
+
     await supabase.from('reservations_location').update({ statut }).eq('id', r.id)
     setR({ ...r, statut })
     setSaving(false)
+    onClose()
   }
 
   const enregistrerRetour = async () => {
@@ -408,17 +427,21 @@ function ModalDetailResa({ resa, onClose, futs, tireuses }: { resa: any; onClose
     if (!retour) return
     for (const [fut_id, qte] of Object.entries(retours)) {
       const ligne = r.reservation_futs.find((l: any) => l.fut_catalogue_id === fut_id)
-      const fut = futs.find(f => f.id === fut_id)
-      const qtePercutee = (ligne?.quantite || 0) - qte
-      const montantRembourse = qte * (fut?.prix_vente_ttc || 0)
-      await supabase.from('retours_futs_lignes').insert({ retour_id: retour.id, fut_catalogue_id: fut_id, quantite_retournee: qte, quantite_percutee: qtePercutee, montant_rembourse_ttc: montantRembourse })
-      // Remettre en stock les fûts non percutés
-      if (qte > 0) {
+      const qtePercutee = (ligne?.quantite || 0) - (qte as number)
+      await supabase.from('retours_futs_lignes').insert({
+        retour_id: retour.id, fut_catalogue_id: fut_id,
+        quantite_retournee: qte as number, quantite_percutee: qtePercutee,
+        montant_rembourse_ttc: 0  // Pas de remboursement consigne client
+      })
+      // Remettre en stock uniquement les fûts non percutés retournés
+      if ((qte as number) > 0) {
         const { data: f } = await supabase.from('futs_catalogue').select('stock_actuel').eq('id', fut_id).single()
-        if (f) await supabase.from('futs_catalogue').update({ stock_actuel: f.stock_actuel + qte }).eq('id', fut_id)
+        if (f) await supabase.from('futs_catalogue').update({ stock_actuel: f.stock_actuel + (qte as number) }).eq('id', fut_id)
       }
     }
-    await updateStatut('terminée')
+    // Statut → terminée (sans re-décrémenter le stock)
+    await supabase.from('reservations_location').update({ statut: 'terminée' }).eq('id', r.id)
+    setR({ ...r, statut: 'terminée' })
     onClose()
   }
 
