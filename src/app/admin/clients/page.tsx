@@ -42,6 +42,7 @@ function ModalClient({ client, onClose, onSaved }: { client?: any; onClose: () =
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [emailDuplique, setEmailDuplique] = useState<string | null>(null)
   const [villesSuggestions, setVillesSuggestions] = useState<string[]>([])
   const [loadingVilles, setLoadingVilles] = useState(false)
 
@@ -64,9 +65,24 @@ function ModalClient({ client, onClose, onSaved }: { client?: any; onClose: () =
     if (!form.est_societe && !form.nom.trim()) { setError('Le nom est obligatoire'); return }
     if (!form.est_societe && !form.prenom.trim()) { setError('Le prénom est obligatoire'); return }
     if (form.est_societe && !form.raison_sociale.trim()) { setError('La raison sociale est obligatoire'); return }
-    if (!form.email.trim()) { setError("L'email est obligatoire"); return }
     if (!form.code_postal.trim()) { setError('Le code postal est obligatoire'); return }
     if (!form.ville.trim()) { setError('La ville est obligatoire'); return }
+
+    // Vérification email dupliqué (sans bloquer)
+    setEmailDuplique(null)
+    if (form.email.trim() && isNew) {
+      const { data: existing } = await supabase
+        .from('customers')
+        .select('id, prenom, nom, raison_sociale, est_societe')
+        .eq('email', form.email.trim())
+        .limit(1)
+      if (existing && existing.length > 0) {
+        const ex = existing[0]
+        const nom = ex.est_societe ? ex.raison_sociale : `${ex.prenom} ${ex.nom}`
+        setEmailDuplique(`Un compte existe déjà avec cet email : ${nom}`)
+      }
+    }
+
     setSaving(true); setError('')
     const payload = {
       prenom: form.prenom,
@@ -108,7 +124,19 @@ function ModalClient({ client, onClose, onSaved }: { client?: any; onClose: () =
           <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 300, color: '#f0e8d8', margin: 0 }}>{isNew ? 'Nouveau client' : 'Modifier le client'}</h2>
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.4)', fontSize: 20, cursor: 'pointer' }}>✕</button>
         </div>
-        {error && <div style={{ background: 'rgba(201,110,110,0.1)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 4, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: '#c96e6e' }}>{error}</div>}
+
+        {error && (
+          <div style={{ background: 'rgba(201,110,110,0.1)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 4, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: '#c96e6e' }}>
+            {error}
+          </div>
+        )}
+
+        {emailDuplique && (
+          <div style={{ background: 'rgba(201,176,110,0.1)', border: '0.5px solid rgba(201,176,110,0.35)', borderRadius: 4, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: '#c9b06e' }}>
+            ⚠ {emailDuplique}
+            <div style={{ marginTop: 4, opacity: 0.7 }}>Le compte sera quand même créé.</div>
+          </div>
+        )}
 
         {/* Case Société */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, padding: '12px 16px', background: form.est_societe ? 'rgba(201,169,110,0.08)' : 'rgba(255,255,255,0.03)', borderRadius: 6, border: `0.5px solid ${form.est_societe ? 'rgba(201,169,110,0.3)' : 'rgba(255,255,255,0.08)'}`, cursor: 'pointer' }}
@@ -258,6 +286,7 @@ function ModalSupprimerBon({ bon, onClose, onDeleted }: { bon: any; onClose: () 
 // ── Fiche Client ──────────────────────────────────────────────
 function FicheClient({ client, onBack, onEdit }: { client: any; onBack: () => void; onEdit: () => void }) {
   const [commandes, setCommandes] = useState<any[]>([])
+  const [reservationsLocation, setReservationsLocation] = useState<any[]>([])
   const [points, setPoints] = useState(0)
   const [vouchers, setVouchers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -271,13 +300,15 @@ function FicheClient({ client, onBack, onEdit }: { client: any; onBack: () => vo
 
   const loadData = useCallback(async () => {
     setLoading(true)
-    const [{ data: cmds }, { data: pts }, { data: vouchs }, { data: reqs }] = await Promise.all([
+    const [{ data: cmds }, { data: pts }, { data: vouchs }, { data: reqs }, { data: resas }] = await Promise.all([
       supabase.from('orders').select('id, numero, created_at, total_ttc, statut, payee, nb_articles').eq('customer_id', client.id).order('created_at', { ascending: false }).limit(50),
       supabase.from('loyalty_points').select('points').eq('customer_id', client.id),
       supabase.from('loyalty_vouchers').select('*').eq('customer_id', client.id).order('created_at', { ascending: false }),
       supabase.from('customer_requests').select('*').eq('customer_id', client.id).order('created_at', { ascending: false }),
+      supabase.from('reservations_location').select('*, reservation_futs(*, fut:futs_catalogue(*)), reservation_tireuses(*, tireuse:tireuses(*))').eq('customer_id', client.id).order('date_debut', { ascending: false }).limit(20),
     ])
     setCommandes(cmds || [])
+    setReservationsLocation(resas || [])
     setPoints((pts || []).reduce((acc: number, p: any) => acc + (p.points || 0), 0))
     setVouchers(vouchs || [])
     setDemandes(reqs || [])
@@ -428,7 +459,7 @@ function FicheClient({ client, onBack, onEdit }: { client: any; onBack: () => vo
           )}
 
           {/* Historique commandes */}
-          <div style={card}>
+          <div style={{ ...card, marginBottom: 20 }}>
             <div style={{ fontSize: 10, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 16 }}>Historique des achats</div>
             {commandes.length === 0 ? (
               <div style={{ fontSize: 13, color: 'rgba(232,224,213,0.3)', textAlign: 'center' as const, padding: '24px 0' }}>Aucune commande enregistrée</div>
@@ -464,8 +495,6 @@ function FicheClient({ client, onBack, onEdit }: { client: any; onBack: () => vo
               </table>
             )}
           </div>
-        </>
-      )}
 
           {/* Remise permanente */}
           {client.remise_pct > 0 && (
@@ -491,7 +520,7 @@ function FicheClient({ client, onBack, onEdit }: { client: any; onBack: () => vo
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
                         <div>
                           <span style={{ fontFamily: 'monospace', fontSize: 13, color: '#c9a96e' }}>{r.numero}</span>
-                          <span style={{ fontSize: 11, color: `${statutColor[r.statut]}`, background: `${statutColor[r.statut]}22`, padding: '2px 8px', borderRadius: 3, marginLeft: 8, textTransform: 'capitalize' as const }}>{r.statut}</span>
+                          <span style={{ fontSize: 11, color: statutColor[r.statut], background: statutColor[r.statut] + '22', padding: '2px 8px', borderRadius: 3, marginLeft: 8, textTransform: 'capitalize' as const }}>{r.statut}</span>
                         </div>
                         <div style={{ fontSize: 16, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{r.total_ttc?.toFixed(2)}€</div>
                       </div>
@@ -610,8 +639,10 @@ function FicheClient({ client, onBack, onEdit }: { client: any; onBack: () => vo
             })}
           </div>
 
-      {bonASupprimer && (
-        <ModalSupprimerBon bon={bonASupprimer} onClose={() => setBonASupprimer(null)} onDeleted={() => { setBonASupprimer(null); loadData() }} />
+          {bonASupprimer && (
+            <ModalSupprimerBon bon={bonASupprimer} onClose={() => setBonASupprimer(null)} onDeleted={() => { setBonASupprimer(null); loadData() }} />
+          )}
+        </>
       )}
     </div>
   )
@@ -640,17 +671,14 @@ export default function AdminClientsPage() {
     const from = page * PAGE_SIZE
 
     if (search.trim()) {
-      // Recherche floue via RPC (accents + fautes de frappe)
       const { data, error } = await supabase.rpc('search_customers_fuzzy', {
         search_term: search.trim(),
         p_limit: PAGE_SIZE,
         p_offset: from,
       })
       if (error) {
-        // Fallback si la fonction n'existe pas encore
-        console.error('RPC error, fallback:', error)
         const s = search.trim()
-        const sNorm = s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+        const sNorm = s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
         let q = supabase.from('customers')
           .select('id, prenom, nom, email, telephone, ville, code_postal, adresse, pays, est_societe, raison_sociale, siret, tarif_pro, remise_pct, remise_raison, notes, newsletter, created_at', { count: 'exact' })
           .or(`nom.ilike.%${s}%,prenom.ilike.%${s}%,email.ilike.%${s}%,raison_sociale.ilike.%${s}%,nom.ilike.%${sNorm}%,prenom.ilike.%${sNorm}%`)
@@ -669,7 +697,6 @@ export default function AdminClientsPage() {
         setTotalCount(filtered.length)
       }
     } else {
-      // Sans recherche : requête normale paginée
       let query = supabase
         .from('customers')
         .select('id, prenom, nom, email, telephone, ville, code_postal, adresse, pays, est_societe, raison_sociale, siret, tarif_pro, remise_pct, remise_raison, notes, newsletter, created_at', { count: 'exact' })
@@ -700,7 +727,7 @@ export default function AdminClientsPage() {
 
   useEffect(() => { if (mainTab === 'demandes') loadAllDemandes() }, [mainTab, loadAllDemandes])
 
-  const filtres = clients // Filtres appliqués côté serveur
+  const filtres = clients
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#0d0a08', fontFamily: "'DM Sans', system-ui, sans-serif", color: '#e8e0d5' }}>
@@ -824,96 +851,95 @@ export default function AdminClientsPage() {
             )}
 
             {mainTab === 'clients' && (<>
-            <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' as const }}>
-              <input placeholder="Rechercher..." value={search} onChange={e => setSearch(e.target.value)} style={{ flex: '1 1 200px', ...inp, boxSizing: 'border-box' as const }} />
-              <div style={{ display: 'flex', gap: 6 }}>
-                {[
-                  { key: 'tous', label: 'Tous' },
-                  { key: 'particulier', label: 'Particuliers' },
-                  { key: 'societe', label: 'Sociétés' },
-                  { key: 'pro', label: 'Tarif pro' },
-                ].map(({ key, label }) => (
-                  <button key={key} onClick={() => setFilterType(key as any)} style={{
-                    background: filterType === key ? 'rgba(201,169,110,0.15)' : 'rgba(255,255,255,0.04)',
-                    border: `0.5px solid ${filterType === key ? 'rgba(201,169,110,0.4)' : 'rgba(255,255,255,0.1)'}`,
-                    color: filterType === key ? '#c9a96e' : 'rgba(232,224,213,0.4)',
-                    borderRadius: 20, padding: '6px 14px', fontSize: 11, cursor: 'pointer',
-                  }}>{label}</button>
-                ))}
-              </div>
-            </div>
-
-            {loading ? <Spinner /> : (
-              <div style={{ background: '#18130e', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 6, overflow: 'hidden' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse' as const }}>
-                  <thead>
-                    <tr style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
-                      {[
-                        { label: 'Client', col: 'nom' },
-                        { label: 'Type', col: 'est_societe' },
-                        { label: 'Email', col: 'email' },
-                        { label: 'Téléphone', col: 'telephone' },
-                        { label: 'Ville', col: 'ville' },
-                        { label: 'Tarif', col: 'tarif_pro' },
-                        { label: '', col: null },
-                      ].map(({ label, col }) => (
-                        <th key={label} onClick={() => {
-                          if (!col) return
-                          if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
-                          else { setSortCol(col); setSortDir('asc') }
-                          setPage(0)
-                        }} style={{ padding: '10px 14px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: sortCol === col ? '#c9a96e' : 'rgba(232,224,213,0.3)', fontWeight: 400, cursor: col ? 'pointer' : 'default', userSelect: 'none' as const, whiteSpace: 'nowrap' as const }}>
-                          {label}{col && sortCol === col ? (sortDir === 'asc' ? ' ↑' : ' ↓') : col ? ' ↕' : ''}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filtres.map((c, i) => (
-                      <tr key={c.id} onClick={() => setSelectedClient(c)} style={{ borderBottom: i < filtres.length - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none', cursor: 'pointer' }}
-                        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
-                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                        <td style={{ padding: '12px 14px' }}>
-                          <div style={{ fontSize: 13, color: '#f0e8d8' }}>{c.est_societe ? (c.raison_sociale || `${c.prenom} ${c.nom}`) : `${c.prenom || ''} ${c.nom}`.trim()}</div>
-                          {c.est_societe && c.prenom && <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>{c.prenom} {c.nom}</div>}
-                        </td>
-                        <td style={{ padding: '12px 14px' }}>
-                          {c.est_societe ? <Badge label="Société" bg="#1e202a" color="#6e9ec9" /> : <Badge label="Particulier" bg="rgba(255,255,255,0.05)" color="rgba(232,224,213,0.5)" />}
-                        </td>
-                        <td style={{ padding: '12px 14px', fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>{c.email || '—'}</td>
-                        <td style={{ padding: '12px 14px', fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>{c.telephone || '—'}</td>
-                        <td style={{ padding: '12px 14px', fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>{c.ville || '—'}</td>
-                        <td style={{ padding: '12px 14px' }}>
-                          {c.tarif_pro ? <Badge label="Pro" bg="#2a2a1e" color="#c9b06e" /> : <Badge label="TTC" bg="#1e2a1e" color="#6ec96e" />}
-                        </td>
-                        <td style={{ padding: '12px 14px' }}>
-                          <button onClick={e => { e.stopPropagation(); setEditingClient(c) }} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 3, padding: '4px 10px', fontSize: 10, cursor: 'pointer' }}>
-                            Modifier
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                    {filtres.length === 0 && (
-                      <tr><td colSpan={7} style={{ padding: '48px', textAlign: 'center' as const, color: 'rgba(232,224,213,0.3)', fontSize: 13 }}>Aucun client trouvé</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-              {/* Pagination */}
-              {totalCount > PAGE_SIZE && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
-                <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>
-                  {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, totalCount)} sur {totalCount} clients
-                </span>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: page === 0 ? 'rgba(232,224,213,0.2)' : 'rgba(232,224,213,0.5)', borderRadius: 4, padding: '6px 14px', fontSize: 12, cursor: page === 0 ? 'default' : 'pointer' }}>← Précédent</button>
-                  <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', padding: '6px 10px' }}>Page {page + 1} / {Math.ceil(totalCount / PAGE_SIZE)}</span>
-                  <button onClick={() => setPage(p => p + 1)} disabled={(page + 1) * PAGE_SIZE >= totalCount} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: (page + 1) * PAGE_SIZE >= totalCount ? 'rgba(232,224,213,0.2)' : 'rgba(232,224,213,0.5)', borderRadius: 4, padding: '6px 14px', fontSize: 12, cursor: (page + 1) * PAGE_SIZE >= totalCount ? 'default' : 'pointer' }}>Suivant →</button>
+              <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' as const }}>
+                <input placeholder="Rechercher..." value={search} onChange={e => setSearch(e.target.value)} style={{ flex: '1 1 200px', ...inp, boxSizing: 'border-box' as const }} />
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {[
+                    { key: 'tous', label: 'Tous' },
+                    { key: 'particulier', label: 'Particuliers' },
+                    { key: 'societe', label: 'Sociétés' },
+                    { key: 'pro', label: 'Tarif pro' },
+                  ].map(({ key, label }) => (
+                    <button key={key} onClick={() => setFilterType(key as any)} style={{
+                      background: filterType === key ? 'rgba(201,169,110,0.15)' : 'rgba(255,255,255,0.04)',
+                      border: `0.5px solid ${filterType === key ? 'rgba(201,169,110,0.4)' : 'rgba(255,255,255,0.1)'}`,
+                      color: filterType === key ? '#c9a96e' : 'rgba(232,224,213,0.4)',
+                      borderRadius: 20, padding: '6px 14px', fontSize: 11, cursor: 'pointer',
+                    }}>{label}</button>
+                  ))}
                 </div>
               </div>
-            )}
+
+              {loading ? <Spinner /> : (
+                <div style={{ background: '#18130e', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 6, overflow: 'hidden' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' as const }}>
+                    <thead>
+                      <tr style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
+                        {[
+                          { label: 'Client', col: 'nom' },
+                          { label: 'Type', col: 'est_societe' },
+                          { label: 'Email', col: 'email' },
+                          { label: 'Téléphone', col: 'telephone' },
+                          { label: 'Ville', col: 'ville' },
+                          { label: 'Tarif', col: 'tarif_pro' },
+                          { label: '', col: null },
+                        ].map(({ label, col }) => (
+                          <th key={label} onClick={() => {
+                            if (!col) return
+                            if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+                            else { setSortCol(col); setSortDir('asc') }
+                            setPage(0)
+                          }} style={{ padding: '10px 14px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: sortCol === col ? '#c9a96e' : 'rgba(232,224,213,0.3)', fontWeight: 400, cursor: col ? 'pointer' : 'default', userSelect: 'none' as const, whiteSpace: 'nowrap' as const }}>
+                            {label}{col && sortCol === col ? (sortDir === 'asc' ? ' ↑' : ' ↓') : col ? ' ↕' : ''}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtres.map((c, i) => (
+                        <tr key={c.id} onClick={() => setSelectedClient(c)} style={{ borderBottom: i < filtres.length - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none', cursor: 'pointer' }}
+                          onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
+                          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                          <td style={{ padding: '12px 14px' }}>
+                            <div style={{ fontSize: 13, color: '#f0e8d8' }}>{c.est_societe ? (c.raison_sociale || `${c.prenom} ${c.nom}`) : `${c.prenom || ''} ${c.nom}`.trim()}</div>
+                            {c.est_societe && c.prenom && <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>{c.prenom} {c.nom}</div>}
+                          </td>
+                          <td style={{ padding: '12px 14px' }}>
+                            {c.est_societe ? <Badge label="Société" bg="#1e202a" color="#6e9ec9" /> : <Badge label="Particulier" bg="rgba(255,255,255,0.05)" color="rgba(232,224,213,0.5)" />}
+                          </td>
+                          <td style={{ padding: '12px 14px', fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>{c.email || '—'}</td>
+                          <td style={{ padding: '12px 14px', fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>{c.telephone || '—'}</td>
+                          <td style={{ padding: '12px 14px', fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>{c.ville || '—'}</td>
+                          <td style={{ padding: '12px 14px' }}>
+                            {c.tarif_pro ? <Badge label="Pro" bg="#2a2a1e" color="#c9b06e" /> : <Badge label="TTC" bg="#1e2a1e" color="#6ec96e" />}
+                          </td>
+                          <td style={{ padding: '12px 14px' }}>
+                            <button onClick={e => { e.stopPropagation(); setEditingClient(c) }} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 3, padding: '4px 10px', fontSize: 10, cursor: 'pointer' }}>
+                              Modifier
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                      {filtres.length === 0 && (
+                        <tr><td colSpan={7} style={{ padding: '48px', textAlign: 'center' as const, color: 'rgba(232,224,213,0.3)', fontSize: 13 }}>Aucun client trouvé</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {totalCount > PAGE_SIZE && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
+                  <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>
+                    {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, totalCount)} sur {totalCount} clients
+                  </span>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: page === 0 ? 'rgba(232,224,213,0.2)' : 'rgba(232,224,213,0.5)', borderRadius: 4, padding: '6px 14px', fontSize: 12, cursor: page === 0 ? 'default' : 'pointer' }}>← Précédent</button>
+                    <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', padding: '6px 10px' }}>Page {page + 1} / {Math.ceil(totalCount / PAGE_SIZE)}</span>
+                    <button onClick={() => setPage(p => p + 1)} disabled={(page + 1) * PAGE_SIZE >= totalCount} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: (page + 1) * PAGE_SIZE >= totalCount ? 'rgba(232,224,213,0.2)' : 'rgba(232,224,213,0.5)', borderRadius: 4, padding: '6px 14px', fontSize: 12, cursor: (page + 1) * PAGE_SIZE >= totalCount ? 'default' : 'pointer' }}>Suivant →</button>
+                  </div>
+                </div>
+              )}
             </>)}
           </>
         )}
@@ -922,7 +948,6 @@ export default function AdminClientsPage() {
       {showNouveauClient && <ModalClient onClose={() => setShowNouveauClient(false)} onSaved={() => { loadClients(); setShowNouveauClient(false) }} />}
       {editingClient && <ModalClient client={editingClient} onClose={() => setEditingClient(null)} onSaved={async () => {
         await loadClients()
-        // Refresh selectedClient if it's the one being edited
         if (selectedClient?.id === editingClient.id) {
           const { data } = await supabase.from('customers').select('id, prenom, nom, email, telephone, ville, code_postal, adresse, pays, est_societe, raison_sociale, siret, tarif_pro, remise_pct, remise_raison, notes, newsletter, created_at').eq('id', editingClient.id).single()
           if (data) setSelectedClient(data)
