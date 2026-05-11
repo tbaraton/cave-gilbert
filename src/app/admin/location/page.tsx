@@ -450,38 +450,10 @@ function ModalDetailResa({ resa, onClose, futs, tireuses }: { resa: any; onClose
   const [lignesEdit, setLignesEdit] = useState<any[]>(resa.reservation_futs?.map((l: any) => ({ ...l })) || [])
   const [remiseType, setRemiseType] = useState<'pct' | 'eur'>('pct')
   const [remiseVal, setRemiseVal] = useState('')
-  const [editingLignes, setEditingLignes] = useState(false)
-  const [lignesEdit, setLignesEdit] = useState<any[]>(resa.reservation_futs || [])
-  const [remiseType, setRemiseType] = useState<'pct' | 'eur'>('pct')
-  const [remiseGlobale, setRemiseGlobale] = useState('')
+
 
   const clientNom = r.customer?.est_societe ? r.customer.raison_sociale : `${r.customer?.prenom || ''} ${r.customer?.nom || ''}`.trim()
 
-  const saveLignes = async () => {
-    setSaving(true)
-    const remiseVal = remiseGlobale ? (remiseType === 'pct' ? parseFloat(remiseGlobale) / 100 : 0) : 0
-    const remiseEur = remiseGlobale && remiseType === 'eur' ? parseFloat(remiseGlobale) : 0
-    for (const l of lignesEdit) {
-      const prixApresRemise = remiseType === 'pct' && remiseVal > 0 
-        ? l.prix_unitaire_ttc * (1 - remiseVal)
-        : l.prix_unitaire_ttc
-      await supabase.from('reservation_futs').update({
-        prix_unitaire_ttc: l.prix_unitaire_ttc,
-        quantite: l.quantite,
-      }).eq('id', l.id)
-    }
-    // Recalculer total
-    const totalFuts = lignesEdit.reduce((acc, l) => acc + l.prix_unitaire_ttc * l.quantite, 0)
-    const totalApresRemise = remiseType === 'pct' && remiseVal > 0
-      ? totalFuts * (1 - remiseVal)
-      : remiseType === 'eur' && remiseEur > 0
-      ? Math.max(0, totalFuts - remiseEur)
-      : totalFuts
-    await supabase.from('reservations_location').update({ total_ttc: totalApresRemise }).eq('id', r.id)
-    setR({ ...r, reservation_futs: lignesEdit, total_ttc: totalApresRemise })
-    setEditingLignes(false)
-    setSaving(false)
-  }
 
   const savePrix = async () => {
     setSaving(true)
