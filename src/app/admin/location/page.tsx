@@ -603,6 +603,17 @@ td{padding:10px 12px;border-bottom:.5px solid #eee;vertical-align:top}
                       <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', marginTop: 2 }}>Créée le {new Date(cmd.date_commande).toLocaleDateString('fr-FR')}</div>
                     </div>
                     <span style={{ fontSize: 11, background: cmd.statut === 'en_attente' ? 'rgba(201,169,110,0.15)' : cmd.statut === 'commandée' ? 'rgba(110,201,110,0.1)' : 'rgba(255,255,255,0.05)', color: cmd.statut === 'en_attente' ? '#c9a96e' : cmd.statut === 'commandée' ? '#6ec96e' : '#888', padding: '3px 10px', borderRadius: 4 }}>{cmd.statut}</span>
+                    {cmd.statut === 'en_attente' && (
+                      <button onClick={async () => {
+                        if (!confirm('Supprimer cette commande ?')) return
+                        await supabase.from('commandes_loupiote_lignes').delete().eq('commande_id', cmd.id)
+                        await supabase.from('commandes_loupiote').delete().eq('id', cmd.id)
+                        setAjouteAlertes(new Set())
+                        load()
+                      }} style={{ background: 'transparent', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 6, color: '#c96e6e', padding: '3px 10px', fontSize: 11, cursor: 'pointer' }}>
+                        🗑 Supprimer
+                      </button>
+                    )}
                   </div>
 
                   {/* Lignes éditable si en_attente */}
