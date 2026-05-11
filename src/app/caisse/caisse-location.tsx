@@ -359,7 +359,7 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
       '<div class="watermark">CAVE DE GILBERT</div>' +
       '<div class="header">' +
         '<div class="logo-wrap">' +
-          '<img src="https://cavedegilbert.vercel.app/logo.png" onerror="this.style.display='none'" />' +
+          '<img src="https://cavedegilbert.vercel.app/logo.png" onerror="this.style.display=&quot;none&quot;" />' +
           '<div class="cave-name">Cave de Gilbert</div>' +
           '<div class="cave-info">Avenue Jean Colomb \u2014 69280 Marcy l'\u00c9toile<br>04 22 91 41 09 \u00b7 contact@cavedegilbert.fr<br>Mar\u2013Sam : 9h30\u201313h / 15h30\u201319h</div>' +
         '</div>' +
