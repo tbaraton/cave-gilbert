@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useRef } from 'react'
 import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
@@ -32,15 +32,13 @@ export function ModuleRetourLocation({ reservation: resa, onClose, onDone }: Ret
   const [saving, setSaving] = useState(false)
   const [etape, setEtape] = useState<'retour' | 'paiement' | 'done'>('retour')
   const [notes, setNotes] = useState('')
-  const [shouldExit, setShouldExit] = useState(false)
   const doneCalled = useRef(false)
 
-  useEffect(() => {
-    if (shouldExit && !doneCalled.current) {
-      doneCalled.current = true
-      onDone()
-    }
-  }, [shouldExit])
+  const terminer = () => {
+    if (doneCalled.current) return
+    doneCalled.current = true
+    setTimeout(() => onDone(), 50)
+  }
 
   const remisePct = Number(resa.remise_pct || 0)
   const acompte = Number(resa.acompte_ttc || 0)
@@ -352,7 +350,7 @@ ${nonPercutesHtml}
                 Envoyer à {resa.customer.email}
               </button>
             )}
-            <button onClick={() => setShouldExit(true)} disabled={doneCalled.current} style={{ background: doneCalled.current ? 'rgba(201,169,110,0.4)' : '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 8, padding: '13px 32px', fontSize: 14, fontWeight: 600, cursor: doneCalled.current ? 'default' : 'pointer', letterSpacing: 1 }}>
+            <button onClick={terminer} style={{ background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 8, padding: '13px 32px', fontSize: 14, fontWeight: 600, cursor: 'pointer', letterSpacing: 1 }}>
               &#x2713; Terminer & retour caisse
             </button>
           </div>
