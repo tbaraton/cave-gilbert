@@ -491,13 +491,18 @@ function HistoriqueAchatsClient({ client, onClose, onAddToCart, onRetourDone }: 
     <ModuleRetourLocation
       reservation={{ ...retourResa, customer: client }}
       onClose={() => setRetourResa(null)}
-      onDone={() => {
+      onDone={async () => {
         const resaId = retourResa.id
         setRetourResa(null)
-        // Mise à jour immédiate synchrone du statut local
-        setLocations((prev: any[]) => prev.map((r: any) =>
-          r.id === resaId ? { ...r, statut: 'terminée' } : r
-        ))
+        // Recharger depuis la base pour avoir le vrai statut
+        const { data: resas } = await supabase
+          .from('reservations_location')
+          .select('*, reservation_futs(*, fut:futs_catalogue(*)), reservation_tireuses(*, tireuse:tireuses(*)), retours_futs(*)')
+          .eq('customer_id', client.id)
+          .neq('statut', 'annulée')
+          .order('date_debut', { ascending: false })
+          .limit(20)
+        if (resas) setLocations(resas)
         onRetourDone ? onRetourDone(retourResa) : onClose()
       }}
       modeCompact={true}
@@ -586,6 +591,18 @@ function HistoriqueAchatsClient({ client, onClose, onAddToCart, onRetourDone }: 
                 <div style={{ fontSize: 11, color: '#6e9ec9', marginTop: 6 }}>
                   ↩ Retour : {r.retours_futs.map((rf: any) => `${rf.quantite_retournee} fût${rf.quantite_retournee > 1 ? 's' : ''} non percuté${rf.quantite_retournee > 1 ? 's' : ''}`).join(', ')}
                 </div>
+              )}
+              {r.statut === 'confirmée' && (
+                <button onClick={async () => {
+                  await supabase.from('reservations_location').update({ statut: 'en_cours' }).eq('id', r.id)
+                  setLocations((prev: any[]) => prev.map((x: any) => x.id === r.id ? { ...x, statut: 'en_cours' } : x))
+                }} style={{
+                  marginTop: 10, width: '100%', background: 'rgba(110,201,110,0.08)',
+                  border: '0.5px solid rgba(110,201,110,0.3)', color: '#6ec96e',
+                  borderRadius: 8, padding: '10px', fontSize: 13, cursor: 'pointer', fontWeight: 600,
+                }}>
+                  ▶ Démarrer la location (en cours)
+                </button>
               )}
               {r.statut === 'en_cours' && (
                 <button onClick={() => {
@@ -2344,7 +2361,7 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
       {showNouveauClient&&<ModalClientForm onClose={()=>setShowNouveauClient(false)} onSaved={(c)=>{setClient(c);setShowNouveauClient(false)}}/>}
       {editingClient&&<ModalClientForm client={editingClient} onClose={()=>setEditingClient(null)} onSaved={(c)=>{if(client?.id===c.id)setClient(c);setEditingClient(null)}}/>}
       {showHistorique&&<HistoriqueVentes session={session} onClose={()=>setShowHistorique(false)} onAddToCart={handleAddFromHistorique}/>}
-      {showAchatsClient&&client&&<HistoriqueAchatsClient client={client} onClose={()=>setShowAchatsClient(false)} onAddToCart={handleAddSingleAchat} onRetourDone={(r) => { setShowAchatsClient(false); setRetourDesktop(r) }}/>}
+      {showAchatsClient&&client&&<HistoriqueAchatsClient client={client} onClose={()=>setShowAchatsClient(false)} onAddToCart={handleAddSingleAchat} onRetourDone={() => { setShowAchatsClient(false); setClient(null); setLignes([]); setTypeDoc('ticket'); setRemise(''); }}/>}
       {showLocation && (
         <div style={{position:'fixed' as const,inset:0,zIndex:1000,background:'#0d0a08'}}>
           <ModuleLocation session={session} user={vendeur} onClose={()=>setShowLocation(false)}/>
