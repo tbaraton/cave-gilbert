@@ -663,15 +663,34 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
                 <div style={{ fontSize: 13, color: 'rgba(232,224,213,0.4)' }}>Fût {i + 1}</div>
                 <button onClick={() => setLignesFuts(prev => prev.filter((_, j) => j !== i))} style={{ background: 'transparent', border: 'none', color: '#c96e6e', fontSize: 18, cursor: 'pointer' }}>✕</button>
               </div>
-              <select value={l.fut_id} onChange={e => setLignesFuts(prev => prev.map((x, j) => j === i ? { ...x, fut_id: e.target.value } : x))}
-                style={{ width: '100%', background: '#1a1408', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 8, color: '#e8e0d5', fontSize: 14, padding: '12px', cursor: 'pointer', marginBottom: 10 }}>
-                <option value="">— Choisir un fût —</option>
-                {futs.map(f => (
-                  <option key={f.id} value={f.id}>
-                    {TYPE_LABELS[f.type_biere]} "{f.nom_cuvee}" {f.contenance_litres}L — {fmt(f.prix_vente_ttc)} {f.stock_actuel <= 0 ? '(rupture)' : `(stock: ${f.stock_actuel})`}
-                  </option>
-                ))}
-              </select>
+              <div style={{ marginBottom: 10 }}>
+                {l.fut_id ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#1a1408', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 8, padding: '10px 12px' }}>
+                    {(() => { const f = futs.find(f => f.id === l.fut_id); return f ? (
+                      <span style={{ flex: 1, fontSize: 13, color: '#e8e0d5' }}>{TYPE_LABELS[f.type_biere]} "{f.nom_cuvee}" {f.contenance_litres}L
+                        <span style={{ marginLeft: 8, fontSize: 11, color: f.stock_actuel > 0 ? '#6ec96e' : '#c96e6e' }}>
+                          {f.stock_actuel > 0 ? `stock: ${f.stock_actuel}` : 'rupture'}
+                        </span>
+                      </span>
+                    ) : null })()}
+                    <button onClick={() => setLignesFuts(prev => prev.map((x, j) => j === i ? { ...x, fut_id: '' } : x))}
+                      style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.4)', fontSize: 14, cursor: 'pointer' }}>✕</button>
+                  </div>
+                ) : (
+                  <div style={{ background: '#1a1408', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 8, overflow: 'hidden', maxHeight: 220, overflowY: 'auto' as const }}>
+                    <div style={{ padding: '8px 12px', fontSize: 11, color: 'rgba(232,224,213,0.3)', borderBottom: '0.5px solid rgba(255,255,255,0.05)' }}>— Choisir un fût —</div>
+                    {futs.map(f => (
+                      <button key={f.id} onClick={() => setLignesFuts(prev => prev.map((x, j) => j === i ? { ...x, fut_id: f.id } : x))}
+                        style={{ width: '100%', background: 'transparent', border: 'none', borderBottom: '0.5px solid rgba(255,255,255,0.04)', color: '#e8e0d5', padding: '10px 12px', cursor: 'pointer', textAlign: 'left' as const, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: 13 }}>{TYPE_LABELS[f.type_biere]} "{f.nom_cuvee}" {f.contenance_litres}L — {fmt(f.prix_vente_ttc)}</span>
+                        <span style={{ fontSize: 11, fontWeight: 600, color: f.stock_actuel > 0 ? '#6ec96e' : '#c96e6e', marginLeft: 8, flexShrink: 0 }}>
+                          {f.stock_actuel > 0 ? `✓ ${f.stock_actuel}` : '✕ rupture'}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <span style={{ fontSize: 13, color: 'rgba(232,224,213,0.5)' }}>Quantité :</span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,0.05)', borderRadius: 8, padding: '6px 12px' }}>
