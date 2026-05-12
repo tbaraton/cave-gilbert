@@ -822,25 +822,33 @@ export default function LocationPage() {
               </div>
 
               {/* Résumé */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
                 {[
-                  { label: 'En attente de remboursement', value: consignes.filter(c => c.statut === 'en_attente').reduce((a: number, c: any) => a + (c.montant_consigne_attendu - c.montant_consigne_recu), 0), color: '#c96e6e' },
-                  { label: 'Partiellement reçu', value: consignes.filter(c => c.statut === 'partiel').reduce((a: number, c: any) => a + (c.montant_consigne_attendu - c.montant_consigne_recu), 0), color: '#c9b06e' },
-                  { label: 'Total soldé', value: consignes.filter(c => c.statut === 'soldé').reduce((a: number, c: any) => a + c.montant_consigne_recu, 0), color: '#6ec96e' },
-                ].map(kpi => (
+                  { label: 'Total fûts à récupérer', value: consignes.filter((c: any) => c.statut !== 'soldé').reduce((a: number, c: any) => a + (c.quantite_futs_rendus || 0), 0) + ' fût(s)', color: '#c9a96e', raw: true },
+                  { label: 'En attente de remboursement', value: consignes.filter((c: any) => c.statut === 'en_attente').reduce((a: number, c: any) => a + (c.montant_consigne_attendu - c.montant_consigne_recu), 0), color: '#c96e6e' },
+                  { label: 'Partiellement reçu', value: consignes.filter((c: any) => c.statut === 'partiel').reduce((a: number, c: any) => a + (c.montant_consigne_attendu - c.montant_consigne_recu), 0), color: '#c9b06e' },
+                  { label: 'Total soldé', value: consignes.filter((c: any) => c.statut === 'soldé').reduce((a: number, c: any) => a + c.montant_consigne_recu, 0), color: '#6ec96e' },
+                ].map((kpi: any) => (
                   <div key={kpi.label} style={{ background: '#18130e', borderRadius: 10, padding: '16px 20px', border: '0.5px solid rgba(255,255,255,0.07)' }}>
                     <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', marginBottom: 8, letterSpacing: 1 }}>{kpi.label.toUpperCase()}</div>
-                    <div style={{ fontSize: 24, fontFamily: 'Georgia, serif', color: kpi.color }}>{fmt(kpi.value)}</div>
+                    <div style={{ fontSize: 24, fontFamily: 'Georgia, serif', color: kpi.color }}>{kpi.raw ? kpi.value : fmt(kpi.value)}</div>
                   </div>
                 ))}
               </div>
 
               {consignes.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: 40, color: 'rgba(232,224,213,0.3)' }}>Aucun retour enregistré</div>
-              ) : consignes.map(c => (
+                <div style={{ textAlign: 'center', padding: 40, color: 'rgba(232,224,213,0.3)' }}>Aucune consigne enregistrée</div>
+              ) : consignes.map((c: any) => (
                 <div key={c.id} style={{ background: '#18130e', borderRadius: 10, padding: '16px 20px', marginBottom: 10, border: '0.5px solid rgba(255,255,255,0.07)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
-                    <div style={{ fontSize: 14, color: '#f0e8d8', marginBottom: 4 }}>{c.quantite_futs_rendus} fût(s) rendu(s) le {new Date(c.date_retour_futs).toLocaleDateString('fr-FR')}</div>
+                    <div style={{ fontSize: 14, color: '#f0e8d8', marginBottom: 4 }}>
+                      {c.quantite_futs_rendus} fût(s) rendu(s) le {new Date(c.date_retour_futs).toLocaleDateString('fr-FR')}
+                      {c.created_at && (
+                        <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)', marginLeft: 8 }}>
+                          à {new Date(c.created_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      )}
+                    </div>
                     <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>Attendu : {fmt(c.montant_consigne_attendu)} · Reçu : {fmt(c.montant_consigne_recu)}</div>
                     {c.notes && <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.35)', marginTop: 4, fontStyle: 'italic' }}>{c.notes}</div>}
                   </div>
@@ -850,6 +858,13 @@ export default function LocationPage() {
                       style={{ background: '#1a1408', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 6, color: '#c9a96e', fontSize: 12, padding: '5px 8px', cursor: 'pointer' }}>
                       {['en_attente', 'partiel', 'soldé'].map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
+                    <button onClick={async () => {
+                      if (!window.confirm(`Supprimer cette consigne de ${fmt(c.montant_consigne_attendu)} (${c.quantite_futs_rendus} fût(s)) ?`)) return
+                      await supabase.from('consignes_loupiote').delete().eq('id', c.id)
+                      load()
+                    }} style={{ background: 'transparent', border: '0.5px solid rgba(201,110,110,0.3)', color: '#c96e6e', borderRadius: 6, padding: '5px 10px', fontSize: 12, cursor: 'pointer' }}>
+                      🗑
+                    </button>
                   </div>
                 </div>
               ))}
