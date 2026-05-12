@@ -1170,7 +1170,7 @@ function ModalDupliquer({ produit, onClose, onSaved }: {
             {saving ? '⟳' : '⧉ Dupliquer'}
           </button>
           <button onClick={handleDupliquerEtArchiver} disabled={saving} style={{ background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '11px', fontSize: 11, letterSpacing: 1, cursor: 'pointer', fontWeight: 500, textTransform: 'uppercase' as const, opacity: saving ? 0.7 : 1 }}>
-            {saving ? '⟳' : '⧉ Dupliquer & archiver l\'original'}
+            {saving ? '⧘' : '⧉ Dupliquer & archiver original'}
           </button>
         </div>
         </div>
