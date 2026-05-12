@@ -569,6 +569,7 @@ function HistoriqueAchatsClient({ client, onClose, onAddToCart }: {
       </div>
     </div>
   )
+}
 
 // ── Historique Ventes ─────────────────────────────────────────
 function HistoriqueVentes({ session, onClose, onAddToCart }: {
