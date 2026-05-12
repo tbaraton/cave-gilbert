@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
@@ -32,13 +32,15 @@ export function ModuleRetourLocation({ reservation: resa, onClose, onDone }: Ret
   const [saving, setSaving] = useState(false)
   const [etape, setEtape] = useState<'retour' | 'paiement' | 'done'>('retour')
   const [notes, setNotes] = useState('')
-  const [closed, setClosed] = useState(false)
+  const [shouldExit, setShouldExit] = useState(false)
+  const doneCalled = useRef(false)
 
-  // Dès que closed=true, on appelle onDone et on ne rend plus rien
-  if (closed) {
-    onDone()
-    return null
-  }
+  useEffect(() => {
+    if (shouldExit && !doneCalled.current) {
+      doneCalled.current = true
+      onDone()
+    }
+  }, [shouldExit])
 
   const remisePct = Number(resa.remise_pct || 0)
   const acompte = Number(resa.acompte_ttc || 0)
@@ -66,19 +68,13 @@ export function ModuleRetourLocation({ reservation: resa, onClose, onDone }: Ret
   const handleValider = async () => {
     setSaving(true)
     try {
-      // Vérifier que la réservation n'est pas déjà terminée
       const { data: resaCheck } = await supabase
-        .from('reservations_location')
-        .select('statut')
-        .eq('id', resa.id)
-        .single()
+        .from('reservations_location').select('statut').eq('id', resa.id).single()
       if (resaCheck?.statut === 'terminée') {
-        alert('Cette location a déjà été clôturée.')
         setSaving(false)
-        onDone()
+        setShouldExit(true)
         return
       }
-
       for (const l of lignes) {
         await supabase.from('retours_futs').insert({
           reservation_id: resa.id,
@@ -98,7 +94,7 @@ export function ModuleRetourLocation({ reservation: resa, onClose, onDone }: Ret
             quantite_futs_rendus: l.quantite_percutee,
             montant_consigne_attendu: 30 * l.quantite_percutee,
             montant_consigne_recu: 0,
-            notes: `Retour location ${resa.numero} — ${l.fut?.nom_cuvee} ${l.fut?.contenance_litres}L`,
+            notes: 'Retour location ' + resa.numero + ' — ' + l.fut?.nom_cuvee + ' ' + l.fut?.contenance_litres + 'L',
             statut: 'en_attente',
           })
         }
@@ -115,14 +111,12 @@ export function ModuleRetourLocation({ reservation: resa, onClose, onDone }: Ret
   }
 
   const MODES = [
-    { id: 'cb', label: '💳 CB' },
-    { id: 'especes', label: '💶 Espèces' },
-    { id: 'cheque', label: '🏦 Chèque' },
-    { id: 'virement', label: '📤 Virement' },
+    { id: 'cb', label: 'CB' },
+    { id: 'especes', label: 'Espèces' },
+    { id: 'cheque', label: 'Chèque' },
+    { id: 'virement', label: 'Virement' },
   ]
-
   const SITES: Record<string, string> = { cave_gilbert: 'Cave de Gilbert', petite_cave: 'La Petite Cave', entrepot: 'Entrepôt', livraison: 'Livraison' }
-
   const container: any = { position: 'fixed', inset: 0, background: '#0d0a08', zIndex: 800, display: 'flex', flexDirection: 'column', fontFamily: "'DM Sans', system-ui, sans-serif", color: '#e8e0d5', overflowY: 'auto' }
 
   // ── Génération facture ───────────────────────────────────────
@@ -312,14 +306,12 @@ ${nonPercutesHtml}
   }
 
 
-  // ── RENDU UNIQUE ─────────────────────────────────────────────
   return (
     <div style={container}>
 
-      {/* ── DONE ── */}
       {etape === 'done' && (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32, gap: 16 }}>
-          <div style={{ fontSize: 56 }}>✓</div>
+          <div style={{ fontSize: 56 }}>&#x2713;</div>
           <div style={{ fontFamily: 'Georgia, serif', fontSize: 22, color: '#6ec96e' }}>Retour enregistré</div>
           <div style={{ fontSize: 14, color: 'rgba(232,224,213,0.5)', textAlign: 'center' }}>Réservation {resa.numero} clôturée</div>
           {soldeClient > 0 && (
@@ -335,29 +327,22 @@ ${nonPercutesHtml}
               <div style={{ fontSize: 28, color: '#6ec96e', fontFamily: 'Georgia, serif' }}>{fmt(remboursement)}</div>
             </div>
           )}
-          {lignes.some((l: any) => l.quantite_non_percutee > 0) && (
-            <div style={{ fontSize: 12, color: '#6e9ec9', textAlign: 'center' }}>↩ {lignes.reduce((a: number, l: any) => a + l.quantite_non_percutee, 0)} fût(s) non percuté(s) remis en stock</div>
-          )}
-          {lignes.some((l: any) => l.quantite_percutee > 0) && (
-            <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', textAlign: 'center' }}>🍺 {lignes.reduce((a: number, l: any) => a + l.quantite_percutee, 0)} fût(s) percuté(s) → consignes Loupiote</div>
-          )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%', maxWidth: 320, marginTop: 8 }}>
             <button onClick={imprimerFacture} style={{ background: '#18130e', border: '0.5px solid rgba(201,169,110,0.3)', color: '#c9a96e', borderRadius: 8, padding: '13px', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>
-              🖨 Imprimer la facture (A4)
+              Imprimer la facture (A4)
             </button>
             {resa.customer?.email && (
               <button onClick={envoyerFactureEmail} style={{ background: '#18130e', border: '0.5px solid rgba(110,158,201,0.3)', color: '#6e9ec9', borderRadius: 8, padding: '13px', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>
-                📧 Envoyer à {resa.customer.email}
+                Envoyer à {resa.customer.email}
               </button>
             )}
-            <button onClick={() => setClosed(true)} style={{ background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 8, padding: '13px 32px', fontSize: 14, fontWeight: 600, cursor: 'pointer', letterSpacing: 1 }}>
-              ✓ Terminer & retour caisse
+            <button onClick={() => setShouldExit(true)} disabled={doneCalled.current} style={{ background: doneCalled.current ? 'rgba(201,169,110,0.4)' : '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 8, padding: '13px 32px', fontSize: 14, fontWeight: 600, cursor: doneCalled.current ? 'default' : 'pointer', letterSpacing: 1 }}>
+              &#x2713; Terminer & retour caisse
             </button>
           </div>
         </div>
       )}
 
-      {/* ── PAIEMENT ── */}
       {etape === 'paiement' && (
         <>
           <div style={{ padding: '16px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
@@ -369,24 +354,21 @@ ${nonPercutesHtml}
               <div style={{ fontSize: 10, letterSpacing: 2, color: 'rgba(201,169,110,0.6)', textTransform: 'uppercase', marginBottom: 12 }}>Facture finale — {clientNom}</div>
               {lignes.map((l: any, i: number) => {
                 const prixRemise = l.prix_unitaire * (1 - remisePct / 100)
-                const prixHT = prixRemise / (1 + tvaRate)
                 return (
                   <div key={i} style={{ borderBottom: '0.5px solid rgba(255,255,255,0.05)', paddingBottom: 10, marginBottom: 10 }}>
                     <div style={{ fontSize: 13, color: '#f0e8d8', marginBottom: 4 }}>{l.fut?.nom_cuvee} {l.fut?.contenance_litres}L</div>
-                    <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                      {l.quantite_percutee > 0 && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span>✓ {l.quantite_percutee} percuté{l.quantite_percutee > 1 ? 's' : ''} × {fmt(prixRemise)}{remisePct > 0 ? ` (−${remisePct}%)` : ''}</span>
-                          <span style={{ color: '#c9a96e' }}>{fmt(prixRemise * l.quantite_percutee)}</span>
-                        </div>
-                      )}
-                      {l.quantite_non_percutee > 0 && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between', color: '#6ec96e' }}>
-                          <span>↩ {l.quantite_non_percutee} non percuté{l.quantite_non_percutee > 1 ? 's' : ''} — remis en stock</span>
-                          <span>0,00 €</span>
-                        </div>
-                      )}
-                    </div>
+                    {l.quantite_percutee > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>
+                        <span>&#x2713; {l.quantite_percutee} percuté{l.quantite_percutee > 1 ? 's' : ''} x {fmt(prixRemise)}{remisePct > 0 ? ' (−' + remisePct + '%)' : ''}</span>
+                        <span style={{ color: '#c9a96e' }}>{fmt(prixRemise * l.quantite_percutee)}</span>
+                      </div>
+                    )}
+                    {l.quantite_non_percutee > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#6ec96e' }}>
+                        <span>↩ {l.quantite_non_percutee} non percuté{l.quantite_non_percutee > 1 ? 's' : ''} — remis en stock</span>
+                        <span>0,00 €</span>
+                      </div>
+                    )}
                   </div>
                 )
               })}
@@ -399,7 +381,7 @@ ${nonPercutesHtml}
                 </div>
               )}
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 20, color: soldeClient > 0 ? '#c9a96e' : '#6ec96e', fontFamily: 'Georgia, serif', fontWeight: 700, paddingTop: 10, borderTop: '0.5px solid rgba(201,169,110,0.2)', marginTop: 4 }}>
-                <span>{soldeClient > 0 ? 'Solde dû' : remboursement > 0 ? 'À rembourser' : 'Soldé ✓'}</span>
+                <span>{soldeClient > 0 ? 'Solde dû' : remboursement > 0 ? 'À rembourser' : 'Soldé'}</span>
                 <span>{soldeClient > 0 ? fmt(soldeClient) : remboursement > 0 ? fmt(remboursement) : ''}</span>
               </div>
             </div>
@@ -419,19 +401,18 @@ ${nonPercutesHtml}
               </div>
             )}
             <div style={{ marginBottom: 16 }}>
-              <label style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Notes (optionnel)</label>
+              <label style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>Notes</label>
               <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} style={{ ...inp, resize: 'none' }} placeholder="État du matériel..." />
             </div>
           </div>
           <div style={{ padding: '12px 16px', borderTop: '0.5px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
-            <button onClick={handleValider} disabled={saving} style={{ width: '100%', background: saving ? 'rgba(201,169,110,0.4)' : '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 10, padding: '16px', fontSize: 15, fontWeight: 600, cursor: saving ? 'default' : 'pointer', letterSpacing: 1 }}>
-              {saving ? '⟳ Enregistrement...' : soldeClient > 0 ? `✓ Encaisser ${fmt(soldeClient)}` : '✓ Clôturer sans solde'}
+            <button onClick={handleValider} disabled={saving} style={{ width: '100%', background: saving ? 'rgba(201,169,110,0.4)' : '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 10, padding: '16px', fontSize: 15, fontWeight: 600, cursor: saving ? 'default' : 'pointer' }}>
+              {saving ? 'Enregistrement...' : soldeClient > 0 ? 'Encaisser ' + fmt(soldeClient) : 'Clôturer sans solde'}
             </button>
           </div>
         </>
       )}
 
-      {/* ── RETOUR ── */}
       {etape === 'retour' && (
         <>
           <div style={{ padding: '16px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
@@ -443,7 +424,7 @@ ${nonPercutesHtml}
           </div>
           <div style={{ flex: 1, overflowY: 'auto', padding: '16px' }}>
             <div style={{ background: '#18130e', borderRadius: 10, padding: '12px 16px', marginBottom: 16, border: '0.5px solid rgba(255,255,255,0.06)', fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>
-              📅 {new Date(resa.date_debut).toLocaleDateString('fr-FR')} → {new Date(resa.date_fin).toLocaleDateString('fr-FR')}
+              {new Date(resa.date_debut).toLocaleDateString('fr-FR')} → {new Date(resa.date_fin).toLocaleDateString('fr-FR')}
               {remisePct > 0 && <span style={{ marginLeft: 12, color: '#c9b06e' }}>Remise −{remisePct}%</span>}
               {acompte > 0 && <span style={{ marginLeft: 12, color: '#6ec96e' }}>Acompte {fmt(acompte)}</span>}
             </div>
@@ -455,22 +436,22 @@ ${nonPercutesHtml}
                     <div>
                       <div style={{ fontSize: 15, color: '#f0e8d8' }}>{l.fut?.nom_cuvee} {l.fut?.contenance_litres}L</div>
                       <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', marginTop: 2 }}>
-                        {fmt(l.prix_unitaire)}{remisePct > 0 ? ` → ${fmt(prixRemise)} (−${remisePct}%)` : ''} · {l.quantite_reservee} réservé{l.quantite_reservee > 1 ? 's' : ''}
+                        {fmt(l.prix_unitaire)}{remisePct > 0 ? ' → ' + fmt(prixRemise) + ' (−' + remisePct + '%)' : ''} · {l.quantite_reservee} réservé{l.quantite_reservee > 1 ? 's' : ''}
                       </div>
                     </div>
                     <div style={{ fontSize: 16, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{fmt(prixRemise * l.quantite_percutee)}</div>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                     <div>
-                      <div style={{ fontSize: 10, letterSpacing: 1, color: '#c96e6e', textTransform: 'uppercase', marginBottom: 6 }}>🍺 Percutés (vides)</div>
+                      <div style={{ fontSize: 10, letterSpacing: 1, color: '#c96e6e', textTransform: 'uppercase', marginBottom: 6 }}>Percutés (vides)</div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.05)', borderRadius: 8, padding: '8px 12px' }}>
-                        <button onClick={() => setPercute(i, l.quantite_percutee - 1)} style={{ background: 'transparent', border: 'none', color: '#e8e0d5', fontSize: 20, cursor: 'pointer', padding: '0 4px' }}>−</button>
+                        <button onClick={() => setPercute(i, l.quantite_percutee - 1)} style={{ background: 'transparent', border: 'none', color: '#e8e0d5', fontSize: 20, cursor: 'pointer', padding: '0 4px' }}>-</button>
                         <span style={{ flex: 1, textAlign: 'center', fontSize: 20, color: '#c96e6e', fontFamily: 'Georgia, serif' }}>{l.quantite_percutee}</span>
                         <button onClick={() => setPercute(i, l.quantite_percutee + 1)} style={{ background: 'transparent', border: 'none', color: '#e8e0d5', fontSize: 20, cursor: 'pointer', padding: '0 4px' }}>+</button>
                       </div>
                     </div>
                     <div>
-                      <div style={{ fontSize: 10, letterSpacing: 1, color: '#6ec96e', textTransform: 'uppercase', marginBottom: 6 }}>↩ Non percutés</div>
+                      <div style={{ fontSize: 10, letterSpacing: 1, color: '#6ec96e', textTransform: 'uppercase', marginBottom: 6 }}>Non percutés</div>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(110,201,110,0.06)', borderRadius: 8, padding: '8px 12px', border: '0.5px solid rgba(110,201,110,0.2)' }}>
                         <span style={{ fontSize: 20, color: '#6ec96e', fontFamily: 'Georgia, serif' }}>{l.quantite_non_percutee}</span>
                       </div>
@@ -490,13 +471,13 @@ ${nonPercutesHtml}
                 </div>
               )}
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 18, color: soldeClient > 0 ? '#c9a96e' : '#6ec96e', fontFamily: 'Georgia, serif', fontWeight: 700, paddingTop: 8, borderTop: '0.5px solid rgba(255,255,255,0.06)' }}>
-                <span>{soldeClient > 0 ? 'Solde dû' : remboursement > 0 ? 'À rembourser' : 'Soldé ✓'}</span>
+                <span>{soldeClient > 0 ? 'Solde dû' : remboursement > 0 ? 'À rembourser' : 'Soldé'}</span>
                 <span>{soldeClient > 0 ? fmt(soldeClient) : remboursement > 0 ? fmt(remboursement) : ''}</span>
               </div>
             </div>
           </div>
           <div style={{ padding: '12px 16px', borderTop: '0.5px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
-            <button onClick={() => setEtape('paiement')} style={{ width: '100%', background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 10, padding: '16px', fontSize: 15, fontWeight: 600, cursor: 'pointer', letterSpacing: 1 }}>
+            <button onClick={() => setEtape('paiement')} style={{ width: '100%', background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 10, padding: '16px', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>
               Suivant → Paiement
             </button>
           </div>
