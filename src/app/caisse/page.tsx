@@ -493,7 +493,12 @@ function HistoriqueAchatsClient({ client, onClose, onAddToCart, onRetourDone }: 
     <ModuleRetourLocation
       reservation={{ ...retourResa, customer: client }}
       onClose={() => setRetourResa(null)}
-      onDone={() => { setRetourResa(null); onRetourDone ? onRetourDone(retourResa) : onClose() }}
+      onDone={() => {
+        setRetourResa(null)
+        // Marquer localement comme terminée pour masquer le bouton immédiatement
+        setLocations(prev => prev.map(r => r.id === retourResa.id ? { ...r, statut: 'terminée' } : r))
+        onRetourDone ? onRetourDone(retourResa) : onClose()
+      }}
       modeCompact={true}
     />
   )
