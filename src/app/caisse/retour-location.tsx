@@ -370,8 +370,8 @@ ${nonPercutesHtml}
           )}
         </div>
 
-        <button onClick={onDone} style={{ marginTop: 8, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 8, padding: '11px 32px', fontSize: 13, cursor: 'pointer' }}>
-          Retour à la caisse
+        <button onClick={onDone} style={{ marginTop: 8, background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 8, padding: '13px 32px', fontSize: 14, fontWeight: 600, cursor: 'pointer', letterSpacing: 1 }}>
+          ✓ Terminer & retour caisse
         </button>
       </div>
     </div>
