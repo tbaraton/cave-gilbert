@@ -95,25 +95,34 @@ export default function LocationPage() {
     const resasActives = (resasData || []).filter((r: any) => !['annulée', 'terminée'].includes(r.statut))
     const alertesParResa: Record<string, any> = {}
 
-    for (const fut of (futsData || [])) {
-      const resasParFut = resasActives.filter((r: any) =>
-        r.reservation_futs?.some((rf: any) => rf.fut_catalogue_id === fut.id)
-      ).sort((a: any, b: any) => new Date(a.date_debut).getTime() - new Date(b.date_debut).getTime())
+    for (const resa of resasActives) {
+      const debutResa = new Date(resa.date_debut)
+      const finResa = new Date(resa.date_fin)
 
-      let stockDisponible = fut.stock_actuel
-      for (const resa of resasParFut) {
-        const ligne = resa.reservation_futs.find((rf: any) => rf.fut_catalogue_id === fut.id)
-        const qte = ligne?.quantite || 0
-        if (stockDisponible < qte) {
-          // Le manque = ce qui manque spécifiquement pour cette réservation
-          const manque = qte - Math.max(0, stockDisponible)
+      for (const ligne of (resa.reservation_futs || [])) {
+        const fut = (futsData || []).find((f: any) => f.id === ligne.fut_catalogue_id)
+        if (!fut) continue
+
+        // Stock utilisé par les autres réservations qui chevauchent cette période
+        const stockOccupe = resasActives
+          .filter((other: any) => other.id !== resa.id)
+          .reduce((acc: number, other: any) => {
+            const debutOther = new Date(other.date_debut)
+            const finOther = new Date(other.date_fin)
+            const chevauche = debutOther <= finResa && finOther >= debutResa
+            if (!chevauche) return acc
+            const ligneOther = (other.reservation_futs || []).find((rf: any) => rf.fut_catalogue_id === ligne.fut_catalogue_id)
+            return acc + (ligneOther?.quantite || 0)
+          }, 0)
+
+        const stockDispo = fut.stock_actuel - stockOccupe
+        if (stockDispo < ligne.quantite) {
+          const manque = ligne.quantite - Math.max(0, stockDispo)
           if (!alertesParResa[resa.id]) {
             alertesParResa[resa.id] = { resa, manques: [] }
           }
-          alertesParResa[resa.id].manques.push({ fut, manque, quantite: qte })
+          alertesParResa[resa.id].manques.push({ fut, manque, quantite: ligne.quantite })
         }
-        // Le stock restant après cette réservation (peut aller en négatif pour les suivantes)
-        stockDisponible -= qte
       }
     }
     setAlertes(Object.values(alertesParResa).sort((a: any, b: any) =>
