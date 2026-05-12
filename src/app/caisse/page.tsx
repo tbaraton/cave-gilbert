@@ -2350,7 +2350,7 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
         <ModuleRetourLocation
           reservation={retourDesktop}
           onClose={() => setRetourDesktop(null)}
-          onDone={() => { setRetourDesktop(null); setShowAchatsClient(false); setShowClientPanel(false); setClient(null); setLignes([]); setTypeDoc('ticket'); setRemise(''); }}}
+          onDone={() => { setRetourDesktop(null); setShowAchatsClient(false); setShowClientPanel(false); setClient(null); setLignes([]); setTypeDoc('ticket'); setRemise(''); }}
         />
       )}
     </div>
