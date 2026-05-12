@@ -51,14 +51,13 @@ export function ModuleRetourLocation({ reservation: resa, onClose, onDone, modeC
     ? resa.customer.est_societe ? resa.customer.raison_sociale : `${resa.customer.prenom} ${resa.customer.nom}`
     : 'Client anonyme'
 
-  // Calculs
-  const totalReserve = lignes.reduce((acc, l) => acc + l.prix_unitaire * l.quantite_reservee, 0)
-  const remisePct = lignes[0]?.remise_pct || 0
+  // Calculs — remise et acompte depuis la réservation
+  const remisePct = Number(resa.remise_pct || 0)
+  const acompte = Number(resa.acompte_ttc || 0)
   const totalPercute = lignes.reduce((acc, l) => {
     const prixApresRemise = l.prix_unitaire * (1 - remisePct / 100)
     return acc + prixApresRemise * l.quantite_percutee
   }, 0)
-  const acompte = resa.acompte_ttc || 0
   const soldeClient = Math.max(0, totalPercute - acompte)
   const remboursement = acompte > totalPercute ? acompte - totalPercute : 0
 

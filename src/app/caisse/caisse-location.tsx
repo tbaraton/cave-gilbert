@@ -270,6 +270,7 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
       date_debut: dateDebut, date_fin: dateFin, statut: 'confirmée',
       caution_tireuse_ttc: cautionTireuse, caution_payee: false,
       total_ttc: totalTTC,
+      remise_pct: remiseVal ? (remiseType === 'pct' ? parseFloat(remiseVal) : 0) : 0,
       site_retrait: siteRetrait || null,
       site_retour: siteRetour || null,
     }).select('id').single()
