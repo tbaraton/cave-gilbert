@@ -95,22 +95,21 @@ export default function LocationPage() {
     const resasActives = (resasData || []).filter((r: any) => !['annulée', 'terminée'].includes(r.statut))
     const alertesParResa: Record<string, any> = {}
 
-    for (const resa of resasActives) {
-      const debutResa = new Date(resa.date_debut)
-      const finResa = new Date(resa.date_fin)
+    // Comparaison de dates en string ISO pour éviter les problèmes de timezone
+    const dateStr = (d: string) => d.split('T')[0]
+    const chevauchent = (debut1: string, fin1: string, debut2: string, fin2: string) =>
+      dateStr(debut1) <= dateStr(fin2) && dateStr(fin1) >= dateStr(debut2)
 
+    for (const resa of resasActives) {
       for (const ligne of (resa.reservation_futs || [])) {
         const fut = (futsData || []).find((f: any) => f.id === ligne.fut_catalogue_id)
         if (!fut) continue
 
-        // Stock utilisé par les autres réservations qui chevauchent cette période
+        // Stock occupé par les autres réservations qui chevauchent cette période
         const stockOccupe = resasActives
           .filter((other: any) => other.id !== resa.id)
           .reduce((acc: number, other: any) => {
-            const debutOther = new Date(other.date_debut)
-            const finOther = new Date(other.date_fin)
-            const chevauche = debutOther <= finResa && finOther >= debutResa
-            if (!chevauche) return acc
+            if (!chevauchent(resa.date_debut, resa.date_fin, other.date_debut, other.date_fin)) return acc
             const ligneOther = (other.reservation_futs || []).find((rf: any) => rf.fut_catalogue_id === ligne.fut_catalogue_id)
             return acc + (ligneOther?.quantite || 0)
           }, 0)
@@ -118,9 +117,7 @@ export default function LocationPage() {
         const stockDispo = fut.stock_actuel - stockOccupe
         if (stockDispo < ligne.quantite) {
           const manque = ligne.quantite - Math.max(0, stockDispo)
-          if (!alertesParResa[resa.id]) {
-            alertesParResa[resa.id] = { resa, manques: [] }
-          }
+          if (!alertesParResa[resa.id]) alertesParResa[resa.id] = { resa, manques: [] }
           alertesParResa[resa.id].manques.push({ fut, manque, quantite: ligne.quantite })
         }
       }
