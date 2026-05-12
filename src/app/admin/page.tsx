@@ -1043,6 +1043,54 @@ function ModalDupliquer({ produit, onClose, onSaved }: {
     onClose()
   }
 
+  const handleDupliquerEtArchiver = async () => {
+    setSaving(true)
+    setError('')
+    let newNom = produit.nom
+    if (produit.millesime && millesime) {
+      newNom = produit.nom.replace(String(produit.millesime), millesime)
+    }
+    const slug = newNom.toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+      + '-' + Math.random().toString(36).substring(2, 7)
+    const { data: newProd, error: err } = await supabase.from('products').insert({
+      nom: newNom, slug,
+      nom_cuvee: produit.nom_cuvee || null,
+      contenance: produit.contenance || '75cl',
+      millesime: millesime ? parseInt(millesime) : null,
+      couleur: produit.couleur,
+      region_id: produit.region_id || null,
+      appellation_id: produit.appellation_id || null,
+      domaine_id: produit.domaine_id || null,
+      prix_achat_ht: prixAchatHT ? parseFloat(prixAchatHT) : (produit.prix_achat_ht || null),
+      prix_vente_ttc: prixTTC || null,
+      prix_vente_pro: prixPro || null,
+      description_courte: produit.description_courte || null,
+      image_url: produit.image_url || null,
+      bio: produit.bio || false, vegan: produit.vegan || false,
+      casher: produit.casher || false, naturel: produit.naturel || false,
+      biodynamique: produit.biodynamique || false, actif: true,
+    }).select('id').single()
+    if (err) { setError(err.message); setSaving(false); return }
+    if (produit.domaine_id && newProd?.id) {
+      const { data: ps } = await supabase.from('product_suppliers')
+        .select('*').eq('product_id', produit.id).eq('fournisseur_principal', true).maybeSingle()
+      if (ps) {
+        await supabase.from('product_suppliers').insert({
+          product_id: newProd.id, domaine_id: ps.domaine_id,
+          prix_achat_ht: ps.prix_achat_ht, conditionnement: ps.conditionnement,
+          fournisseur_principal: true,
+        })
+      }
+    }
+    // Archiver l'original — jamais supprimé, historique conservé
+    await supabase.from('products').update({ actif: false }).eq('id', produit.id)
+    setSaving(false)
+    onSaved()
+    onClose()
+  }
+
   const inp = { width: '100%', background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#e8e0d5', fontSize: 14, padding: '10px 12px', boxSizing: 'border-box' as const }
 
   return (
@@ -1114,11 +1162,17 @@ function ModalDupliquer({ produit, onClose, onSaved }: {
           </div>
         )}
 
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button onClick={onClose} style={{ flex: 1, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '11px', fontSize: 11, cursor: 'pointer' }}>Annuler</button>
-          <button onClick={handleDupliquer} disabled={saving} style={{ flex: 2, background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '11px', fontSize: 11, letterSpacing: 2, cursor: 'pointer', fontWeight: 500, textTransform: 'uppercase' as const, opacity: saving ? 0.7 : 1 }}>
-            {saving ? '⟳ Duplication...' : '⧉ Dupliquer'}
+        <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
+          <button onClick={onClose} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '11px', fontSize: 11, cursor: 'pointer' }}>
+            Annuler
           </button>
+          <button onClick={handleDupliquer} disabled={saving} style={{ background: 'rgba(201,169,110,0.1)', border: '0.5px solid rgba(201,169,110,0.3)', color: '#c9a96e', borderRadius: 4, padding: '11px', fontSize: 11, letterSpacing: 1, cursor: 'pointer', fontWeight: 500, textTransform: 'uppercase' as const, opacity: saving ? 0.7 : 1 }}>
+            {saving ? '⟳' : '⧉ Dupliquer'}
+          </button>
+          <button onClick={handleDupliquerEtArchiver} disabled={saving} style={{ background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '11px', fontSize: 11, letterSpacing: 1, cursor: 'pointer', fontWeight: 500, textTransform: 'uppercase' as const, opacity: saving ? 0.7 : 1 }}>
+            {saving ? '⟳' : '⧉ Dupliquer & archiver l\'original'}
+          </button>
+        </div>: saving ? 0.7 : 1 }}>
         </div>
       </div>
     </div>
