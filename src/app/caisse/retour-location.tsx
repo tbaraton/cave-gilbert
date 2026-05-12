@@ -107,7 +107,8 @@ export function ModuleRetourLocation({ reservation: resa, onClose, onDone }: Ret
       // 4. Clôturer la réservation
       const { error: updateErr } = await supabase.from('reservations_location').update({
         statut: 'termin\u00e9e',
-        solde_paye: soldeClient > 0 ? soldeClient : 0,
+        solde_montant: soldeClient > 0 ? soldeClient : 0,
+        solde_paye: true,
         solde_mode: soldeClient > 0 ? modePaiement : null,
         solde_paye_le: new Date().toISOString().split('T')[0],
       }).eq('id', resa.id)
