@@ -440,10 +440,11 @@ function ModalClientForm({ client, onClose, onSaved }: { client?: any; onClose: 
 
 
 // ── Historique Achats Client ──────────────────────────────────
-function HistoriqueAchatsClient({ client, onClose, onAddToCart }: {
+function HistoriqueAchatsClient({ client, onClose, onAddToCart, onRetourDone }: {
   client: any
   onClose: () => void
   onAddToCart: (ligne: any) => void
+  onRetourDone?: () => void
 }) {
   const [achats, setAchats] = useState<any[]>([])
   const [locations, setLocations] = useState<any[]>([])
@@ -492,7 +493,7 @@ function HistoriqueAchatsClient({ client, onClose, onAddToCart }: {
     <ModuleRetourLocation
       reservation={{ ...retourResa, customer: client }}
       onClose={() => setRetourResa(null)}
-      onDone={() => { setRetourResa(null); setOnglet('locations') }}
+      onDone={() => { setRetourResa(null); onRetourDone ? onRetourDone() : onClose() }}
       modeCompact={true}
     />
   )
@@ -1392,7 +1393,7 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
         />
       )}
       {showHistorique && <HistoriqueVentes session={session} onClose={() => setShowHistorique(false)} onAddToCart={handleAddFromHistorique} />}
-      {showAchatsClient && client && <HistoriqueAchatsClient client={client} onClose={() => setShowAchatsClient(false)} onAddToCart={handleAddSingleAchat} />}
+      {showAchatsClient && client && <HistoriqueAchatsClient client={client} onClose={() => setShowAchatsClient(false)} onAddToCart={handleAddSingleAchat} onRetourDone={() => { setShowAchatsClient(false); resetVente() }} />}
       {showLocation && <div style={{ position: 'fixed' as const, inset: 0, zIndex: 600 }}><ModuleLocation session={session} user={vendeur} onClose={() => setShowLocation(false)} /></div>}
 
 
@@ -2333,7 +2334,7 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
       {showNouveauClient&&<ModalClientForm onClose={()=>setShowNouveauClient(false)} onSaved={(c)=>{setClient(c);setShowNouveauClient(false)}}/>}
       {editingClient&&<ModalClientForm client={editingClient} onClose={()=>setEditingClient(null)} onSaved={(c)=>{if(client?.id===c.id)setClient(c);setEditingClient(null)}}/>}
       {showHistorique&&<HistoriqueVentes session={session} onClose={()=>setShowHistorique(false)} onAddToCart={handleAddFromHistorique}/>}
-      {showAchatsClient&&client&&<HistoriqueAchatsClient client={client} onClose={()=>setShowAchatsClient(false)} onAddToCart={handleAddSingleAchat}/>}
+      {showAchatsClient&&client&&<HistoriqueAchatsClient client={client} onClose={()=>setShowAchatsClient(false)} onAddToCart={handleAddSingleAchat} onRetourDone={() => { setShowAchatsClient(false); resetVente() }}/>}
       {showLocation && (
         <div style={{position:'fixed' as const,inset:0,zIndex:1000,background:'#0d0a08'}}>
           <ModuleLocation session={session} user={vendeur} onClose={()=>setShowLocation(false)}/>
