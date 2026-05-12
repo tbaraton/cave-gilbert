@@ -216,9 +216,6 @@ function ModalClientForm({ client, onClose, onSaved }: { client?: any; onClose: 
     if (!form.est_societe && !form.nom.trim()) { setError('Le nom est obligatoire'); return }
     if (!form.est_societe && !form.prenom.trim()) { setError('Le prénom est obligatoire'); return }
     if (form.est_societe && !form.raison_sociale.trim()) { setError('La raison sociale est obligatoire'); return }
-    if (!form.email.trim()) { setError("L'email est obligatoire"); return }
-    if (!form.code_postal.trim()) { setError('Le code postal est obligatoire'); return }
-    if (!form.ville.trim()) { setError('La ville est obligatoire'); return }
     setSaving(true); setError('')
     const payload = {
       prenom: form.prenom, nom: form.nom, email: form.email || null,
