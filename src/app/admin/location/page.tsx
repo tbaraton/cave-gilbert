@@ -91,35 +91,30 @@ export default function LocationPage() {
     setCommandesLoupiote(commandesData || [])
     setConsignes(consignesData || [])
 
-    // Calculer alertes stock — groupées par réservation
+    // Calcul FIFO chronologique : les premières réservations ont priorité sur le stock
     const resasActives = (resasData || []).filter((r: any) => !['annulée', 'terminée'].includes(r.statut))
+      .sort((a: any, b: any) => new Date(a.created_at || a.date_debut).getTime() - new Date(b.created_at || b.date_debut).getTime())
     const alertesParResa: Record<string, any> = {}
 
-    // Comparaison de dates en string ISO pour éviter les problèmes de timezone
-    const dateStr = (d: string) => d.split('T')[0]
-    const chevauchent = (debut1: string, fin1: string, debut2: string, fin2: string) =>
-      dateStr(debut1) <= dateStr(fin2) && dateStr(fin1) >= dateStr(debut2)
+    // Stock disponible par référence de fût (décrémenté au fur et à mesure)
+    const stockRestant: Record<string, number> = {}
+    for (const fut of (futsData || [])) {
+      stockRestant[fut.id] = fut.stock_actuel
+    }
 
     for (const resa of resasActives) {
       for (const ligne of (resa.reservation_futs || [])) {
         const fut = (futsData || []).find((f: any) => f.id === ligne.fut_catalogue_id)
         if (!fut) continue
 
-        // Stock occupé par les autres réservations qui chevauchent cette période
-        const stockOccupe = resasActives
-          .filter((other: any) => other.id !== resa.id)
-          .reduce((acc: number, other: any) => {
-            if (!chevauchent(resa.date_debut, resa.date_fin, other.date_debut, other.date_fin)) return acc
-            const ligneOther = (other.reservation_futs || []).find((rf: any) => rf.fut_catalogue_id === ligne.fut_catalogue_id)
-            return acc + (ligneOther?.quantite || 0)
-          }, 0)
-
-        const stockDispo = fut.stock_actuel - stockOccupe
-        if (stockDispo < ligne.quantite) {
-          const manque = ligne.quantite - Math.max(0, stockDispo)
+        const dispo = stockRestant[ligne.fut_catalogue_id] ?? 0
+        if (dispo < ligne.quantite) {
+          const manque = ligne.quantite - Math.max(0, dispo)
           if (!alertesParResa[resa.id]) alertesParResa[resa.id] = { resa, manques: [] }
           alertesParResa[resa.id].manques.push({ fut, manque, quantite: ligne.quantite })
         }
+        // Décrémenter le stock restant (même s'il devient négatif)
+        stockRestant[ligne.fut_catalogue_id] = dispo - ligne.quantite
       }
     }
     setAlertes(Object.values(alertesParResa).sort((a: any, b: any) =>
