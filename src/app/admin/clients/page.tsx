@@ -291,6 +291,7 @@ function FicheClient({ client, onBack, onEdit }: { client: any; onBack: () => vo
   const [vouchers, setVouchers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [bonASupprimer, setBonASupprimer] = useState<any>(null)
+  const [historiqueOnglet, setHistoriqueOnglet] = useState<'achats' | 'locations'>('achats')
   const [demandes, setDemandes] = useState<any[]>([])
   const [showNouvelleDemandeForm, setShowNouvelleDemandeForm] = useState(false)
   const [nouvelleDemande, setNouvelleDemande] = useState({ titre: '', description: '', date_limite: '' })
@@ -458,9 +459,20 @@ function FicheClient({ client, onBack, onEdit }: { client: any; onBack: () => vo
             </div>
           )}
 
-          {/* Historique commandes */}
-          <div style={{ ...card, marginBottom: 20 }}>
-            <div style={{ fontSize: 10, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 16 }}>Historique des achats</div>
+          {/* Historique achats + locations */}
+          <div style={card}>
+            {/* Onglets */}
+            <div style={{ display: 'flex', gap: 0, marginBottom: 16, borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
+              {[{ id: 'achats', label: '🛒 Historique des achats' }, { id: 'locations', label: `🍺 Locations (${reservationsLocation.length})` }].map(tab => (
+                <button key={tab.id} onClick={() => setHistoriqueOnglet(tab.id as any)} style={{
+                  background: 'transparent', border: 'none', borderBottom: historiqueOnglet === tab.id ? '2px solid #c9a96e' : '2px solid transparent',
+                  color: historiqueOnglet === tab.id ? '#c9a96e' : 'rgba(232,224,213,0.4)',
+                  padding: '6px 16px 10px', fontSize: 11, letterSpacing: 1, cursor: 'pointer', textTransform: 'uppercase' as const,
+                }}>{tab.label}</button>
+              ))}
+            </div>
+
+            {historiqueOnglet === 'achats' ? (
             {commandes.length === 0 ? (
               <div style={{ fontSize: 13, color: 'rgba(232,224,213,0.3)', textAlign: 'center' as const, padding: '24px 0' }}>Aucune commande enregistrée</div>
             ) : (
@@ -494,6 +506,48 @@ function FicheClient({ client, onBack, onEdit }: { client: any; onBack: () => vo
                 </tbody>
               </table>
             )}
+            ) : (
+              /* Onglet Locations */
+              reservationsLocation.length === 0 ? (
+                <div style={{ fontSize: 13, color: 'rgba(232,224,213,0.3)', textAlign: 'center' as const, padding: '24px 0' }}>Aucune location enregistrée</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 10 }}>
+                  {reservationsLocation.map((r: any) => {
+                    const statutColor: Record<string, string> = { devis: '#6e9ec9', confirmée: '#c9a96e', en_cours: '#6ec96e', terminée: '#888', annulée: '#c96e6e' }
+                    const SITES: Record<string, string> = { cave_gilbert: 'Cave de Gilbert', petite_cave: 'La Petite Cave', entrepot: 'Entrepôt', livraison: '🚚 Livraison' }
+                    return (
+                      <div key={r.id} style={{ background: 'rgba(255,255,255,0.02)', borderRadius: 8, padding: '12px 14px', border: '0.5px solid rgba(255,255,255,0.06)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                          <div>
+                            <span style={{ fontFamily: 'monospace', fontSize: 13, color: '#c9a96e' }}>{r.numero}</span>
+                            <span style={{ fontSize: 10, color: statutColor[r.statut], background: statutColor[r.statut] + '22', padding: '2px 8px', borderRadius: 3, marginLeft: 8, textTransform: 'capitalize' as const }}>{r.statut}</span>
+                          </div>
+                          <div style={{ fontSize: 15, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{r.total_ttc?.toFixed(2)} €</div>
+                        </div>
+                        <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)', marginBottom: 6 }}>
+                          📅 {new Date(r.date_debut).toLocaleDateString('fr-FR')} → {new Date(r.date_fin).toLocaleDateString('fr-FR')}
+                          {r.site_retrait && <span style={{ color: '#6ec96e', marginLeft: 8 }}>↓ {SITES[r.site_retrait]}</span>}
+                          {r.site_retour && <span style={{ color: '#c9b06e', marginLeft: 8 }}>↑ {SITES[r.site_retour]}</span>}
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
+                          {r.reservation_tireuses?.map((rt: any) => (
+                            <span key={rt.id} style={{ fontSize: 11, background: 'rgba(201,169,110,0.1)', borderRadius: 3, padding: '2px 8px', color: '#c9a96e' }}>🍺 {rt.tireuse?.nom}</span>
+                          ))}
+                          {r.reservation_futs?.map((rf: any) => (
+                            <span key={rf.id} style={{ fontSize: 11, background: 'rgba(255,255,255,0.05)', borderRadius: 3, padding: '2px 8px', color: 'rgba(232,224,213,0.5)' }}>
+                              {rf.quantite}× {rf.fut?.nom_cuvee} {rf.fut?.contenance_litres}L
+                            </span>
+                          ))}
+                        </div>
+                        {r.acompte_ttc > 0 && (
+                          <div style={{ fontSize: 11, color: '#6ec96e', marginTop: 6 }}>✓ Acompte {r.acompte_ttc?.toFixed(2)} € ({r.acompte_mode})</div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            )}
           </div>
 
           {/* Remise permanente */}
@@ -503,52 +557,6 @@ function FicheClient({ client, onBack, onEdit }: { client: any; onBack: () => vo
               <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                 <div style={{ fontSize: 32, color: '#c96ec9', fontFamily: 'Georgia, serif', fontWeight: 300 }}>-{client.remise_pct}%</div>
                 {client.remise_raison && <div style={{ fontSize: 13, color: 'rgba(232,224,213,0.6)', fontStyle: 'italic' }}>{client.remise_raison}</div>}
-              </div>
-            </div>
-          )}
-
-          {/* Locations tireuses */}
-          {reservationsLocation.length > 0 && (
-            <div style={{ ...card, marginBottom: 20 }}>
-              <div style={{ fontSize: 11, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 16 }}>🍺 Locations tireuse & fûts</div>
-              <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 10 }}>
-                {reservationsLocation.map((r: any) => {
-                  const statutColor: Record<string, string> = { devis: '#6e9ec9', confirmée: '#c9a96e', en_cours: '#6ec96e', terminée: '#888', annulée: '#c96e6e' }
-                  const SITES: Record<string, string> = { cave_gilbert: 'Cave de Gilbert', petite_cave: 'La Petite Cave', entrepot: 'Entrepôt', livraison: '🚚 Livraison' }
-                  return (
-                    <div key={r.id} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 8, padding: '12px 16px', border: '0.5px solid rgba(255,255,255,0.06)' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-                        <div>
-                          <span style={{ fontFamily: 'monospace', fontSize: 13, color: '#c9a96e' }}>{r.numero}</span>
-                          <span style={{ fontSize: 11, color: statutColor[r.statut], background: statutColor[r.statut] + '22', padding: '2px 8px', borderRadius: 3, marginLeft: 8, textTransform: 'capitalize' as const }}>{r.statut}</span>
-                        </div>
-                        <div style={{ fontSize: 16, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{r.total_ttc?.toFixed(2)}€</div>
-                      </div>
-                      <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)', marginBottom: 6 }}>
-                        {new Date(r.date_debut).toLocaleDateString('fr-FR')} → {new Date(r.date_fin).toLocaleDateString('fr-FR')}
-                        {r.site_retrait && <span style={{ color: '#6ec96e', marginLeft: 8 }}>↓ {SITES[r.site_retrait]}</span>}
-                        {r.site_retour && <span style={{ color: '#c9b06e', marginLeft: 8 }}>↑ {SITES[r.site_retour]}</span>}
-                      </div>
-                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
-                        {r.reservation_tireuses?.map((rt: any) => (
-                          <span key={rt.id} style={{ fontSize: 11, background: 'rgba(201,169,110,0.1)', borderRadius: 3, padding: '2px 8px', color: '#c9a96e' }}>
-                            {rt.tireuse?.nom}
-                          </span>
-                        ))}
-                        {r.reservation_futs?.map((rf: any) => (
-                          <span key={rf.id} style={{ fontSize: 11, background: 'rgba(255,255,255,0.05)', borderRadius: 3, padding: '2px 8px', color: 'rgba(232,224,213,0.5)' }}>
-                            {rf.quantite}× {rf.fut?.nom_cuvee} {rf.fut?.contenance_litres}L
-                          </span>
-                        ))}
-                      </div>
-                      {r.acompte_ttc > 0 && (
-                        <div style={{ fontSize: 11, color: '#6ec96e', marginTop: 6 }}>
-                          ✓ Acompte {r.acompte_ttc?.toFixed(2)}€ encaissé ({r.acompte_mode})
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
               </div>
             </div>
           )}

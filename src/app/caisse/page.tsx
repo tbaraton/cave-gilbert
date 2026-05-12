@@ -445,14 +445,131 @@ function HistoriqueAchatsClient({ client, onClose, onAddToCart }: {
   onAddToCart: (ligne: any) => void
 }) {
   const [achats, setAchats] = useState<any[]>([])
+  const [locations, setLocations] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [onglet, setOnglet] = useState<'achats' | 'locations'>('achats')
 
   useEffect(() => {
     const load = async () => {
       setLoading(true)
-      const { data: ventes } = await supabase
-        .from('ventes')
-        .select('id, numero, created_at, vente_lignes(id, product_id, nom_produit, millesime, quantite, prix_unitaire_ttc, total_ttc, remise_pct)')
+      const [{ data: ventes }, { data: resas }] = await Promise.all([
+        supabase
+          .from('ventes')
+          .select('id, numero, created_at, vente_lignes(id, product_id, nom_produit, millesime, quantite, prix_unitaire_ttc, remise_pct)')
+          .eq('customer_id', client.id)
+          .eq('statut', 'validee')
+          .order('created_at', { ascending: false })
+          .limit(50),
+        supabase
+          .from('reservations_location')
+          .select('*, reservation_futs(*, fut:futs_catalogue(*)), reservation_tireuses(*, tireuse:tireuses(*))')
+          .eq('customer_id', client.id)
+          .order('date_debut', { ascending: false })
+          .limit(20),
+      ])
+
+      const lignes: any[] = []
+      for (const v of ventes || []) {
+        for (const l of (v.vente_lignes || [])) {
+          lignes.push({ ...l, vente_date: v.created_at, vente_numero: v.numero })
+        }
+      }
+      setAchats(lignes)
+      setLocations(resas || [])
+      setLoading(false)
+    }
+    load()
+  }, [client.id])
+
+  const clientNom = client.est_societe ? client.raison_sociale : `${client.prenom || ''} ${client.nom}`
+  const STATUT_COLOR: Record<string, string> = { devis: '#6e9ec9', confirmée: '#c9a96e', en_cours: '#6ec96e', terminée: '#888', annulée: '#c96e6e' }
+  const SITES: Record<string, string> = { cave_gilbert: 'Cave de Gilbert', petite_cave: 'La Petite Cave', entrepot: 'Entrepôt', livraison: '🚚 Livraison' }
+
+  return (
+    <div style={{ position: 'fixed' as const, inset: 0, background: '#0d0a08', zIndex: 700, display: 'flex', flexDirection: 'column' as const }}>
+      {/* Header */}
+      <div style={{ padding: '14px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', gap: 12 }}>
+        <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: '#c9a96e', fontSize: 20, cursor: 'pointer' }}>←</button>
+        <div>
+          <div style={{ fontFamily: 'Georgia, serif', fontSize: 17, color: '#f0e8d8' }}>Historique de {clientNom}</div>
+          <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>Achats et locations</div>
+        </div>
+      </div>
+
+      {/* Onglets */}
+      <div style={{ display: 'flex', borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
+        {[{ id: 'achats', label: '🛒 Achats' }, { id: 'locations', label: '🍺 Locations' }].map(tab => (
+          <button key={tab.id} onClick={() => setOnglet(tab.id as any)} style={{
+            flex: 1, padding: '10px', fontSize: 12, cursor: 'pointer', border: 'none',
+            background: onglet === tab.id ? 'rgba(201,169,110,0.1)' : 'transparent',
+            color: onglet === tab.id ? '#c9a96e' : 'rgba(232,224,213,0.4)',
+            borderBottom: onglet === tab.id ? '2px solid #c9a96e' : '2px solid transparent',
+          }}>{tab.label}{tab.id === 'locations' && locations.length > 0 && ` (${locations.length})`}</button>
+        ))}
+      </div>
+
+      <div style={{ flex: 1, overflowY: 'auto' as const }}>
+        {loading ? (
+          <div style={{ textAlign: 'center' as const, padding: 48, color: 'rgba(232,224,213,0.3)' }}>Chargement...</div>
+        ) : onglet === 'achats' ? (
+          achats.length === 0 ? (
+            <div style={{ textAlign: 'center' as const, padding: 48, color: 'rgba(232,224,213,0.3)' }}>Aucun achat enregistré</div>
+          ) : achats.map((l, i) => (
+            <div key={`${l.id}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.04)' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 15, color: '#f0e8d8' }}>{l.nom_produit}{l.millesime ? ` ${l.millesime}` : ''}</div>
+                <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', marginTop: 3 }}>
+                  {new Date(l.vente_date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                  {' · '}{l.quantite} bouteille{l.quantite > 1 ? 's' : ''}
+                  {l.remise_pct > 0 ? ` · -${l.remise_pct}%` : ''}
+                </div>
+              </div>
+              <div style={{ textAlign: 'right' as const, marginRight: 8 }}>
+                <div style={{ fontSize: 16, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{parseFloat(l.prix_unitaire_ttc || 0).toFixed(2)} €</div>
+                <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)' }}>/ bouteille</div>
+              </div>
+              <button onClick={() => onAddToCart(l)} style={{ background: 'rgba(201,169,110,0.1)', border: '0.5px solid rgba(201,169,110,0.3)', color: '#c9a96e', borderRadius: 6, padding: '6px 10px', fontSize: 12, cursor: 'pointer' }}>+</button>
+            </div>
+          ))
+        ) : (
+          locations.length === 0 ? (
+            <div style={{ textAlign: 'center' as const, padding: 48, color: 'rgba(232,224,213,0.3)' }}>Aucune location enregistrée</div>
+          ) : locations.map((r: any) => (
+            <div key={r.id} style={{ margin: '12px 16px', background: '#18130e', borderRadius: 10, padding: '14px 16px', border: '0.5px solid rgba(255,255,255,0.06)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+                <div>
+                  <span style={{ fontFamily: 'monospace', fontSize: 13, color: '#c9a96e' }}>{r.numero}</span>
+                  <span style={{ marginLeft: 8, fontSize: 10, padding: '2px 8px', borderRadius: 3, background: (STATUT_COLOR[r.statut] || '#888') + '22', color: STATUT_COLOR[r.statut] || '#888' }}>{r.statut}</span>
+                </div>
+                <div style={{ fontSize: 15, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{r.total_ttc?.toFixed(2)} €</div>
+              </div>
+              <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)', marginBottom: 8 }}>
+                📅 {new Date(r.date_debut).toLocaleDateString('fr-FR')} → {new Date(r.date_fin).toLocaleDateString('fr-FR')}
+                {r.site_retrait && <span style={{ color: '#6ec96e', marginLeft: 8 }}>↓ {SITES[r.site_retrait] || r.site_retrait}</span>}
+                {r.site_retour && <span style={{ color: '#c9b06e', marginLeft: 8 }}>↑ {SITES[r.site_retour] || r.site_retour}</span>}
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 6 }}>
+                {r.reservation_tireuses?.map((rt: any) => (
+                  <span key={rt.id} style={{ fontSize: 11, background: 'rgba(201,169,110,0.1)', borderRadius: 3, padding: '2px 8px', color: '#c9a96e' }}>
+                    🍺 {rt.tireuse?.nom}
+                  </span>
+                ))}
+                {r.reservation_futs?.map((rf: any) => (
+                  <span key={rf.id} style={{ fontSize: 11, background: 'rgba(255,255,255,0.05)', borderRadius: 3, padding: '2px 8px', color: 'rgba(232,224,213,0.6)' }}>
+                    {rf.quantite}× {rf.fut?.nom_cuvee} {rf.fut?.contenance_litres}L
+                  </span>
+                ))}
+              </div>
+              {r.acompte_ttc > 0 && (
+                <div style={{ fontSize: 11, color: '#6ec96e', marginTop: 8 }}>✓ Acompte {r.acompte_ttc?.toFixed(2)} € ({r.acompte_mode})</div>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  )
+}te, prix_unitaire_ttc, total_ttc, remise_pct)')
         .eq('customer_id', client.id)
         .eq('statut', 'validee')
         .order('created_at', { ascending: false })
