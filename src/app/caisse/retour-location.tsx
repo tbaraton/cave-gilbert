@@ -59,6 +59,19 @@ export function ModuleRetourLocation({ reservation: resa, onClose, onDone }: Ret
   const handleValider = async () => {
     setSaving(true)
     try {
+      // Vérifier que la réservation n'est pas déjà terminée
+      const { data: resaCheck } = await supabase
+        .from('reservations_location')
+        .select('statut')
+        .eq('id', resa.id)
+        .single()
+      if (resaCheck?.statut === 'terminée') {
+        alert('Cette location a déjà été clôturée.')
+        setSaving(false)
+        onDone()
+        return
+      }
+
       for (const l of lignes) {
         await supabase.from('retours_futs').insert({
           reservation_id: resa.id,
