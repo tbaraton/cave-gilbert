@@ -91,29 +91,27 @@ export default function LocationPage() {
     setCommandesLoupiote(commandesData || [])
     setConsignes(consignesData || [])
 
-    // Calcul FIFO chronologique : les premières réservations ont priorité sur le stock
+    // Calcul FIFO : réservations confirmées seulement (en_cours = stock déjà sorti)
     const resasActives = (resasData || []).filter((r: any) => !['annulée', 'terminée'].includes(r.statut))
+    const resasConfirmees = resasActives.filter((r: any) => r.statut !== 'en_cours')
       .sort((a: any, b: any) => new Date(a.created_at || a.date_debut).getTime() - new Date(b.created_at || b.date_debut).getTime())
     const alertesParResa: Record<string, any> = {}
 
-    // Stock disponible par référence de fût (décrémenté au fur et à mesure)
     const stockRestant: Record<string, number> = {}
     for (const fut of (futsData || [])) {
       stockRestant[fut.id] = fut.stock_actuel
     }
 
-    for (const resa of resasActives) {
+    for (const resa of resasConfirmees) {
       for (const ligne of (resa.reservation_futs || [])) {
         const fut = (futsData || []).find((f: any) => f.id === ligne.fut_catalogue_id)
         if (!fut) continue
-
         const dispo = stockRestant[ligne.fut_catalogue_id] ?? 0
         if (dispo < ligne.quantite) {
           const manque = ligne.quantite - Math.max(0, dispo)
           if (!alertesParResa[resa.id]) alertesParResa[resa.id] = { resa, manques: [] }
           alertesParResa[resa.id].manques.push({ fut, manque, quantite: ligne.quantite })
         }
-        // Décrémenter le stock restant (même s'il devient négatif)
         stockRestant[ligne.fut_catalogue_id] = dispo - ligne.quantite
       }
     }
