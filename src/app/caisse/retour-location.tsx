@@ -32,6 +32,13 @@ export function ModuleRetourLocation({ reservation: resa, onClose, onDone }: Ret
   const [saving, setSaving] = useState(false)
   const [etape, setEtape] = useState<'retour' | 'paiement' | 'done'>('retour')
   const [notes, setNotes] = useState('')
+  const [closed, setClosed] = useState(false)
+
+  // Dès que closed=true, on appelle onDone et on ne rend plus rien
+  if (closed) {
+    onDone()
+    return null
+  }
 
   const remisePct = Number(resa.remise_pct || 0)
   const acompte = Number(resa.acompte_ttc || 0)
@@ -343,7 +350,7 @@ ${nonPercutesHtml}
                 📧 Envoyer à {resa.customer.email}
               </button>
             )}
-            <button onClick={onDone} style={{ background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 8, padding: '13px 32px', fontSize: 14, fontWeight: 600, cursor: 'pointer', letterSpacing: 1 }}>
+            <button onClick={() => setClosed(true)} style={{ background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 8, padding: '13px 32px', fontSize: 14, fontWeight: 600, cursor: 'pointer', letterSpacing: 1 }}>
               ✓ Terminer & retour caisse
             </button>
           </div>
