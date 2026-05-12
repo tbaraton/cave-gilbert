@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { ModuleLocation } from './caisse-location'
+import { ModuleRetourLocation } from './retour-location'
 import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
@@ -448,6 +449,7 @@ function HistoriqueAchatsClient({ client, onClose, onAddToCart }: {
   const [locations, setLocations] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [onglet, setOnglet] = useState<'achats' | 'locations'>('achats')
+  const [retourResa, setRetourResa] = useState<any>(null)
 
   useEffect(() => {
     const load = async () => {
@@ -462,8 +464,9 @@ function HistoriqueAchatsClient({ client, onClose, onAddToCart }: {
           .limit(50),
         supabase
           .from('reservations_location')
-          .select('*, reservation_futs(*, fut:futs_catalogue(*)), reservation_tireuses(*, tireuse:tireuses(*))')
+          .select('*, reservation_futs(*, fut:futs_catalogue(*)), reservation_tireuses(*, tireuse:tireuses(*)), retours_futs(*)')
           .eq('customer_id', client.id)
+          .neq('statut', 'annulée')
           .order('date_debut', { ascending: false })
           .limit(20),
       ])
@@ -484,6 +487,15 @@ function HistoriqueAchatsClient({ client, onClose, onAddToCart }: {
   const clientNom = client.est_societe ? client.raison_sociale : `${client.prenom || ''} ${client.nom}`
   const STATUT_COLOR: Record<string, string> = { devis: '#6e9ec9', confirmée: '#c9a96e', en_cours: '#6ec96e', terminée: '#888', annulée: '#c96e6e' }
   const SITES: Record<string, string> = { cave_gilbert: 'Cave de Gilbert', petite_cave: 'La Petite Cave', entrepot: 'Entrepôt', livraison: '🚚 Livraison' }
+
+  if (retourResa) return (
+    <ModuleRetourLocation
+      reservation={{ ...retourResa, customer: client }}
+      onClose={() => setRetourResa(null)}
+      onDone={() => { setRetourResa(null); setOnglet('locations') }}
+      modeCompact={true}
+    />
+  )
 
   return (
     <div style={{ position: 'fixed' as const, inset: 0, background: '#0d0a08', zIndex: 700, display: 'flex', flexDirection: 'column' as const }}>
@@ -562,6 +574,20 @@ function HistoriqueAchatsClient({ client, onClose, onAddToCart }: {
               </div>
               {r.acompte_ttc > 0 && (
                 <div style={{ fontSize: 11, color: '#6ec96e', marginTop: 8 }}>✓ Acompte {r.acompte_ttc?.toFixed(2)} € ({r.acompte_mode})</div>
+              )}
+              {r.retours_futs && r.retours_futs.length > 0 && (
+                <div style={{ fontSize: 11, color: '#6e9ec9', marginTop: 6 }}>
+                  ↩ Retour : {r.retours_futs.map((rf: any) => `${rf.quantite_retournee} fût${rf.quantite_retournee > 1 ? 's' : ''} non percuté${rf.quantite_retournee > 1 ? 's' : ''}`).join(', ')}
+                </div>
+              )}
+              {r.statut === 'en_cours' && (
+                <button onClick={() => setRetourResa(r)} style={{
+                  marginTop: 10, width: '100%', background: 'rgba(201,169,110,0.1)',
+                  border: '0.5px solid rgba(201,169,110,0.3)', color: '#c9a96e',
+                  borderRadius: 8, padding: '10px', fontSize: 13, cursor: 'pointer', fontWeight: 600,
+                }}>
+                  ↩ Procéder au retour
+                </button>
               )}
             </div>
           ))
