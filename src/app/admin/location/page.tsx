@@ -45,22 +45,19 @@ export default function LocationPage() {
   const [cmdReception, setCmdReception] = useState<any>(null)
   const [qtesRecues, setQtesRecues] = useState<Record<string, number>>({})
   const [envoyerEnCours, setEnvoyerEnCours] = useState(false)
-  const [ajouteAlertes, setAjouteAlertesRaw] = useState<Set<string>>(() => {
-    try {
-      const saved = sessionStorage.getItem('ajouteAlertes')
-      return saved ? new Set(JSON.parse(saved)) : new Set()
-    } catch { return new Set() }
-  })
-  const setAjouteAlertes = (updater: Set<string> | ((prev: Set<string>) => Set<string>)) => {
-    setAjouteAlertesRaw(prev => {
-      const next = typeof updater === 'function' ? updater(prev) : updater
-      try { sessionStorage.setItem('ajouteAlertes', JSON.stringify([...next])) } catch {}
-      return next
-    })
-  }
+  const [ajouteAlertes, setAjouteAlertes] = useState<Set<string>>(new Set())
 
-  // Recalcule quels alertes sont couverts par la commande en attente
-  const alertesCouvertes = ajouteAlertes
+  // Badge vert calculé depuis les données réelles de la commande en attente
+  const cmdEnAttente = commandesLoupiote.find((cmd: any) => cmd.statut === 'en_attente')
+  const alertesCouvertes = new Set<string>(
+    alertes.filter((a: any) =>
+      a.manques.every((m: any) => {
+        if (!cmdEnAttente) return false
+        const ligne = cmdEnAttente.lignes?.find((l: any) => l.fut_catalogue_id === m.fut.id)
+        return ligne && ligne.quantite >= m.manque
+      })
+    ).map((a: any) => a.resa.id)
+  )
   const [showRetourFuts, setShowRetourFuts] = useState<any>(null)
   const [showNouvelleConsigne, setShowNouvelleConsigne] = useState(false)
 
@@ -167,13 +164,13 @@ export default function LocationPage() {
     }
     await recalculerTotaux(cmdId)
     await load()
-    setAjouteAlertes(prev => new Set([...prev, resa.id]))
+    // badge computed from commande data
   }
 
   const supprimerLigneCommande = async (ligneId: string, cmdId: string) => {
     await supabase.from('commandes_loupiote_lignes').delete().eq('id', ligneId)
     await recalculerTotaux(cmdId)
-    setAjouteAlertes(new Set()) // reset badges
+    // badge computed from commande data // reset badges
     await load()
   }
 
@@ -690,7 +687,7 @@ export default function LocationPage() {
                         if (!confirm('Supprimer cette commande ?')) return
                         await supabase.from('commandes_loupiote_lignes').delete().eq('commande_id', cmd.id)
                         await supabase.from('commandes_loupiote').delete().eq('id', cmd.id)
-                        setAjouteAlertes(new Set())
+                        // badge computed from commande data
                         load()
                       }} style={{ background: 'transparent', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 6, color: '#c96e6e', padding: '3px 10px', fontSize: 11, cursor: 'pointer' }}>
                         🗑 Supprimer
@@ -720,7 +717,7 @@ export default function LocationPage() {
                                 onChange={async e => {
                                   const q = parseInt(e.target.value) || 1
                                   await supabase.from('commandes_loupiote_lignes').update({ quantite: q }).eq('id', l.id)
-                                  setAjouteAlertes(new Set())
+                                  // badge computed from commande data
                                   await recalculerTotaux(cmd.id)
                                   load()
                                 }}
