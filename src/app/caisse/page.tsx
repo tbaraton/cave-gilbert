@@ -452,38 +452,36 @@ function HistoriqueAchatsClient({ client, onClose, onAddToCart, onRetourDone }: 
   const [onglet, setOnglet] = useState<'achats' | 'locations'>('achats')
   const [retourResa, setRetourResa] = useState<any>(null)
 
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true)
-      const [{ data: ventes }, { data: resas }] = await Promise.all([
-        supabase
-          .from('ventes')
-          .select('id, numero, created_at, vente_lignes(id, product_id, nom_produit, millesime, quantite, prix_unitaire_ttc, remise_pct)')
-          .eq('customer_id', client.id)
-          .eq('statut', 'validee')
-          .order('created_at', { ascending: false })
-          .limit(50),
-        supabase
-          .from('reservations_location')
-          .select('*, reservation_futs(*, fut:futs_catalogue(*)), reservation_tireuses(*, tireuse:tireuses(*)), retours_futs(*)')
-          .eq('customer_id', client.id)
-          .neq('statut', 'annulée')
-          .order('date_debut', { ascending: false })
-          .limit(20),
-      ])
-
-      const lignes: any[] = []
-      for (const v of ventes || []) {
-        for (const l of (v.vente_lignes || [])) {
-          lignes.push({ ...l, vente_date: v.created_at, vente_numero: v.numero })
-        }
+  const loadHistorique = async () => {
+    setLoading(true)
+    const [{ data: ventes }, { data: resas }] = await Promise.all([
+      supabase
+        .from('ventes')
+        .select('id, numero, created_at, vente_lignes(id, product_id, nom_produit, millesime, quantite, prix_unitaire_ttc, remise_pct)')
+        .eq('customer_id', client.id)
+        .eq('statut', 'validee')
+        .order('created_at', { ascending: false })
+        .limit(50),
+      supabase
+        .from('reservations_location')
+        .select('*, reservation_futs(*, fut:futs_catalogue(*)), reservation_tireuses(*, tireuse:tireuses(*)), retours_futs(*)')
+        .eq('customer_id', client.id)
+        .neq('statut', 'annulée')
+        .order('date_debut', { ascending: false })
+        .limit(20),
+    ])
+    const lignes: any[] = []
+    for (const v of ventes || []) {
+      for (const l of (v.vente_lignes || [])) {
+        lignes.push({ ...l, vente_date: v.created_at, vente_numero: v.numero })
       }
-      setAchats(lignes)
-      setLocations(resas || [])
-      setLoading(false)
     }
-    load()
-  }, [client.id])
+    setAchats(lignes)
+    setLocations(resas || [])
+    setLoading(false)
+  }
+
+  useEffect(() => { loadHistorique() }, [client.id])
 
   const clientNom = client.est_societe ? client.raison_sociale : `${client.prenom || ''} ${client.nom}`
   const STATUT_COLOR: Record<string, string> = { devis: '#6e9ec9', confirmée: '#c9a96e', en_cours: '#6ec96e', terminée: '#888', annulée: '#c96e6e' }
@@ -495,8 +493,7 @@ function HistoriqueAchatsClient({ client, onClose, onAddToCart, onRetourDone }: 
       onClose={() => setRetourResa(null)}
       onDone={() => {
         setRetourResa(null)
-        // Marquer terminée localement ET recharger depuis la base
-        setLocations(prev => prev.map((r: any) => r.id === retourResa.id ? { ...r, statut: 'terminée' } : r))
+        loadHistorique()
         onRetourDone ? onRetourDone(retourResa) : onClose()
       }}
       modeCompact={true}
