@@ -1173,7 +1173,6 @@ function ModalDupliquer({ produit, onClose, onSaved }: {
             {saving ? 'Chargement...' : 'Dupliquer & archiver original'}
           </button>
         </div>
-        </div>
       </div>
     </div>
   )
