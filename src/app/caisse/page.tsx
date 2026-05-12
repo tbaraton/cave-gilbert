@@ -492,8 +492,12 @@ function HistoriqueAchatsClient({ client, onClose, onAddToCart, onRetourDone }: 
       reservation={{ ...retourResa, customer: client }}
       onClose={() => setRetourResa(null)}
       onDone={() => {
+        const resaId = retourResa.id
         setRetourResa(null)
-        loadHistorique()
+        // Mise à jour immédiate synchrone du statut local
+        setLocations((prev: any[]) => prev.map((r: any) =>
+          r.id === resaId ? { ...r, statut: 'terminée' } : r
+        ))
         onRetourDone ? onRetourDone(retourResa) : onClose()
       }}
       modeCompact={true}
@@ -584,7 +588,10 @@ function HistoriqueAchatsClient({ client, onClose, onAddToCart, onRetourDone }: 
                 </div>
               )}
               {r.statut === 'en_cours' && (
-                <button onClick={() => setRetourResa(r)} style={{
+                <button onClick={() => {
+                  if (r.statut === 'terminée') return
+                  setRetourResa(r)
+                }} style={{
                   marginTop: 10, width: '100%', background: 'rgba(201,169,110,0.1)',
                   border: '0.5px solid rgba(201,169,110,0.3)', color: '#c9a96e',
                   borderRadius: 8, padding: '10px', fontSize: 13, cursor: 'pointer', fontWeight: 600,
