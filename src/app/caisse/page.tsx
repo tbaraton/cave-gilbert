@@ -569,68 +569,6 @@ function HistoriqueAchatsClient({ client, onClose, onAddToCart }: {
       </div>
     </div>
   )
-}te, prix_unitaire_ttc, total_ttc, remise_pct)')
-        .eq('customer_id', client.id)
-        .eq('statut', 'validee')
-        .order('created_at', { ascending: false })
-        .limit(50)
-
-      // Aplatir en lignes individuelles avec date de vente
-      const lignes: any[] = []
-      for (const v of ventes || []) {
-        for (const l of (v.vente_lignes || [])) {
-          lignes.push({ ...l, vente_date: v.created_at, vente_numero: v.numero })
-        }
-      }
-      setAchats(lignes)
-      setLoading(false)
-    }
-    load()
-  }, [client.id])
-
-  const clientNom = client.est_societe ? client.raison_sociale : `${client.prenom || ''} ${client.nom || ''}`.trim()
-
-  return (
-    <div style={{ position: 'fixed' as const, inset: 0, background: '#0d0a08', zIndex: 700, display: 'flex', flexDirection: 'column' as const, fontFamily: "'DM Sans', system-ui, sans-serif", color: '#e8e0d5' }}>
-      {/* Header */}
-      <div style={{ padding: '14px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', gap: 12, background: '#0d0a08' }}>
-        <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: '#c9a96e', fontSize: 22, cursor: 'pointer' }}>←</button>
-        <div>
-          <div style={{ fontFamily: 'Georgia, serif', fontSize: 17, color: '#f0e8d8' }}>Achats de {clientNom}</div>
-          <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>Un article par ligne — cliquez pour ajouter au panier</div>
-        </div>
-      </div>
-
-      <div style={{ flex: 1, overflowY: 'auto' as const }}>
-        {loading ? (
-          <div style={{ textAlign: 'center' as const, padding: 48, color: 'rgba(232,224,213,0.3)' }}>⟳ Chargement...</div>
-        ) : achats.length === 0 ? (
-          <div style={{ textAlign: 'center' as const, padding: 48, color: 'rgba(232,224,213,0.3)' }}>Aucun achat enregistré</div>
-        ) : achats.map((l, i) => (
-          <div key={`${l.id}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.05)' }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 15, color: '#f0e8d8' }}>{l.nom_produit}{l.millesime ? ` ${l.millesime}` : ''}</div>
-              <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', marginTop: 3 }}>
-                {new Date(l.vente_date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}
-                {' · '}{l.quantite} bouteille{l.quantite > 1 ? 's' : ''}
-                {l.remise_pct > 0 ? ` · -${l.remise_pct}%` : ''}
-              </div>
-            </div>
-            <div style={{ textAlign: 'right' as const, marginRight: 8 }}>
-              <div style={{ fontSize: 16, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{parseFloat(l.prix_unitaire_ttc).toFixed(2)}€</div>
-              <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)' }}>/ bouteille</div>
-            </div>
-            <button onClick={() => { onAddToCart(l); onClose() }} style={{
-              background: 'rgba(201,169,110,0.12)', border: '0.5px solid rgba(201,169,110,0.3)',
-              borderRadius: 8, color: '#c9a96e', padding: '10px 14px', fontSize: 13,
-              cursor: 'pointer', whiteSpace: 'nowrap' as const, touchAction: 'manipulation',
-            }}>+ Caisse</button>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
 
 // ── Historique Ventes ─────────────────────────────────────────
 function HistoriqueVentes({ session, onClose, onAddToCart }: {

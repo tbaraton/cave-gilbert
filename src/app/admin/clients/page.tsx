@@ -473,6 +473,7 @@ function FicheClient({ client, onBack, onEdit }: { client: any; onBack: () => vo
             </div>
 
             {historiqueOnglet === 'achats' ? (
+              <>
             {commandes.length === 0 ? (
               <div style={{ fontSize: 13, color: 'rgba(232,224,213,0.3)', textAlign: 'center' as const, padding: '24px 0' }}>Aucune commande enregistrée</div>
             ) : (
@@ -506,6 +507,7 @@ function FicheClient({ client, onBack, onEdit }: { client: any; onBack: () => vo
                 </tbody>
               </table>
             )}
+              </>
             ) : (
               /* Onglet Locations */
               reservationsLocation.length === 0 ? (
