@@ -667,7 +667,7 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
                 style={{ width: '100%', background: '#1a1408', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 8, color: '#e8e0d5', fontSize: 14, padding: '12px', cursor: 'pointer', marginBottom: 10 }}>
                 <option value="">— Choisir un fût —</option>
                 {futs.map(f => (
-                  <option key={f.id} value={f.id} disabled={f.stock_actuel <= 0}>
+                  <option key={f.id} value={f.id}>
                     {TYPE_LABELS[f.type_biere]} "{f.nom_cuvee}" {f.contenance_litres}L — {fmt(f.prix_vente_ttc)} {f.stock_actuel <= 0 ? '(rupture)' : `(stock: ${f.stock_actuel})`}
                   </option>
                 ))}
