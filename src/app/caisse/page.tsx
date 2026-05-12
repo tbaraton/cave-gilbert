@@ -663,9 +663,9 @@ function HistoriqueVentes({ session, onClose, onAddToCart }: {
   const searchClients = async (q: string) => {
     if (!q.trim()) { setClientsFound([]); return }
     const [{ data: byNom }, { data: byPrenom }, { data: bySociete }] = await Promise.all([
-      supabase.from('customers').select('id, prenom, nom, raison_sociale, est_societe, email, telephone').ilike('nom', `%${q}%`).limit(6),
-      supabase.from('customers').select('id, prenom, nom, raison_sociale, est_societe, email, telephone').ilike('prenom', `%${q}%`).limit(6),
-      supabase.from('customers').select('id, prenom, nom, raison_sociale, est_societe, email, telephone').ilike('raison_sociale', `%${q}%`).limit(6),
+      supabase.from('customers').select('id, prenom, nom, raison_sociale, est_societe, tarif_pro, remise_pct, remise_raison, email, telephone, adresse, code_postal, ville, pays, notes, newsletter').ilike('nom', `%${q}%`).limit(6),
+      supabase.from('customers').select('id, prenom, nom, raison_sociale, est_societe, tarif_pro, remise_pct, remise_raison, email, telephone, adresse, code_postal, ville, pays, notes, newsletter').ilike('prenom', `%${q}%`).limit(6),
+      supabase.from('customers').select('id, prenom, nom, raison_sociale, est_societe, tarif_pro, remise_pct, remise_raison, email, telephone, adresse, code_postal, ville, pays, notes, newsletter').ilike('raison_sociale', `%${q}%`).limit(6),
     ])
     const seen = new Set<string>()
     const merged = [...(byNom || []), ...(byPrenom || []), ...(bySociete || [])].filter(c => {
@@ -1412,7 +1412,7 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
         <ModalClientForm
           client={editingClient}
           onClose={() => setEditingClient(null)}
-          onSaved={(c) => { if (client?.id === c.id) setClient(c); setEditingClient(null) }}
+          onSaved={(c) => { if (client?.id === c.id) setClient(c); setClientsFound(prev => prev.map(x => x.id === c.id ? c : x)); setEditingClient(null) }}
         />
       )}
       {showHistorique && <HistoriqueVentes session={session} onClose={() => setShowHistorique(false)} onAddToCart={handleAddFromHistorique} />}
@@ -2035,10 +2035,10 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
   const searchClients = async (q: string) => {
     if (!q.trim()) { setClientsFound([]); return }
     const [{ data: byNom }, { data: byPrenom }, { data: bySociete }, { data: byEmail }] = await Promise.all([
-      supabase.from('customers').select('id, prenom, nom, raison_sociale, est_societe, email, telephone').ilike('nom', `%${q}%`).limit(6),
-      supabase.from('customers').select('id, prenom, nom, raison_sociale, est_societe, email, telephone').ilike('prenom', `%${q}%`).limit(6),
-      supabase.from('customers').select('id, prenom, nom, raison_sociale, est_societe, email, telephone').ilike('raison_sociale', `%${q}%`).limit(6),
-      supabase.from('customers').select('id, prenom, nom, raison_sociale, est_societe, email, telephone').ilike('email', `%${q}%`).limit(4),
+      supabase.from('customers').select('id, prenom, nom, raison_sociale, est_societe, tarif_pro, remise_pct, remise_raison, email, telephone, adresse, code_postal, ville, pays, notes, newsletter').ilike('nom', `%${q}%`).limit(6),
+      supabase.from('customers').select('id, prenom, nom, raison_sociale, est_societe, tarif_pro, remise_pct, remise_raison, email, telephone, adresse, code_postal, ville, pays, notes, newsletter').ilike('prenom', `%${q}%`).limit(6),
+      supabase.from('customers').select('id, prenom, nom, raison_sociale, est_societe, tarif_pro, remise_pct, remise_raison, email, telephone, adresse, code_postal, ville, pays, notes, newsletter').ilike('raison_sociale', `%${q}%`).limit(6),
+      supabase.from('customers').select('id, prenom, nom, raison_sociale, est_societe, tarif_pro, remise_pct, remise_raison, email, telephone, adresse, code_postal, ville, pays, notes, newsletter').ilike('email', `%${q}%`).limit(4),
     ])
     const seen = new Set()
     const merged = [...(byNom||[]),...(byPrenom||[]),...(bySociete||[]),...(byEmail||[])].filter(x => {
@@ -2356,7 +2356,7 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
       {venteOk&&derniereVente&&(<div style={{position:'fixed' as const,inset:0,background:'rgba(0,0,0,0.88)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:999,fontFamily:"'DM Sans', system-ui, sans-serif"}}><div style={{background:'#18130e',border:'0.5px solid rgba(201,169,110,0.3)',borderRadius:16,padding:'36px 40px',maxWidth:420,width:'90%'}}><div style={{textAlign:'center' as const,marginBottom:28}}><div style={{fontSize:56,marginBottom:8}}>✓</div><div style={{fontFamily:'Georgia, serif',fontSize:22,color:'#6ec96e'}}>Vente enregistrée !</div><div style={{fontSize:14,color:'rgba(232,224,213,0.5)',marginTop:4}}>{derniereVente.numero} — {fmt(derniereVente.total)}</div></div><div style={{display:'flex',flexDirection:'column' as const,gap:10}}><button onClick={()=>imprimerTicket(derniereVente)} style={{width:'100%',background:'rgba(255,255,255,0.06)',border:'0.5px solid rgba(255,255,255,0.12)',borderRadius:10,color:'#e8e0d5',padding:'14px',fontSize:15,cursor:'pointer'}}>🖨 Imprimer le ticket</button>{!showEmailVente?(<button onClick={()=>setShowEmailVente(true)} style={{width:'100%',background:'rgba(255,255,255,0.06)',border:'0.5px solid rgba(255,255,255,0.12)',borderRadius:10,color:'#e8e0d5',padding:'14px',fontSize:15,cursor:'pointer'}}>📧 Envoyer par email</button>):(<div style={{display:'flex',gap:8}}><input type="email" value={emailVente} onChange={e=>setEmailVente(e.target.value)} placeholder={client?.email||'email@client.fr'} style={{flex:1,background:'rgba(255,255,255,0.06)',border:'0.5px solid rgba(201,169,110,0.3)',borderRadius:8,color:'#f0e8d8',fontSize:14,padding:'12px'}}/><button onClick={()=>{alert(`Email envoyé à ${emailVente||client?.email}`);setShowEmailVente(false)}} style={{background:'#c9a96e',border:'none',borderRadius:8,color:'#0d0a08',padding:'12px 16px',fontSize:14,cursor:'pointer',fontWeight:700}}>→</button><button onClick={()=>setShowEmailVente(false)} style={{background:'transparent',border:'0.5px solid rgba(255,255,255,0.1)',borderRadius:8,color:'rgba(232,224,213,0.4)',padding:'12px',cursor:'pointer'}}>✕</button></div>)}<button onClick={()=>{setVenteOk(false);setDerniereVente(null);resetVente()}} style={{width:'100%',background:'#c9a96e',border:'none',borderRadius:10,color:'#0d0a08',padding:'14px',fontSize:15,cursor:'pointer',fontWeight:700}}>✓ Fin de la vente</button></div></div></div>)}
       {showFermeture&&(<div style={{position:'fixed' as const,inset:0,background:'rgba(0,0,0,0.9)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:999}}><div style={{background:'#18130e',border:'0.5px solid rgba(201,169,110,0.3)',borderRadius:12,padding:'32px',maxWidth:420,width:'90%'}}><div style={{fontFamily:'Georgia, serif',fontSize:20,color:'#f0e8d8',marginBottom:20}}>Fermeture de caisse</div><div style={{fontSize:12,color:'rgba(232,224,213,0.4)',marginBottom:8}}>ESPÈCES EN CAISSE</div><input type="number" step="0.01" placeholder="0.00" value={espacesFermeture} onChange={e=>setEspacesFermeture(e.target.value)} style={{width:'100%',background:'rgba(255,255,255,0.06)',border:'0.5px solid rgba(201,169,110,0.3)',borderRadius:8,color:'#f0e8d8',fontSize:20,padding:'14px',boxSizing:'border-box' as const,textAlign:'center' as const,marginBottom:20}}/><div style={{display:'flex',gap:10}}><button onClick={()=>setShowFermeture(false)} style={{flex:1,background:'transparent',border:'0.5px solid rgba(255,255,255,0.15)',color:'rgba(232,224,213,0.5)',borderRadius:8,padding:'14px',fontSize:14,cursor:'pointer'}}>Annuler</button><button onClick={async()=>{await supabase.from('caisse_sessions').update({statut:'fermee',ferme_le:new Date().toISOString(),especes_fermeture:parseFloat(espacesFermeture)||0}).eq('id',session.id);onFermer()}} style={{flex:2,background:'#c96e6e',color:'#fff',border:'none',borderRadius:8,padding:'14px',fontSize:14,cursor:'pointer',fontWeight:700}}>Fermer la caisse</button></div></div></div>)}
       {showNouveauClient&&<ModalClientForm onClose={()=>setShowNouveauClient(false)} onSaved={(c)=>{setClient(c);setShowNouveauClient(false)}}/>}
-      {editingClient&&<ModalClientForm client={editingClient} onClose={()=>setEditingClient(null)} onSaved={(c)=>{if(client?.id===c.id)setClient(c);setEditingClient(null)}}/>}
+      {editingClient&&<ModalClientForm client={editingClient} onClose={()=>setEditingClient(null)} onSaved={(c)=>{if(client?.id===c.id)setClient(c);setClientsFound(prev=>prev.map((x:any)=>x.id===c.id?c:x));setEditingClient(null)}}/>}
       {showHistorique&&<HistoriqueVentes session={session} onClose={()=>setShowHistorique(false)} onAddToCart={handleAddFromHistorique}/>}
       {showAchatsClient&&client&&<HistoriqueAchatsClient client={client} onClose={()=>setShowAchatsClient(false)} onAddToCart={handleAddSingleAchat} onRetourDone={() => { setShowAchatsClient(false); setClient(null); setLignes([]); setTypeDoc('ticket'); setRemise(''); }}/>}
       {showLocation && (
