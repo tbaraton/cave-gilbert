@@ -1084,7 +1084,7 @@ function ModalDupliquer({ produit, onClose, onSaved }: {
         })
       }
     }
-    // Archiver l'original — jamais supprimé, historique conservé
+    // Archiver original - jamais supprime, historique conserve
     await supabase.from('products').update({ actif: false }).eq('id', produit.id)
     setSaving(false)
     onSaved()
@@ -1167,10 +1167,10 @@ function ModalDupliquer({ produit, onClose, onSaved }: {
             Annuler
           </button>
           <button onClick={handleDupliquer} disabled={saving} style={{ background: 'rgba(201,169,110,0.1)', border: '0.5px solid rgba(201,169,110,0.3)', color: '#c9a96e', borderRadius: 4, padding: '11px', fontSize: 11, letterSpacing: 1, cursor: 'pointer', fontWeight: 500, textTransform: 'uppercase' as const, opacity: saving ? 0.7 : 1 }}>
-            {saving ? '⟳' : '⧉ Dupliquer'}
+            {saving ? 'Chargement...' : 'Dupliquer'}
           </button>
           <button onClick={handleDupliquerEtArchiver} disabled={saving} style={{ background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '11px', fontSize: 11, letterSpacing: 1, cursor: 'pointer', fontWeight: 500, textTransform: 'uppercase' as const, opacity: saving ? 0.7 : 1 }}>
-            {saving ? '⧘' : '⧉ Dupliquer & archiver original'}
+            {saving ? 'Chargement...' : 'Dupliquer & archiver original'}
           </button>
         </div>
         </div>
