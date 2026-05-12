@@ -444,7 +444,7 @@ function HistoriqueAchatsClient({ client, onClose, onAddToCart, onRetourDone }: 
   client: any
   onClose: () => void
   onAddToCart: (ligne: any) => void
-  onRetourDone?: () => void
+  onRetourDone?: (resa?: any) => void
 }) {
   const [achats, setAchats] = useState<any[]>([])
   const [locations, setLocations] = useState<any[]>([])
@@ -493,7 +493,7 @@ function HistoriqueAchatsClient({ client, onClose, onAddToCart, onRetourDone }: 
     <ModuleRetourLocation
       reservation={{ ...retourResa, customer: client }}
       onClose={() => setRetourResa(null)}
-      onDone={() => { setRetourResa(null); onRetourDone ? onRetourDone() : onClose() }}
+      onDone={() => { setRetourResa(null); onRetourDone ? onRetourDone(retourResa) : onClose() }}
       modeCompact={true}
     />
   )
@@ -1983,6 +1983,7 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
   const [noteGlobaleActive, setNoteGlobaleActive] = useState(false)
   const [showHistorique, setShowHistorique] = useState(false)
   const [showAchatsClient, setShowAchatsClient] = useState(false)
+  const [retourDesktop, setRetourDesktop] = useState<any>(null)
   const [showLocation, setShowLocation] = useState(false)
   const [showDivers, setShowDivers] = useState(false)
   const [diversNom, setDiversNom] = useState('')
@@ -2334,11 +2335,18 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
       {showNouveauClient&&<ModalClientForm onClose={()=>setShowNouveauClient(false)} onSaved={(c)=>{setClient(c);setShowNouveauClient(false)}}/>}
       {editingClient&&<ModalClientForm client={editingClient} onClose={()=>setEditingClient(null)} onSaved={(c)=>{if(client?.id===c.id)setClient(c);setEditingClient(null)}}/>}
       {showHistorique&&<HistoriqueVentes session={session} onClose={()=>setShowHistorique(false)} onAddToCart={handleAddFromHistorique}/>}
-      {showAchatsClient&&client&&<HistoriqueAchatsClient client={client} onClose={()=>setShowAchatsClient(false)} onAddToCart={handleAddSingleAchat} onRetourDone={() => { setShowAchatsClient(false); resetVente() }}/>}
+      {showAchatsClient&&client&&<HistoriqueAchatsClient client={client} onClose={()=>setShowAchatsClient(false)} onAddToCart={handleAddSingleAchat} onRetourDone={(r) => { setShowAchatsClient(false); setRetourDesktop(r) }}/>}
       {showLocation && (
         <div style={{position:'fixed' as const,inset:0,zIndex:1000,background:'#0d0a08'}}>
           <ModuleLocation session={session} user={vendeur} onClose={()=>setShowLocation(false)}/>
         </div>
+      )}
+      {retourDesktop && (
+        <ModuleRetourLocation
+          reservation={retourDesktop}
+          onClose={() => setRetourDesktop(null)}
+          onDone={() => { setRetourDesktop(null); resetVente() }}
+        />
       )}
     </div>
   )
