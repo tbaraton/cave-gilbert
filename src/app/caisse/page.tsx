@@ -495,8 +495,8 @@ function HistoriqueAchatsClient({ client, onClose, onAddToCart, onRetourDone }: 
       onClose={() => setRetourResa(null)}
       onDone={() => {
         setRetourResa(null)
-        // Marquer localement comme terminée pour masquer le bouton immédiatement
-        setLocations(prev => prev.map(r => r.id === retourResa.id ? { ...r, statut: 'terminée' } : r))
+        // Marquer terminée localement ET recharger depuis la base
+        setLocations(prev => prev.map((r: any) => r.id === retourResa.id ? { ...r, statut: 'terminée' } : r))
         onRetourDone ? onRetourDone(retourResa) : onClose()
       }}
       modeCompact={true}
@@ -1398,7 +1398,7 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
         />
       )}
       {showHistorique && <HistoriqueVentes session={session} onClose={() => setShowHistorique(false)} onAddToCart={handleAddFromHistorique} />}
-      {showAchatsClient && client && <HistoriqueAchatsClient client={client} onClose={() => setShowAchatsClient(false)} onAddToCart={handleAddSingleAchat} onRetourDone={() => { setShowAchatsClient(false); resetVente() }} />}
+      {showAchatsClient && client && <HistoriqueAchatsClient client={client} onClose={() => setShowAchatsClient(false)} onAddToCart={handleAddSingleAchat} onRetourDone={() => { setShowAchatsClient(false); setClient(null); setLignes([]); setTypeDoc('ticket'); setRemise(''); setSearchClient(''); setEtape('produits') }} />}
       {showLocation && <div style={{ position: 'fixed' as const, inset: 0, zIndex: 600 }}><ModuleLocation session={session} user={vendeur} onClose={() => setShowLocation(false)} /></div>}
 
 
@@ -2350,7 +2350,7 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
         <ModuleRetourLocation
           reservation={retourDesktop}
           onClose={() => setRetourDesktop(null)}
-          onDone={() => { setRetourDesktop(null); resetVente() }}
+          onDone={() => { setRetourDesktop(null); setShowAchatsClient(false); setShowClientPanel(false); setClient(null); setLignes([]); setTypeDoc('ticket'); setRemise(''); }}}
         />
       )}
     </div>
