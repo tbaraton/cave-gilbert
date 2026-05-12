@@ -1,5 +1,7 @@
 'use client'
 
+import { ModuleRetourLocation } from '../retour-location'
+
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@supabase/supabase-js'
 
@@ -37,6 +39,7 @@ export default function LocationPage() {
   const [alertes, setAlertes] = useState<any[]>([])
 
   // Modals
+  const [retourResa, setRetourResa] = useState<any>(null)
   const [showEditFut, setShowEditFut] = useState<any>(null)
   const [showDetailResa, setShowDetailResa] = useState<any>(null)
   const [showAnnulees, setShowAnnulees] = useState(false)
@@ -908,6 +911,15 @@ export default function LocationPage() {
       {/* Modal modifier fût */}
       {showEditFut && <ModalEditFut fut={showEditFut} onClose={() => { setShowEditFut(null); load() }} />}
 
+      {/* Module retour location */}
+      {retourResa && (
+        <ModuleRetourLocation
+          reservation={retourResa}
+          onClose={() => setRetourResa(null)}
+          onDone={() => { setRetourResa(null); load() }}
+        />
+      )}
+
       {/* Modal nouvelle commande Loupiote */}
       {showNouvelleCommande && <ModalNouvelleCommande futs={futs} onClose={() => { setShowNouvelleCommande(false); load() }} />}
 
@@ -1019,6 +1031,15 @@ function ModalDetailResa({ resa, onClose, futs, tireuses }: { resa: any; onClose
               </button>
             ))}
           </div>
+            {r.statut === 'en_cours' && (
+              <button onClick={() => setRetourResa(r)} style={{
+                width: '100%', marginTop: 10, background: 'rgba(201,169,110,0.1)',
+                border: '0.5px solid rgba(201,169,110,0.3)', color: '#c9a96e',
+                borderRadius: 8, padding: '12px', fontSize: 13, cursor: 'pointer', fontWeight: 600,
+              }}>
+                ↩ Procéder au retour de location
+              </button>
+            )}
         </div>
 
         {/* Dates */}
