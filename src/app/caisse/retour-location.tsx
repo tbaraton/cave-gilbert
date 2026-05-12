@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
@@ -46,6 +46,11 @@ export function ModuleRetourLocation({ reservation: resa, onClose, onDone, modeC
   const [saving, setSaving] = useState(false)
   const [etape, setEtape] = useState<'retour' | 'paiement' | 'done'>('retour')
   const [notes, setNotes] = useState('')
+  const [terminer, setTerminer] = useState(false)
+
+  useEffect(() => {
+    if (terminer) onDone()
+  }, [terminer])
 
   const clientNom = resa.customer
     ? resa.customer.est_societe ? resa.customer.raison_sociale : `${resa.customer.prenom} ${resa.customer.nom}`
@@ -360,7 +365,9 @@ ${nonPercutesHtml}
 
         {/* Actions facture */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%', maxWidth: 320, marginTop: 8 }}>
-          <button onClick={imprimerFacture} style={{ background: '#18130e', border: '0.5px solid rgba(201,169,110,0.3)', color: '#c9a96e', borderRadius: 8, padding: '13px', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>
+        <button onClick={() => {
+          imprimerFacture()
+        }} style={{ background: '#18130e', border: '0.5px solid rgba(201,169,110,0.3)', color: '#c9a96e', borderRadius: 8, padding: '13px', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>
             🖨 Imprimer la facture (A4)
           </button>
           {resa.customer?.email && (
@@ -370,7 +377,7 @@ ${nonPercutesHtml}
           )}
         </div>
 
-        <button onClick={onDone} style={{ marginTop: 8, background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 8, padding: '13px 32px', fontSize: 14, fontWeight: 600, cursor: 'pointer', letterSpacing: 1 }}>
+        <button onClick={() => setTerminer(true)} style={{ marginTop: 8, background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 8, padding: '13px 32px', fontSize: 14, fontWeight: 600, cursor: 'pointer', letterSpacing: 1 }}>
           ✓ Terminer & retour caisse
         </button>
       </div>
