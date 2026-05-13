@@ -379,13 +379,6 @@ function arrondir50(prix: number): number {
   return Math.ceil(prix * 2) / 2
 }
 
-function getCategorieFromCouleur(couleur: string | null | undefined): string {
-  const couleursVin = ['rouge', 'blanc', 'rosé', 'champagne', 'effervescent']
-  if (couleur && couleursVin.includes(couleur)) return 'vin'
-  if (couleur === 'spiritueux') return 'spiritueux'
-  return 'vin'
-}
-
 // Prévisualisation du nom du vin
 function NomVinPreview({ appellation, cuvee, couleur, millesime, contenance, domaine }: {
   appellation: string, cuvee: string, couleur: string,
@@ -797,7 +790,6 @@ function ModalNouveauProduitAdmin({ regions: regionsProp, appellations: appellat
       contenance: form.contenance || '75cl',
       millesime: form.millesime ? parseInt(form.millesime) : null,
       couleur: form.couleur,
-      categorie: getCategorieFromCouleur(form.couleur),
       region_id: form.region_id || null,
       appellation_id: form.appellation_id || null,
       domaine_id: form.domaine_id || null,
@@ -1027,7 +1019,6 @@ function ModalDupliquer({ produit, onClose, onSaved }: {
       contenance: produit.contenance || '75cl',
       millesime: millesime ? parseInt(millesime) : null,
       couleur: produit.couleur,
-      categorie: getCategorieFromCouleur(produit.couleur),
       region_id: produit.region_id || null,
       appellation_id: produit.appellation_id || null,
       domaine_id: produit.domaine_id || null,
@@ -1083,7 +1074,6 @@ function ModalDupliquer({ produit, onClose, onSaved }: {
       contenance: produit.contenance || '75cl',
       millesime: millesime ? parseInt(millesime) : null,
       couleur: produit.couleur,
-      categorie: getCategorieFromCouleur(produit.couleur),
       region_id: produit.region_id || null,
       appellation_id: produit.appellation_id || null,
       domaine_id: produit.domaine_id || null,
@@ -1248,6 +1238,8 @@ export default function AdminPage() {
   const [filterCertif, setFilterCertif] = useState('')
   const [filterActif, setFilterActif] = useState<'tous' | 'actif' | 'inactif'>('actif')
   const [filterDomaine, setFilterDomaine] = useState('')
+  const [page, setPage] = useState(0)
+  const PAGE_SIZE = 50
   const [sortCol, setSortCol] = useState<string>('nom')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
 
@@ -1269,7 +1261,7 @@ export default function AdminPage() {
         { data: sitesData },
       ] = await Promise.all([
         supabase.from('products').select('id, nom, nom_cuvee, contenance, millesime, couleur, categorie, prix_vente_ttc, prix_vente_pro, prix_achat_ht, actif, bio, vegan, casher, naturel, biodynamique, ia_generated, domaine_id, slug, region_id, appellation_id, description_courte, image_url').order('nom').limit(5000),
-        supabase.from('v_stock_par_site').select('*').limit(10000),
+        supabase.from('v_stock_par_site').select('*').limit(20000),
         supabase.from('sites').select('*').eq('actif', true).order('nom'),
       ])
 
@@ -1366,7 +1358,7 @@ export default function AdminPage() {
   const produitsFiltres = produits
     .filter(p =>
       p.nom?.toLowerCase().includes(search.toLowerCase()) &&
-      (categorieActive ? p.categorie === categorieActive : true) &&
+      (categorieActive ? p.categorie === categorieActive : !CATEGORIES.map(c => c.cat).includes(p.categorie)) &&
       (filterRegion === '' || p.region_id === filterRegion) &&
       (filterAppellation === '' || p.appellation_id === filterAppellation) &&
       (filterCouleur === '' || p.couleur === filterCouleur) &&
@@ -1653,8 +1645,8 @@ export default function AdminPage() {
 
             {/* Barre de recherche */}
             <div style={{ display: 'flex', gap: 12, marginBottom: 12, flexWrap: 'wrap' as const }}>
-              <input placeholder="🔍 Rechercher un vin..." value={search} onChange={e => setSearch(e.target.value)} style={{ flex: '2 1 200px', ...inputStyle, boxSizing: 'border-box' as const }} />
-              <select value={filterRegion} onChange={e => { setFilterRegion(e.target.value); setFilterAppellation('') }} style={{ flex: '1 1 150px', ...inputStyle, background: '#1a1408', cursor: 'pointer' }}>
+              <input placeholder="🔍 Rechercher un vin..." value={search} onChange={e => { setSearch(e.target.value); setPage(0) }} style={{ flex: '2 1 200px', ...inputStyle, boxSizing: 'border-box' as const }} />
+              <select value={filterRegion} onChange={e => { setFilterRegion(e.target.value); setFilterAppellation(''); setPage(0) }} style={{ flex: '1 1 150px', ...inputStyle, background: '#1a1408', cursor: 'pointer' }}>
                 <option value="">Toutes les régions</option>
                 {regions.map(r => <option key={r.id} value={r.id}>{r.nom}</option>)}
               </select>
@@ -1662,7 +1654,7 @@ export default function AdminPage() {
                 <option value="">Toutes les appellations</option>
                 {(filterRegion ? appellations.filter(a => a.region_id === filterRegion) : appellations).map(a => <option key={a.id} value={a.id}>{a.nom}</option>)}
               </select>
-              <select value={filterDomaine} onChange={e => setFilterDomaine(e.target.value)}
+              <select value={filterDomaine} onChange={e => { setFilterDomaine(e.target.value); setPage(0) }}
                 style={{ background: '#1a1408', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 4, color: filterDomaine ? '#c9a96e' : '#f0e8d8', fontSize: 12, padding: '8px 10px', cursor: 'pointer' }}>
                 <option value="">Tous les fournisseurs</option>
                 {[...new Map(produits.filter((p: any) => p.domaine_id && p.domaine_nom).map((p: any) => [p.domaine_id, p.domaine_nom])).entries()].sort((a: any, b: any) => a[1].localeCompare(b[1])).map(([id, nom]: any) => (
@@ -1812,7 +1804,7 @@ export default function AdminPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {produitsFiltres.map((p, i) => (
+                    {produitsFiltres.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).map((p, i) => (
                       <tr key={p.id} onClick={() => setSelectedProduit(p)} style={{ borderBottom: i < produitsFiltres.length - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none', opacity: p.actif ? 1 : 0.5, cursor: 'pointer' }}
                         onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
                         onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
@@ -1859,6 +1851,23 @@ export default function AdminPage() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+            {/* Pagination */}
+            {produitsFiltres.length > PAGE_SIZE && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16, padding: '12px 16px', background: '#18130e', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 6 }}>
+                <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>
+                  {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, produitsFiltres.length)} sur {produitsFiltres.length} produits
+                </span>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <button onClick={() => setPage(0)} disabled={page === 0} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: page === 0 ? 'rgba(232,224,213,0.2)' : 'rgba(232,224,213,0.5)', borderRadius: 4, padding: '6px 10px', fontSize: 11, cursor: page === 0 ? 'default' : 'pointer' }}>«</button>
+                  <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: page === 0 ? 'rgba(232,224,213,0.2)' : 'rgba(232,224,213,0.5)', borderRadius: 4, padding: '6px 12px', fontSize: 11, cursor: page === 0 ? 'default' : 'pointer' }}>‹ Précédent</button>
+                  {Array.from({ length: Math.ceil(produitsFiltres.length / PAGE_SIZE) }, (_, i) => i).map(i => (
+                    <button key={i} onClick={() => setPage(i)} style={{ background: page === i ? '#c9a96e' : 'transparent', color: page === i ? '#0d0a08' : 'rgba(232,224,213,0.4)', border: `0.5px solid ${page === i ? '#c9a96e' : 'rgba(255,255,255,0.1)'}`, borderRadius: 4, padding: '6px 11px', fontSize: 11, cursor: 'pointer', fontWeight: page === i ? 600 : 400 }}>{i + 1}</button>
+                  ))}
+                  <button onClick={() => setPage(p => Math.min(Math.ceil(produitsFiltres.length / PAGE_SIZE) - 1, p + 1))} disabled={page >= Math.ceil(produitsFiltres.length / PAGE_SIZE) - 1} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: page >= Math.ceil(produitsFiltres.length / PAGE_SIZE) - 1 ? 'rgba(232,224,213,0.2)' : 'rgba(232,224,213,0.5)', borderRadius: 4, padding: '6px 12px', fontSize: 11, cursor: page >= Math.ceil(produitsFiltres.length / PAGE_SIZE) - 1 ? 'default' : 'pointer' }}>Suivant ›</button>
+                  <button onClick={() => setPage(Math.ceil(produitsFiltres.length / PAGE_SIZE) - 1)} disabled={page >= Math.ceil(produitsFiltres.length / PAGE_SIZE) - 1} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: page >= Math.ceil(produitsFiltres.length / PAGE_SIZE) - 1 ? 'rgba(232,224,213,0.2)' : 'rgba(232,224,213,0.5)', borderRadius: 4, padding: '6px 10px', fontSize: 11, cursor: page >= Math.ceil(produitsFiltres.length / PAGE_SIZE) - 1 ? 'default' : 'pointer' }}>»</button>
+                </div>
               </div>
             )}
           </>
