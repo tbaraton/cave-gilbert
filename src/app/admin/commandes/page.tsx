@@ -1074,6 +1074,8 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
   const [searchAjout, setSearchAjout] = useState('')
   const [searchAjoutRes, setSearchAjoutRes] = useState<any[]>([])
   const [gratuitesCmd, setGratuitesCmd] = useState<Record<string, number>>({})
+  const [remiseBrouillon, setRemiseBrouillon] = useState('')
+  const [remiseBrouillonType, setRemiseBrouillonType] = useState<'pct' | 'eur'>('pct')
   const [fraisPortCmd, setFraisPortCmd] = useState('')
 
   useEffect(() => {
@@ -1118,7 +1120,17 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
 
   const handleSendEmail = async () => {
     const body = items.map(i => `- ${i.product_nom}${i.product_millesime ? ` ${i.product_millesime}` : ''} : ${i.quantite_commandee} btl @ ${parseFloat(i.prix_achat_ht || 0).toFixed(2)}€ HT`).join('\n')
-    const totalHT = items.reduce((acc, i) => acc + (parseFloat(i.prix_achat_ht || 0) * i.quantite_commandee), 0)
+    const totalHTBrouillon = items.reduce((acc, item) => {
+    const gratuites = gratuitesCmd[item.id] ?? 0
+    const qty = editQty[item.id] ?? item.quantite_commandee
+    const prix = editPrix[item.id] ?? parseFloat(item.prix_achat_ht || 0)
+    const prixReel = gratuites > 0 && qty > 0 ? Math.round((prix * (qty - gratuites)) / qty * 10000) / 10000 : prix
+    return acc + prixReel * qty
+  }, 0)
+  const remiseBrouillonVal = remiseBrouillon
+    ? (remiseBrouillonType === 'pct' ? totalHTBrouillon * parseFloat(remiseBrouillon) / 100 : parseFloat(remiseBrouillon))
+    : 0
+  const totalHT = Math.max(0, totalHTBrouillon - remiseBrouillonVal)
     const subject = `Commande ${commande.numero} — Cave de Gilbert`
     const mailBody = `Bonjour,\n\nVeuillez trouver notre commande ${commande.numero} :\n\n${body}\n\nTotal HT : ${totalHT.toFixed(2)}€\n\nCordialement,\nLa Cave de Gilbert`
     window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(mailBody)}`)
@@ -1387,8 +1399,13 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
               const prixReel = gratuites > 0 && qty > 0 ? Math.round((prix * (qty - gratuites)) / qty * 10000) / 10000 : prix
               return acc + prixReel * qty
             }, 0)
+            const remiseReceptionVal = remiseBrouillon
+              ? (remiseBrouillonType === 'pct' ? totalHTBase * parseFloat(remiseBrouillon) / 100 : parseFloat(remiseBrouillon))
+              : 0
+            const totalHTBaseSansRemise = totalHTBase
+            const totalHTBaseApresRemise = Math.max(0, totalHTBase - remiseReceptionVal)
             const fp = parseFloat(fraisPortCmd) || 0
-            const totalHTFinal = totalHTBase + fp
+            const totalHTFinal = totalHTBaseApresRemise + fp
             const totalTTC = totalHTFinal * 1.20
             return (
               <div style={{ background: 'rgba(201,169,110,0.06)', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 6, padding: '14px 16px', marginBottom: 12 }}>
@@ -1397,7 +1414,11 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
                   <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>Total HT marchandises</div>
-                  <div style={{ fontSize: 12, color: '#e8e0d5', textAlign: 'right' as const }}>{totalHTBase.toFixed(2)} €</div>
+                  <div style={{ fontSize: 12, color: '#e8e0d5', textAlign: 'right' as const }}>{totalHTBaseSansRemise.toFixed(2)} €</div>
+                  {remiseReceptionVal > 0 && <>
+                    <div style={{ fontSize: 12, color: '#c96e6e' }}>Remise {remiseBrouillonType === 'pct' ? `${remiseBrouillon}%` : ''}</div>
+                    <div style={{ fontSize: 12, color: '#c96e6e', textAlign: 'right' as const }}>-{remiseReceptionVal.toFixed(2)} €</div>
+                  </>}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>Frais de port HT</span>
                   </div>
@@ -1510,7 +1531,7 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
                     )
                   })()}
                   <td style={{ padding: '11px 14px', fontSize: 13, fontFamily: 'Georgia, serif' }}>
-                    {((editPrix[item.id] ?? parseFloat(item.prix_achat_ht || 0)) * (editQty[item.id] ?? item.quantite_commandee)).toFixed(2)}€
+                    {(() => { const grat = gratuitesCmd[item.id] ?? 0; const qty2 = editQty[item.id] ?? item.quantite_commandee; const px2 = editPrix[item.id] ?? parseFloat(item.prix_achat_ht || 0); const pr2 = grat > 0 && qty2 > 0 ? Math.round((px2 * (qty2 - grat)) / qty2 * 10000) / 10000 : px2; return (pr2 * qty2).toFixed(2) })()}€
                   </td>
                   <td style={{ padding: '11px 14px', fontSize: 13, color: item.quantite_recue != null ? '#6ec96e' : 'rgba(232,224,213,0.3)' }}>
                     {item.quantite_recue != null ? `${item.quantite_recue} ✓` : '—'}
@@ -1531,6 +1552,25 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
               ))}
             </tbody>
             <tfoot>
+              {statutLocal === 'brouillon' && (
+                <tr style={{ borderTop: '0.5px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.02)' }}>
+                  <td colSpan={5} style={{ padding: '10px 14px', textAlign: 'right' as const }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
+                      <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', letterSpacing: 1 }}>REMISE GLOBALE</span>
+                      <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', borderRadius: 4, overflow: 'hidden' }}>
+                        {([['pct', '%'], ['eur', '€']] as const).map(([v, l]) => (
+                          <button key={v} onClick={() => setRemiseBrouillonType(v)} style={{ background: remiseBrouillonType === v ? 'rgba(201,169,110,0.2)' : 'transparent', border: 'none', color: remiseBrouillonType === v ? '#c9a96e' : 'rgba(232,224,213,0.4)', padding: '5px 10px', fontSize: 12, cursor: 'pointer' }}>{l}</button>
+                        ))}
+                      </div>
+                      <input type="number" step="0.01" min={0} value={remiseBrouillon} onChange={e => setRemiseBrouillon(e.target.value)} placeholder="0" style={{ width: 80, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 4, color: '#e8e0d5', fontSize: 13, padding: '5px 8px', textAlign: 'center' as const }} />
+                    </div>
+                  </td>
+                  <td style={{ padding: '10px 14px', textAlign: 'right' as const }}>
+                    {remiseBrouillonVal > 0 && <div style={{ fontSize: 12, color: '#c96e6e' }}>-{remiseBrouillonVal.toFixed(2)}€</div>}
+                  </td>
+                  <td /><td /><td />
+                </tr>
+              )}
               <tr style={{ borderTop: '0.5px solid rgba(255,255,255,0.1)' }}>
                 <td colSpan={statutLocal === 'brouillon' ? 5 : 3} style={{ padding: '12px 14px', textAlign: 'right' as const, fontSize: 11, color: 'rgba(232,224,213,0.4)', letterSpacing: 1 }}>TOTAL HT</td>
                 <td style={{ padding: '12px 14px', fontSize: 18, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{totalHT.toFixed(2)}€</td>
