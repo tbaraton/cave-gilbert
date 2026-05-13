@@ -1261,7 +1261,7 @@ export default function AdminPage() {
         { data: sitesData },
       ] = await Promise.all([
         supabase.from('products').select('id, nom, nom_cuvee, contenance, millesime, couleur, categorie, prix_vente_ttc, prix_vente_pro, prix_achat_ht, actif, bio, vegan, casher, naturel, biodynamique, ia_generated, domaine_id, slug, region_id, appellation_id, description_courte, image_url').order('nom').limit(5000),
-        supabase.from('v_stock_par_site').select('*').limit(20000),
+        supabase.from('v_stock_agrege').select('*').limit(10000),
         supabase.from('sites').select('*').eq('actif', true).order('nom'),
       ])
 
@@ -1284,16 +1284,14 @@ export default function AdminPage() {
       
       const stockParProduit: Record<string, any> = {}
       ;(stock || []).forEach((s: any) => {
-        if (!produitsVin.has(s.product_id)) return // ignorer non-vins
-        if (!stockParProduit[s.product_id]) {
-          stockParProduit[s.product_id] = {
-            product_id: s.product_id,
-            produit: s.produit,
-            millesime: s.millesime,
-            quantite: 0,
-          }
+        if (!produitsVin.has(s.product_id)) return
+        const produit = (prods || []).find((p: any) => p.id === s.product_id)
+        stockParProduit[s.product_id] = {
+          product_id: s.product_id,
+          produit: produit?.nom || s.product_id,
+          millesime: produit?.millesime || null,
+          quantite: s.stock_total || 0,
         }
-        stockParProduit[s.product_id].quantite += s.quantite || 0
       })
       // Seuil d'alerte : total < 6 bouteilles = alerte, total = 0 = rupture
       const alertesData = Object.values(stockParProduit)
@@ -1337,16 +1335,18 @@ export default function AdminPage() {
 
   // ── Regroupement stock par produit et site ───────────────
 
-  const sitesUniques = [...new Set(stockParSite.map((s: any) => s.site))].slice(0, 4)
+  const sitesUniques = ['Cave de Gilbert', 'Entrepôt', 'La Petite Cave']
 
   const stockGroupé = produits.map(p => {
-    const lignes = stockParSite.filter((s: any) => s.product_id === p.id)
-    const parSite: Record<string, number> = {}
-    sitesUniques.forEach(site => {
-      const ligne = lignes.find((l: any) => l.site === site)
-      parSite[site] = ligne?.quantite || 0
-    })
-    return { ...p, parSite }
+    const agrege = stockParSite.find((s: any) => s.product_id === p.id)
+    return {
+      ...p,
+      parSite: {
+        'Cave de Gilbert': agrege?.stock_marcy || 0,
+        'Entrepôt': agrege?.stock_entrepot || 0,
+        'La Petite Cave': agrege?.stock_arbresle || 0,
+      }
+    }
   })
 
   const appellationsFiltered = filterRegion
@@ -1372,14 +1372,20 @@ export default function AdminPage() {
     .sort((a, b) => {
       // Tri sur stock d'un site spécifique
       if (sortCol.startsWith('stock_')) {
-        const site = sortCol.replace('stock_', '')
-        const qa = stockParSite.find((s: any) => s.product_id === a.id && s.site === site)?.quantite || 0
-        const qb = stockParSite.find((s: any) => s.product_id === b.id && s.site === site)?.quantite || 0
+        const colMap: Record<string, string> = {
+          'stock_Cave de Gilbert': 'stock_marcy',
+          'stock_Entrepôt': 'stock_entrepot',
+          'stock_La Petite Cave': 'stock_arbresle',
+          'stock_total': 'stock_total',
+        }
+        const col = colMap[sortCol] || 'stock_total'
+        const qa = stockParSite.find((s: any) => s.product_id === a.id)?.[col] || 0
+        const qb = stockParSite.find((s: any) => s.product_id === b.id)?.[col] || 0
         return sortDir === 'asc' ? qa - qb : qb - qa
       }
       if (sortCol === 'stock_total') {
-        const qa = stockParSite.filter((s: any) => s.product_id === a.id).reduce((acc: number, s: any) => acc + (s.quantite || 0), 0)
-        const qb = stockParSite.filter((s: any) => s.product_id === b.id).reduce((acc: number, s: any) => acc + (s.quantite || 0), 0)
+        const qa = stockParSite.find((s: any) => s.product_id === a.id)?.stock_total || 0
+        const qb = stockParSite.find((s: any) => s.product_id === b.id)?.stock_total || 0
         return sortDir === 'asc' ? qa - qb : qb - qa
       }
       let va = (a as any)[sortCol] ?? ''
@@ -1822,15 +1828,18 @@ export default function AdminPage() {
                         <td style={{ padding: '14px 16px', fontSize: 13, color: 'rgba(232,224,213,0.6)' }}>{p.millesime || '—'}</td>
                         <td style={{ padding: '14px 16px', fontSize: 14, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{p.prix_vente_ttc}€</td>
                         {sitesUniques.map(site => {
-                          const ligne = stockParSite.find((s: any) => s.product_id === p.id && s.site === site)
+                          const agrege = stockParSite.find((s: any) => s.product_id === p.id)
+                          const qty = site === 'Cave de Gilbert' ? (agrege?.stock_marcy || 0)
+                            : site === 'Entrepôt' ? (agrege?.stock_entrepot || 0)
+                            : (agrege?.stock_arbresle || 0)
                           return (
                             <td key={site} style={{ padding: '14px 16px' }}>
-                              <StockDot qty={ligne?.quantite || 0} />
+                              <StockDot qty={qty} />
                             </td>
                           )
                         })}
                         <td style={{ padding: '14px 16px' }}>
-                          <StockDot qty={stockParSite.filter((s: any) => s.product_id === p.id).reduce((acc: number, s: any) => acc + (s.quantite || 0), 0)} />
+                          <StockDot qty={stockParSite.find((s: any) => s.product_id === p.id)?.stock_total || 0} />
                         </td>
                         <td style={{ padding: '14px 16px' }}>
                           <Badge label={p.actif ? 'Actif' : 'Inactif'} bg={p.actif ? '#1e2a1e' : '#2a2a2a'} color={p.actif ? '#6ec96e' : '#888'} />
