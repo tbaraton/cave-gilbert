@@ -379,6 +379,36 @@ function arrondir50(prix: number): number {
   return Math.ceil(prix * 2) / 2
 }
 
+// ── Select appellations groupé AOC / IGP ─────────────────────
+function AppellationSelect({ value, onChange, appellations, style, defaultLabel = '— Choisir —' }: {
+  value: string
+  onChange: (id: string, nom: string) => void
+  appellations: any[]
+  style?: React.CSSProperties
+  defaultLabel?: string
+}) {
+  const aoc = appellations.filter(a => !a.type || a.type === 'AOC')
+  const igp = appellations.filter(a => a.type === 'IGP')
+  return (
+    <select value={value} onChange={e => {
+      const app = appellations.find(a => a.id === e.target.value)
+      onChange(e.target.value, app?.nom || '')
+    }} style={style}>
+      <option value="">{defaultLabel}</option>
+      {aoc.length > 0 && (
+        <optgroup label="── AOC / AOP ──">
+          {aoc.map(a => <option key={a.id} value={a.id}>{a.nom}</option>)}
+        </optgroup>
+      )}
+      {igp.length > 0 && (
+        <optgroup label="── IGP ──">
+          {igp.map(a => <option key={a.id} value={a.id}>{a.nom}</option>)}
+        </optgroup>
+      )}
+    </select>
+  )
+}
+
 // Prévisualisation du nom du vin
 function NomVinPreview({ appellation, cuvee, couleur, millesime, contenance, domaine }: {
   appellation: string, cuvee: string, couleur: string,
@@ -425,7 +455,7 @@ function ModalEditProduit({ produit, regions: regionsProp, appellations: appella
         regs = data || []; setRegions(regs)
       }
       if (apps.length === 0) {
-        const { data } = await supabase.from('appellations').select('id, nom, region_id').order('nom')
+        const { data } = await supabase.from('appellations').select('id, nom, region_id, type').order('nom')
         apps = data || []; setAppellations(apps)
       }
       const { data: doms } = await supabase.from('domaines').select('id, nom').order('nom')
@@ -583,7 +613,8 @@ function ModalEditProduit({ produit, regions: regionsProp, appellations: appella
               setForm(f => ({ ...f, appellation_id: e.target.value, appellation_nom: app?.nom || '' }))
             }} style={sel}>
               <option value="" style={{ background: '#1a1408', color: '#888' }}>— Choisir —</option>
-              {appsFiltrees.map(a => <option key={a.id} value={a.id} style={{ background: '#1a1408', color: '#f0e8d8' }}>{a.nom}</option>)}
+              {appsFiltrees.filter(a => !a.type || a.type === 'AOC').length > 0 && <optgroup label="── AOC / AOP ──">{appsFiltrees.filter(a => !a.type || a.type === 'AOC').map(a => <option key={a.id} value={a.id} style={{ background: '#1a1408', color: '#f0e8d8' }}>{a.nom}</option>)}</optgroup>}
+              {appsFiltrees.filter(a => a.type === 'IGP').length > 0 && <optgroup label="── IGP ──">{appsFiltrees.filter(a => a.type === 'IGP').map(a => <option key={a.id} value={a.id} style={{ background: '#1a1408', color: '#f0e8d8' }}>{a.nom}</option>)}</optgroup>}
             </select>
           </div>
           <div>
@@ -717,7 +748,7 @@ function ModalNouveauProduitAdmin({ regions: regionsProp, appellations: appellat
       supabase.from('regions').select('id, nom').order('nom').then(({ data }) => setRegions(data || []))
     }
     if (!appellationsProp || appellationsProp.length === 0) {
-      supabase.from('appellations').select('id, nom, region_id').order('nom').then(({ data }) => setAppellations(data || []))
+      supabase.from('appellations').select('id, nom, region_id, type').order('nom').then(({ data }) => setAppellations(data || []))
     }
     supabase.from('domaines').select('id, nom').order('nom').then(({ data }) => setDomaines(data || []))
   }, [])
@@ -870,7 +901,8 @@ function ModalNouveauProduitAdmin({ regions: regionsProp, appellations: appellat
               setForm(f => ({ ...f, appellation_id: e.target.value, appellation_nom: app?.nom || '' }))
             }} style={sel}>
               <option value="">— Choisir —</option>
-              {appsFiltrees.map((a: any) => <option key={a.id} value={a.id}>{a.nom}</option>)}
+              {appsFiltrees.filter((a: any) => !a.type || a.type === 'AOC').length > 0 && <optgroup label="── AOC / AOP ──">{appsFiltrees.filter((a: any) => !a.type || a.type === 'AOC').map((a: any) => <option key={a.id} value={a.id}>{a.nom}</option>)}</optgroup>}
+              {appsFiltrees.filter((a: any) => a.type === 'IGP').length > 0 && <optgroup label="── IGP ──">{appsFiltrees.filter((a: any) => a.type === 'IGP').map((a: any) => <option key={a.id} value={a.id}>{a.nom}</option>)}</optgroup>}
             </select>
           </div>
           <div>
@@ -1314,7 +1346,7 @@ export default function AdminPage() {
     try {
       const [{ data: regs }, { data: apps }] = await Promise.all([
         supabase.from('regions').select('id, nom').order('nom'),
-        supabase.from('appellations').select('id, nom, region_id').order('nom'),
+        supabase.from('appellations').select('id, nom, region_id, type').order('nom'),
       ])
       setRegions(regs || [])
       setAppellations(apps || [])
@@ -1658,7 +1690,7 @@ export default function AdminPage() {
               </select>
               <select value={filterAppellation} onChange={e => setFilterAppellation(e.target.value)} style={{ flex: '1 1 180px', ...inputStyle, background: '#1a1408', cursor: 'pointer' }}>
                 <option value="">Toutes les appellations</option>
-                {(filterRegion ? appellations.filter(a => a.region_id === filterRegion) : appellations).map(a => <option key={a.id} value={a.id}>{a.nom}</option>)}
+                {(() => { const apps = filterRegion ? appellations.filter(a => a.region_id === filterRegion) : appellations; return (<>{apps.filter(a => !a.type || a.type === 'AOC').length > 0 && <optgroup label="── AOC / AOP ──">{apps.filter(a => !a.type || a.type === 'AOC').map(a => <option key={a.id} value={a.id}>{a.nom}</option>)}</optgroup>}{apps.filter(a => a.type === 'IGP').length > 0 && <optgroup label="── IGP ──">{apps.filter(a => a.type === 'IGP').map(a => <option key={a.id} value={a.id}>{a.nom}</option>)}</optgroup>}</>)})()}
               </select>
               <select value={filterDomaine} onChange={e => { setFilterDomaine(e.target.value); setPage(0) }}
                 style={{ background: '#1a1408', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 4, color: filterDomaine ? '#c9a96e' : '#f0e8d8', fontSize: 12, padding: '8px 10px', cursor: 'pointer' }}>
