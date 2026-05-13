@@ -1415,10 +1415,12 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
                   <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>Total HT marchandises</div>
                   <div style={{ fontSize: 12, color: '#e8e0d5', textAlign: 'right' as const }}>{totalHTBaseSansRemise.toFixed(2)} €</div>
-                  {remiseReceptionVal > 0 && <>
+                  {remiseReceptionVal > 0 && (
                     <div style={{ fontSize: 12, color: '#c96e6e' }}>Remise {remiseBrouillonType === 'pct' ? `${remiseBrouillon}%` : ''}</div>
+                  )}
+                  {remiseReceptionVal > 0 && (
                     <div style={{ fontSize: 12, color: '#c96e6e', textAlign: 'right' as const }}>-{remiseReceptionVal.toFixed(2)} €</div>
-                  </>}
+                  )}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>Frais de port HT</span>
                   </div>
@@ -1554,13 +1556,12 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
             <tfoot>
               {statutLocal === 'brouillon' && (
                 <tr style={{ borderTop: '0.5px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.02)' }}>
-                  <td colSpan={5} style={{ padding: '10px 14px', textAlign: 'right' as const }}>
+                  <td colSpan={6} style={{ padding: '10px 14px', textAlign: 'right' as const }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
                       <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', letterSpacing: 1 }}>REMISE GLOBALE</span>
                       <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', borderRadius: 4, overflow: 'hidden' }}>
-                        {([['pct', '%'], ['eur', '€']] as const).map(([v, l]) => (
-                          <button key={v} onClick={() => setRemiseBrouillonType(v)} style={{ background: remiseBrouillonType === v ? 'rgba(201,169,110,0.2)' : 'transparent', border: 'none', color: remiseBrouillonType === v ? '#c9a96e' : 'rgba(232,224,213,0.4)', padding: '5px 10px', fontSize: 12, cursor: 'pointer' }}>{l}</button>
-                        ))}
+                        <button onClick={() => setRemiseBrouillonType('pct')} style={{ background: remiseBrouillonType === 'pct' ? 'rgba(201,169,110,0.2)' : 'transparent', border: 'none', color: remiseBrouillonType === 'pct' ? '#c9a96e' : 'rgba(232,224,213,0.4)', padding: '5px 10px', fontSize: 12, cursor: 'pointer' }}>%</button>
+                        <button onClick={() => setRemiseBrouillonType('eur')} style={{ background: remiseBrouillonType === 'eur' ? 'rgba(201,169,110,0.2)' : 'transparent', border: 'none', color: remiseBrouillonType === 'eur' ? '#c9a96e' : 'rgba(232,224,213,0.4)', padding: '5px 10px', fontSize: 12, cursor: 'pointer' }}>€</button>
                       </div>
                       <input type="number" step="0.01" min={0} value={remiseBrouillon} onChange={e => setRemiseBrouillon(e.target.value)} placeholder="0" style={{ width: 80, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 4, color: '#e8e0d5', fontSize: 13, padding: '5px 8px', textAlign: 'center' as const }} />
                     </div>
