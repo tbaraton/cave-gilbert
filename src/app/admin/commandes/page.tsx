@@ -1158,8 +1158,6 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
     setProcessing(false); onRefresh(); onBack()
   }
 
-  const totalHT = items.reduce((acc, i) => acc + (parseFloat(i.prix_achat_ht || 0) * i.quantite_commandee), 0)
-
   return (
     <div style={{ maxWidth: 800 }}>
       <button onClick={onBack} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.4)', fontSize: 11, cursor: 'pointer', padding: 0, marginBottom: 12 }}>← Retour</button>
