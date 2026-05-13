@@ -1218,6 +1218,7 @@ export default function AdminPage() {
   const [filterMillesime, setFilterMillesime] = useState('')
   const [filterCertif, setFilterCertif] = useState('')
   const [filterActif, setFilterActif] = useState<'tous' | 'actif' | 'inactif'>('actif')
+  const [filterDomaine, setFilterDomaine] = useState('')
   const [sortCol, setSortCol] = useState<string>('nom')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
 
@@ -1340,6 +1341,7 @@ export default function AdminPage() {
       (filterRegion === '' || p.region_id === filterRegion) &&
       (filterAppellation === '' || p.appellation_id === filterAppellation) &&
       (filterCouleur === '' || p.couleur === filterCouleur) &&
+      (filterDomaine === '' || p.domaine_id === filterDomaine) &&
       (parseFloat(p.prix_vente_ttc || 0) >= filterPrixMin) &&
       (parseFloat(p.prix_vente_ttc || 0) <= filterPrixMax) &&
       (filterMillesime === '' || String(p.millesime || '') === filterMillesime) &&
@@ -1347,8 +1349,20 @@ export default function AdminPage() {
       (filterActif === 'tous' || (filterActif === 'actif' ? p.actif : !p.actif))
     )
     .sort((a, b) => {
-      let va = a[sortCol] ?? ''
-      let vb = b[sortCol] ?? ''
+      // Tri sur stock d'un site spécifique
+      if (sortCol.startsWith('stock_')) {
+        const site = sortCol.replace('stock_', '')
+        const qa = stockParSite.find((s: any) => s.product_id === a.id && s.site === site)?.quantite || 0
+        const qb = stockParSite.find((s: any) => s.product_id === b.id && s.site === site)?.quantite || 0
+        return sortDir === 'asc' ? qa - qb : qb - qa
+      }
+      if (sortCol === 'stock_total') {
+        const qa = stockParSite.filter((s: any) => s.product_id === a.id).reduce((acc: number, s: any) => acc + (s.quantite || 0), 0)
+        const qb = stockParSite.filter((s: any) => s.product_id === b.id).reduce((acc: number, s: any) => acc + (s.quantite || 0), 0)
+        return sortDir === 'asc' ? qa - qb : qb - qa
+      }
+      let va = (a as any)[sortCol] ?? ''
+      let vb = (b as any)[sortCol] ?? ''
       if (typeof va === 'string') va = va.toLowerCase()
       if (typeof vb === 'string') vb = vb.toLowerCase()
       if (va < vb) return sortDir === 'asc' ? -1 : 1
@@ -1619,6 +1633,13 @@ export default function AdminPage() {
                 <option value="">Toutes les appellations</option>
                 {(filterRegion ? appellations.filter(a => a.region_id === filterRegion) : appellations).map(a => <option key={a.id} value={a.id}>{a.nom}</option>)}
               </select>
+              <select value={filterDomaine} onChange={e => setFilterDomaine(e.target.value)}
+                style={{ background: '#1a1408', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 4, color: filterDomaine ? '#c9a96e' : '#f0e8d8', fontSize: 12, padding: '8px 10px', cursor: 'pointer' }}>
+                <option value="">Tous les fournisseurs</option>
+                {[...new Map(produits.filter((p: any) => p.domaine_id && p.domaine_nom).map((p: any) => [p.domaine_id, p.domaine_nom])).entries()].sort((a: any, b: any) => a[1].localeCompare(b[1])).map(([id, nom]: any) => (
+                  <option key={id} value={id}>{nom}</option>
+                ))}
+              </select>
             </div>
 
             {/* Filtres couleur + prix */}
@@ -1744,8 +1765,8 @@ export default function AdminPage() {
                         { label: 'Couleur', col: 'couleur' },
                         { label: 'Millésime', col: 'millesime' },
                         { label: 'Prix', col: 'prix_vente_ttc' },
-                        ...sitesUniques.map(s => ({ label: s, col: null })),
-                        { label: 'Total', col: null },
+                        ...sitesUniques.map(s => ({ label: s, col: `stock_${s}` })),
+                        { label: 'Total', col: 'stock_total' },
                         { label: 'Statut', col: 'actif' },
                         { label: '', col: null },
                       ].map(({ label, col }) => (
