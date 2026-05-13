@@ -108,6 +108,7 @@ function ModalNouveauProduit({ domaines, regions, appellations, onCreated, onClo
     const { data: product, error: err } = await supabase.from('products').insert({
       nom: nomFinal, slug, nom_cuvee: form.nom_cuvee || null, contenance: form.contenance || '75cl',
       millesime: form.millesime ? parseInt(form.millesime) : null, couleur: form.couleur,
+      categorie: ['rouge','blanc','rosé','champagne','effervescent'].includes(form.couleur) ? 'vin' : form.couleur === 'spiritueux' ? 'spiritueux' : 'vin',
       region_id: form.region_id || null, appellation_id: form.appellation_id || null, domaine_id: form.domaine_id || null,
       prix_achat_ht: form.prix_achat_ht ? parseFloat(form.prix_achat_ht) : null, prix_vente_ttc: prixNum,
       prix_vente_pro: form.prix_vente_pro ? parseFloat(form.prix_vente_pro) : null,
@@ -906,9 +907,18 @@ function ModalDupliquerCommande({ produit, commandeId, onCreated, onClose }: {
     const mil = millesime && millesime.trim() !== '' ? parseInt(millesime) : (produit.millesime || null)
     const ttc = prixHT ? arrondir50(prixHT * 2) : (produit.prix_vente_ttc || null)
     const pro = prixHT ? Math.round(prixHT * 1.70 * 100) / 100 : (produit.prix_vente_pro || null)
+    // Déduire la catégorie depuis le produit original ou la couleur
+    const couleursVin = ['rouge', 'blanc', 'rosé', 'champagne', 'effervescent']
+    const couleursSpiriteux = ['spiritueux']
+    let categorie = produit.categorie || null
+    if (!categorie) {
+      if (couleursVin.includes(produit.couleur)) categorie = 'vin'
+      else if (couleursSpiriteux.includes(produit.couleur)) categorie = 'spiritueux'
+      else categorie = 'vin'
+    }
     const { data: newProd, error: err } = await supabase.from('products').insert({
       nom: nomFinal, slug, nom_cuvee: produit.nom_cuvee || null, contenance: produit.contenance || '75cl',
-      millesime: mil, couleur: produit.couleur,
+      millesime: mil, couleur: produit.couleur, categorie,
       region_id: produit.region_id || null, appellation_id: produit.appellation_id || null, domaine_id: produit.domaine_id || null,
       prix_achat_ht: prixHT, prix_vente_ttc: ttc, prix_vente_pro: pro,
       image_url: produit.image_url || null,
