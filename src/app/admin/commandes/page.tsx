@@ -81,6 +81,7 @@ function ModalNouveauProduit({ domaines, regions, appellations, onCreated, onClo
 }) {
   const [form, setForm] = useState({
     appellation_nom: '', nom_cuvee: '', domaine_nom: '', domaine_id: '',
+    nomSurcharge: '',
     contenance: '75cl', millesime: '', couleur: 'rouge', region_id: '', appellation_id: '',
     prix_achat_ht: '', coeff_particulier: '2', prix_vente_ttc: '', coeff_pro: '1.70',
     prix_vente_pro: '', conditionnement: '6', image_url: '',
@@ -95,6 +96,7 @@ function ModalNouveauProduit({ domaines, regions, appellations, onCreated, onClo
   const appsFiltrees = form.region_id ? appellations.filter(a => a.region_id === form.region_id) : appellations
 
   const buildNom = () => {
+    if (form.nomSurcharge.trim()) return form.nomSurcharge.trim()
     const parts = []
     if (form.appellation_nom) parts.push(form.appellation_nom)
     if (form.nom_cuvee) parts.push(form.nom_cuvee)
@@ -179,13 +181,19 @@ function ModalNouveauProduit({ domaines, regions, appellations, onCreated, onClo
         {error && <div style={{ background: 'rgba(201,110,110,0.1)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 4, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: '#c96e6e' }}>{error}</div>}
         {(form.appellation_nom || form.domaine_nom) && (
           <div style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 4, padding: '10px 14px', marginBottom: 16 }}>
-            <div style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', textTransform: 'uppercase' as const, marginBottom: 6 }}>Aperçu du nom</div>
-            <div style={{ fontSize: 15, color: '#f0e8d8', fontFamily: 'Georgia, serif' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <div style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', textTransform: 'uppercase' as const }}>Nom du produit</div>
+              {form.nomSurcharge && <button onClick={() => setForm(f => ({ ...f, nomSurcharge: '' }))} style={{ background: 'transparent', border: 'none', color: 'rgba(201,169,110,0.5)', fontSize: 10, cursor: 'pointer', padding: 0 }}>↺ Automatique</button>}
+            </div>
+            <input
+              value={form.nomSurcharge || buildNom()}
+              onChange={e => setForm(f => ({ ...f, nomSurcharge: e.target.value }))}
+              onFocus={() => { if (!form.nomSurcharge) setForm(f => ({ ...f, nomSurcharge: buildNom() })) }}
+              placeholder="Nom généré automatiquement..."
+              style={{ width: '100%', background: 'transparent', border: 'none', borderBottom: `0.5px solid ${form.nomSurcharge ? 'rgba(201,169,110,0.5)' : 'rgba(255,255,255,0.1)'}`, color: '#f0e8d8', fontSize: 15, fontFamily: 'Georgia, serif', padding: '4px 0', outline: 'none', boxSizing: 'border-box' as const }}
+            />
+            <div style={{ display: 'none' }}>
               {form.appellation_nom}
-              {form.nom_cuvee && <span style={{ fontStyle: 'italic', color: 'rgba(232,224,213,0.7)' }}> {form.nom_cuvee}</span>}
-              {form.couleur && <span style={{ color: COULEUR_COLOR[form.couleur] || '#e8e0d5', fontWeight: 500 }}> {form.couleur.charAt(0).toUpperCase() + form.couleur.slice(1)}</span>}
-              {form.millesime && <span style={{ color: 'rgba(232,224,213,0.6)' }}> {form.millesime}</span>}
-              {form.contenance && <span style={{ color: 'rgba(232,224,213,0.4)', fontSize: 12 }}> {form.contenance}</span>}
               {form.domaine_nom && <span style={{ color: 'rgba(232,224,213,0.5)', fontSize: 13 }}> — {form.domaine_nom}</span>}
             </div>
           </div>
@@ -917,6 +925,7 @@ function ModalDupliquerCommande({ produit, commandeId, onCreated, onClose }: {
 }) {
   const [millesime, setMillesime] = useState(produit.millesime ? String(produit.millesime + 1) : '')
   const [prixAchatHT, setPrixAchatHT] = useState(produit.prix_achat_ht_override ? String(produit.prix_achat_ht_override) : produit.prix_achat_ht ? String(produit.prix_achat_ht) : '')
+  const [nomSurcharge, setNomSurcharge] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -925,6 +934,7 @@ function ModalDupliquerCommande({ produit, commandeId, onCreated, onClose }: {
   const prixPro = prixAchatHT && parseFloat(prixAchatHT) > 0 ? Math.round(parseFloat(prixAchatHT) * 1.70 * 100) / 100 : produit.prix_vente_pro
 
   const buildNomDuplique = () => {
+    if (nomSurcharge.trim()) return nomSurcharge.trim()
     let nom = produit.nom || ''
     if (produit.millesime && millesime) nom = nom.replace(String(produit.millesime), millesime)
     return nom
@@ -1006,13 +1016,19 @@ function ModalDupliquerCommande({ produit, commandeId, onCreated, onClose }: {
             </div>
           </div>
         )}
-        {millesime && produit.millesime && (
-          <div style={{ background: 'rgba(201,169,110,0.06)', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 4, padding: '10px 14px', marginBottom: 16 }}>
-            <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.3)', letterSpacing: 1.5, marginBottom: 4 }}>NOUVEAU PRODUIT</div>
-            <div style={{ fontSize: 13, color: '#c9a96e' }}>{buildNomDuplique()}</div>
-            <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.3)', marginTop: 4 }}>Sera ajouté à la commande · Qté: 6 btl</div>
+        <div style={{ background: 'rgba(201,169,110,0.06)', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 4, padding: '10px 14px', marginBottom: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+            <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.3)', letterSpacing: 1.5 }}>NOM DU DUPLICATA</div>
+            {nomSurcharge && <button onClick={() => setNomSurcharge('')} style={{ background: 'transparent', border: 'none', color: 'rgba(201,169,110,0.5)', fontSize: 10, cursor: 'pointer', padding: 0 }}>↺ Auto</button>}
           </div>
-        )}
+          <input
+            value={nomSurcharge || buildNomDuplique()}
+            onChange={e => setNomSurcharge(e.target.value)}
+            onFocus={() => { if (!nomSurcharge) setNomSurcharge(buildNomDuplique()) }}
+            style={{ width: '100%', background: 'transparent', border: 'none', borderBottom: `0.5px solid ${nomSurcharge ? 'rgba(201,169,110,0.5)' : 'rgba(201,169,110,0.2)'}`, color: '#c9a96e', fontSize: 14, fontFamily: 'Georgia, serif', padding: '4px 0', outline: 'none', boxSizing: 'border-box' as const }}
+          />
+          <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.3)', marginTop: 4 }}>Sera ajouté à la commande · Qté: 6 btl</div>
+        </div>
         <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
           <button onClick={onClose} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '11px', fontSize: 11, cursor: 'pointer' }}>Annuler</button>
           <button onClick={() => handleDupliquer(false)} disabled={saving} style={{ background: 'rgba(201,169,110,0.1)', border: '0.5px solid rgba(201,169,110,0.3)', color: '#c9a96e', borderRadius: 4, padding: '11px', fontSize: 11, letterSpacing: 1, cursor: 'pointer', fontWeight: 500, opacity: saving ? 0.7 : 1 }}>
