@@ -1118,19 +1118,20 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
     setEditQty(initQty); setEditPrix(initPrix)
   }
 
-  const handleSendEmail = async () => {
-    const body = items.map(i => `- ${i.product_nom}${i.product_millesime ? ` ${i.product_millesime}` : ''} : ${i.quantite_commandee} btl @ ${parseFloat(i.prix_achat_ht || 0).toFixed(2)}€ HT`).join('\n')
-    const totalHTBrouillon = items.reduce((acc, item) => {
-    const gratuites = gratuitesCmd[item.id] ?? 0
-    const qty = editQty[item.id] ?? item.quantite_commandee
-    const prix = editPrix[item.id] ?? parseFloat(item.prix_achat_ht || 0)
-    const prixReel = gratuites > 0 && qty > 0 ? Math.round((prix * (qty - gratuites)) / qty * 10000) / 10000 : prix
-    return acc + prixReel * qty
+  const totalHTBrouillon = items.reduce((acc, item) => {
+  const gratuites = gratuitesCmd[item.id] ?? 0
+  const qty = editQty[item.id] ?? item.quantite_commandee
+  const prix = editPrix[item.id] ?? parseFloat(item.prix_achat_ht || 0)
+  const prixReel = gratuites > 0 && qty > 0 ? Math.round((prix * (qty - gratuites)) / qty * 10000) / 10000 : prix
+  return acc + prixReel * qty
   }, 0)
   const remiseBrouillonVal = remiseBrouillon
-    ? (remiseBrouillonType === 'pct' ? totalHTBrouillon * parseFloat(remiseBrouillon) / 100 : parseFloat(remiseBrouillon))
-    : 0
+  ? (remiseBrouillonType === 'pct' ? totalHTBrouillon * parseFloat(remiseBrouillon) / 100 : parseFloat(remiseBrouillon))
+  : 0
   const totalHT = Math.max(0, totalHTBrouillon - remiseBrouillonVal)
+
+  const handleSendEmail = async () => {
+    const body = items.map(i => `- ${i.product_nom}${i.product_millesime ? ` ${i.product_millesime}` : ''} : ${i.quantite_commandee} btl @ ${parseFloat(i.prix_achat_ht || 0).toFixed(2)}€ HT`).join('\n')
     const subject = `Commande ${commande.numero} — Cave de Gilbert`
     const mailBody = `Bonjour,\n\nVeuillez trouver notre commande ${commande.numero} :\n\n${body}\n\nTotal HT : ${totalHT.toFixed(2)}€\n\nCordialement,\nLa Cave de Gilbert`
     window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(mailBody)}`)
