@@ -1,69 +1,472 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@supabase/supabase-js'
+
+// ============================================================
+// CAVE DE GILBERT — Interface Admin connectée à Supabase
+// src/app/admin/page.tsx
+// ============================================================
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
-type View = 'besoins' | 'commandes' | 'reception' | 'detail' | 'associer'
+type Section = 'dashboard' | 'produits' | 'stock' | 'transferts' | 'vins' | 'bieres' | 'spiritueux' | 'epicerie' | 'sans_alcool'
 
-const STATUT_CMD: Record<string, { bg: string; color: string; label: string }> = {
-  brouillon:  { bg: '#222',    color: '#888',    label: 'Brouillon' },
-  'envoyée':   { bg: '#2a2a1e', color: '#c9b06e', label: 'Envoyée' },
-  'reçue':    { bg: '#1e2a1e', color: '#6ec96e', label: 'Reçue ✓' },
-  'annulée':   { bg: '#2a1e1e', color: '#c96e6e', label: 'Annulée' },
+// ── Styles constants ─────────────────────────────────────────
+
+const COULEUR_STYLE: Record<string, { bg: string; color: string; label: string }> = {
+  rouge:       { bg: '#7b1e1e', color: '#f5d0d0', label: 'Rouge' },
+  blanc:       { bg: '#b8a96a', color: '#1a1408', label: 'Blanc' },
+  rosé:        { bg: '#c97b7b', color: '#1a0808', label: 'Rosé' },
+  champagne:   { bg: '#c9b06e', color: '#1a0e00', label: 'Champagne' },
+  effervescent:{ bg: '#c9b06e', color: '#1a0e00', label: 'Effervescent' },
+  spiritueux:  { bg: '#6e8b6e', color: '#0a1a0a', label: 'Spiritueux' },
+  autre:       { bg: '#555', color: '#ddd', label: 'Autre' },
 }
 
-const COULEURS = ['rouge','blanc','rosé','champagne','effervescent','spiritueux','autre']
+const STATUT_LOCATION: Record<string, { bg: string; color: string }> = {
+  devis:      { bg: '#2a2a1e', color: '#c9b06e' },
+  confirmée:  { bg: '#1e2a1e', color: '#6ec96e' },
+  en_cours:   { bg: '#1e1e2a', color: '#6e9ec9' },
+  terminée:   { bg: '#222',    color: '#888' },
+  annulée:    { bg: '#2a1e1e', color: '#c96e6e' },
+  litige:     { bg: '#2a1e1e', color: '#c96e6e' },
+}
 
-function Badge({ statut }: { statut: string }) {
-  const s = STATUT_CMD[statut] || { bg: '#222', color: '#888', label: statut }
-  return <span style={{ background: s.bg, color: s.color, fontSize: 10, fontWeight: 500, padding: '3px 9px', borderRadius: 3, letterSpacing: 1, textTransform: 'uppercase' as const }}>{s.label}</span>
+// ── Composants de base ───────────────────────────────────────
+
+function Badge({ label, bg, color }: { label: string; bg: string; color: string }) {
+  return (
+    <span style={{
+      background: bg, color, fontSize: 10, fontWeight: 500,
+      padding: '2px 8px', borderRadius: 3, letterSpacing: 1,
+      textTransform: 'uppercase' as const, whiteSpace: 'nowrap' as const,
+    }}>{label}</span>
+  )
+}
+
+function StockDot({ qty, seuil = 3 }: { qty: number; seuil?: number }) {
+  const color = qty === 0 ? '#c96e6e' : qty <= seuil ? '#c9b06e' : '#6ec96e'
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+      <span style={{ width: 7, height: 7, borderRadius: '50%', background: color, display: 'inline-block' }} />
+      <span style={{ color: '#e8e0d5', fontSize: 13 }}>{qty}</span>
+    </span>
+  )
 }
 
 function Spinner() {
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', padding: '48px 0' }}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px 0' }}>
       <div style={{ fontSize: 24, color: '#c9a96e', animation: 'spin 1.5s linear infinite' }}>⟳</div>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   )
 }
 
-const sel = { width: '100%', background: '#1a1408', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 4, color: '#f0e8d8', fontSize: 13, padding: '9px 12px', cursor: 'pointer', boxSizing: 'border-box' as const }
-const inp = { width: '100%', background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#e8e0d5', fontSize: 13, padding: '9px 12px', boxSizing: 'border-box' as const }
-const card = { background: '#18130e', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 6, padding: '20px' } as React.CSSProperties
-const lbl = { fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.35)', textTransform: 'uppercase' as const, display: 'block', marginBottom: 6 }
+function Empty({ message }: { message: string }) {
+  return (
+    <div style={{ textAlign: 'center' as const, padding: '48px 0', color: 'rgba(232,224,213,0.3)', fontSize: 13 }}>
+      {message}
+    </div>
+  )
+}
+
+// ── Modal Ajout Produit avec IA ──────────────────────────────
+
+function ModalAjoutProduit({ sites, onClose, onSaved }: {
+  sites: any[]
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [step, setStep] = useState<'form' | 'generating' | 'preview'>('form')
+  const [error, setError] = useState('')
+  const [form, setForm] = useState({
+    nom: '', domaine: '', appellation: '', millesime: '',
+    couleur: 'rouge', prix: '', stock: '', site_id: sites[0]?.id || '',
+  })
+  const [preview, setPreview] = useState<any>(null)
+
+  const handleGenerate = async () => {
+    if (!form.nom || !form.prix) { setError('Le nom et le prix sont obligatoires'); return }
+    setError('')
+    setStep('generating')
+    try {
+      const res = await fetch('/api/ai-generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nom: form.nom, domaine_nom: form.domaine || undefined,
+          appellation_nom: form.appellation || undefined,
+          millesime: form.millesime ? parseInt(form.millesime) : undefined,
+          couleur: form.couleur, prix_vente_ttc: parseFloat(form.prix),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Erreur API')
+      setPreview(data)
+      setStep('preview')
+    } catch (e: any) {
+      setError(e.message)
+      setStep('form')
+    }
+  }
+
+  const handleSave = async () => {
+    if (!preview) return
+    try {
+      // Activer le produit et l'enregistrer
+      const { error } = await supabase
+        .from('products')
+        .update({ actif: true })
+        .eq('id', preview.product?.id)
+      if (error) throw error
+
+      // Si stock initial saisi, faire un mouvement d'achat
+      if (form.stock && parseInt(form.stock) > 0 && form.site_id && preview.product?.id) {
+        await fetch('/api/stock', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            product_id: preview.product.id,
+            site_id: form.site_id,
+            raison: 'achat',
+            quantite: parseInt(form.stock),
+            note: 'Stock initial',
+          }),
+        })
+      }
+      onSaved()
+      onClose()
+    } catch (e: any) {
+      setError(e.message)
+    }
+  }
+
+  return (
+    <div style={{
+      position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.8)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+    }} onClick={onClose}>
+      <div style={{
+        background: '#18130e', border: '0.5px solid rgba(201,169,110,0.2)',
+        borderRadius: 8, width: 580, maxHeight: '88vh', overflowY: 'auto' as const,
+        padding: '28px 32px',
+      }} onClick={e => e.stopPropagation()}>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+          <div>
+            <div style={{ fontSize: 10, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 4 }}>Nouveau produit</div>
+            <h2 style={{ fontSize: 20, color: '#f0e8d8', margin: 0, fontFamily: 'Georgia, serif', fontWeight: 300 }}>Ajouter un vin</h2>
+          </div>
+          <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.4)', fontSize: 20, cursor: 'pointer' }}>✕</button>
+        </div>
+
+        {error && (
+          <div style={{ background: 'rgba(201,110,110,0.1)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 4, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: '#c96e6e' }}>
+            {error}
+          </div>
+        )}
+
+        {step === 'form' && (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+              {[
+                { label: 'Nom du vin *', key: 'nom', placeholder: 'Ex: Puligny-Montrachet' },
+                { label: 'Domaine / Château', key: 'domaine', placeholder: 'Ex: Domaine Leflaive' },
+                { label: 'Appellation', key: 'appellation', placeholder: 'Ex: Bourgogne AOC' },
+                { label: 'Millésime', key: 'millesime', placeholder: 'Ex: 2019' },
+              ].map(({ label, key, placeholder }) => (
+                <div key={key}>
+                  <label style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, display: 'block', marginBottom: 6 }}>{label}</label>
+                  <input placeholder={placeholder} value={(form as any)[key]}
+                    onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+                    style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#e8e0d5', fontSize: 13, padding: '9px 12px', boxSizing: 'border-box' as const }} />
+                </div>
+              ))}
+            </div>
+
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, display: 'block', marginBottom: 6 }}>Couleur *</label>
+              <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 8 }}>
+                {Object.entries(COULEUR_STYLE).map(([key, { label, bg, color }]) => (
+                  <button key={key} onClick={() => setForm(f => ({ ...f, couleur: key }))} style={{
+                    background: form.couleur === key ? bg : 'rgba(255,255,255,0.04)',
+                    color: form.couleur === key ? color : 'rgba(232,224,213,0.5)',
+                    border: form.couleur === key ? `1px solid ${bg}` : '0.5px solid rgba(255,255,255,0.12)',
+                    borderRadius: 4, padding: '7px 12px', fontSize: 11, cursor: 'pointer',
+                  }}>{label}</button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14, marginBottom: 24 }}>
+              {[
+                { label: 'Prix TTC (€) *', key: 'prix', placeholder: '0.00', type: 'number' },
+                { label: 'Stock initial', key: 'stock', placeholder: '0', type: 'number' },
+              ].map(({ label, key, placeholder, type }) => (
+                <div key={key}>
+                  <label style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, display: 'block', marginBottom: 6 }}>{label}</label>
+                  <input type={type} placeholder={placeholder} value={(form as any)[key]}
+                    onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+                    style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#e8e0d5', fontSize: 13, padding: '9px 12px', boxSizing: 'border-box' as const }} />
+                </div>
+              ))}
+              <div>
+                <label style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, display: 'block', marginBottom: 6 }}>Site</label>
+                <select value={form.site_id} onChange={e => setForm(f => ({ ...f, site_id: e.target.value }))} style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#e8e0d5', fontSize: 13, padding: '9px 12px', boxSizing: 'border-box' as const }}>
+                  {sites.map(s => <option key={s.id} value={s.id}>{s.nom}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <button onClick={handleGenerate} disabled={!form.nom || !form.prix} style={{
+              width: '100%', background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4,
+              padding: '13px 20px', fontSize: 11, letterSpacing: 2, textTransform: 'uppercase' as const,
+              cursor: (form.nom && form.prix) ? 'pointer' : 'not-allowed',
+              opacity: (form.nom && form.prix) ? 1 : 0.5, fontWeight: 500,
+            }}>✦ Générer la fiche par IA (Gemini)</button>
+            <p style={{ fontSize: 11, color: 'rgba(232,224,213,0.3)', textAlign: 'center' as const, marginTop: 10 }}>Gratuit · Description, arômes, accords et profil générés automatiquement</p>
+          </>
+        )}
+
+        {step === 'generating' && (
+          <div style={{ textAlign: 'center' as const, padding: '48px 0' }}>
+            <div style={{ fontSize: 32, marginBottom: 16, animation: 'spin 2s linear infinite' }}>⟳</div>
+            <p style={{ color: '#c9a96e', letterSpacing: 1 }}>Gemini analyse le vin...</p>
+            <p style={{ color: 'rgba(232,224,213,0.3)', fontSize: 12, marginTop: 8 }}>Description · Arômes · Accords · Profil gustatif</p>
+            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+          </div>
+        )}
+
+        {step === 'preview' && preview && (
+          <>
+            <div style={{ background: 'rgba(83,74,183,0.1)', border: '0.5px solid rgba(83,74,183,0.25)', borderRadius: 4, padding: '8px 14px', marginBottom: 20 }}>
+              <span style={{ fontSize: 10, color: 'rgba(175,169,236,0.8)', letterSpacing: 1.5, textTransform: 'uppercase' as const }}>✦ Fiche générée — vérifiez avant de publier</span>
+            </div>
+
+            {preview.product && (
+              <>
+                <div style={{ marginBottom: 14 }}>
+                  <label style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, display: 'block', marginBottom: 6 }}>Description courte</label>
+                  <p style={{ color: '#e8e0d5', fontSize: 13, margin: 0, fontStyle: 'italic' }}>{preview.product.description_courte}</p>
+                </div>
+                <div style={{ marginBottom: 14 }}>
+                  <label style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, display: 'block', marginBottom: 6 }}>Description longue</label>
+                  <p style={{ color: 'rgba(232,224,213,0.6)', fontSize: 12, lineHeight: 1.7, margin: 0 }}>{preview.product.description_longue}</p>
+                </div>
+              </>
+            )}
+
+            <div style={{ display: 'flex', gap: 10, marginTop: 24 }}>
+              <button onClick={() => setStep('form')} style={{ flex: 1, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.15)', color: 'rgba(232,224,213,0.5)', borderRadius: 4, padding: '12px', fontSize: 11, letterSpacing: 1.5, cursor: 'pointer', textTransform: 'uppercase' as const }}>Modifier</button>
+              <button onClick={handleSave} style={{ flex: 2, background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '12px', fontSize: 11, letterSpacing: 2, cursor: 'pointer', fontWeight: 500, textTransform: 'uppercase' as const }}>✓ Publier le produit</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Modal Mouvement de stock ─────────────────────────────────
+
+function ModalMouvement({ produits, sites, onClose, onSaved }: {
+  produits: any[], sites: any[], onClose: () => void, onSaved: () => void
+}) {
+  const [form, setForm] = useState({ product_id: '', site_id: sites[0]?.id || '', raison: 'achat', quantite: '', note: '' })
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  const handleSubmit = async () => {
+    if (!form.product_id || !form.quantite) { setError('Produit et quantité obligatoires'); return }
+    setLoading(true)
+    try {
+      const res = await fetch('/api/stock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...form, quantite: parseInt(form.quantite) }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      onSaved()
+      onClose()
+    } catch (e: any) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }} onClick={onClose}>
+      <div style={{ background: '#18130e', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 8, width: 480, padding: '28px 32px' }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24 }}>
+          <h2 style={{ fontSize: 18, color: '#f0e8d8', margin: 0, fontFamily: 'Georgia, serif', fontWeight: 300 }}>Mouvement de stock</h2>
+          <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.4)', fontSize: 18, cursor: 'pointer' }}>✕</button>
+        </div>
+
+        {error && <div style={{ background: 'rgba(201,110,110,0.1)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 4, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: '#c96e6e' }}>{error}</div>}
+
+        <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 14, marginBottom: 24 }}>
+          {[
+            { label: 'Produit *', el: (
+              <select value={form.product_id} onChange={e => setForm(f => ({ ...f, product_id: e.target.value }))} style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#e8e0d5', fontSize: 13, padding: '9px 12px' }}>
+                <option value="">Choisir...</option>
+                {produits.map(p => <option key={p.id} value={p.id}>{p.nom}{p.millesime ? ` ${p.millesime}` : ''}</option>)}
+              </select>
+            )},
+            { label: 'Site *', el: (
+              <select value={form.site_id} onChange={e => setForm(f => ({ ...f, site_id: e.target.value }))} style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#e8e0d5', fontSize: 13, padding: '9px 12px' }}>
+                {sites.map(s => <option key={s.id} value={s.id}>{s.nom}</option>)}
+              </select>
+            )},
+            { label: 'Raison *', el: (
+              <select value={form.raison} onChange={e => setForm(f => ({ ...f, raison: e.target.value }))} style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#e8e0d5', fontSize: 13, padding: '9px 12px' }}>
+                <option value="achat">Achat fournisseur (+)</option>
+                <option value="retour">Retour client (+)</option>
+                <option value="ajustement">Ajustement inventaire (+/-)</option>
+                <option value="casse">Casse (-)</option>
+                <option value="dégustation">Dégustation (-)</option>
+              </select>
+            )},
+            { label: 'Quantité *', el: (
+              <input type="number" min="1" placeholder="Ex: 6" value={form.quantite}
+                onChange={e => setForm(f => ({ ...f, quantite: e.target.value }))}
+                style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#e8e0d5', fontSize: 13, padding: '9px 12px', boxSizing: 'border-box' as const }} />
+            )},
+            { label: 'Note', el: (
+              <input placeholder="Optionnel — ex: Livraison fournisseur Martin" value={form.note}
+                onChange={e => setForm(f => ({ ...f, note: e.target.value }))}
+                style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#e8e0d5', fontSize: 13, padding: '9px 12px', boxSizing: 'border-box' as const }} />
+            )},
+          ].map(({ label, el }) => (
+            <div key={label}>
+              <label style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, display: 'block', marginBottom: 6 }}>{label}</label>
+              {el}
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={onClose} style={{ flex: 1, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '11px', fontSize: 11, cursor: 'pointer' }}>Annuler</button>
+          <button onClick={handleSubmit} disabled={loading} style={{ flex: 2, background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '11px', fontSize: 11, letterSpacing: 2, cursor: 'pointer', fontWeight: 500, textTransform: 'uppercase' as const, opacity: loading ? 0.7 : 1 }}>
+            {loading ? 'Enregistrement...' : '✓ Enregistrer'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
+// ── Helpers couleur ──────────────────────────────────────────
+
+const COULEUR_COLOR: Record<string, string> = {
+  rouge: '#e07070',
+  blanc: '#c9b06e',
+  rosé: '#e8a0b0',
+  champagne: '#c0c0d8',
+  effervescent: '#c0c0d8',
+  spiritueux: '#8ec98e',
+  autre: '#888888',
+}
 
 function arrondir50(prix: number): number {
   return Math.ceil(prix * 2) / 2
 }
 
-function ModalNouveauProduit({ domaines, regions, appellations, onCreated, onClose }: {
-  domaines: any[]
+// Prévisualisation du nom du vin
+function NomVinPreview({ appellation, cuvee, couleur, millesime, contenance, domaine }: {
+  appellation: string, cuvee: string, couleur: string,
+  millesime: string, contenance: string, domaine: string
+}) {
+  if (!appellation && !domaine) return null
+  const couleurColor = COULEUR_COLOR[couleur] || '#888'
+  const couleurLabel = couleur.charAt(0).toUpperCase() + couleur.slice(1)
+  
+  return (
+    <div style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 4, padding: '10px 14px', marginBottom: 14 }}>
+      <div style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', textTransform: 'uppercase' as const, marginBottom: 6 }}>Aperçu du nom</div>
+      <div style={{ fontSize: 15, color: '#f0e8d8', fontFamily: 'Georgia, serif' }}>
+        {appellation}
+        {cuvee && <span style={{ fontStyle: 'italic', color: 'rgba(232,224,213,0.7)' }}> {cuvee}</span>}
+        {couleur && <span style={{ color: couleurColor, fontWeight: 500 }}> {couleurLabel}</span>}
+        {millesime && <span style={{ color: 'rgba(232,224,213,0.6)' }}> {millesime}</span>}
+        {contenance && <span style={{ color: 'rgba(232,224,213,0.4)', fontSize: 12 }}> {contenance}</span>}
+        {domaine && <span style={{ color: 'rgba(232,224,213,0.5)', fontSize: 13 }}> — {domaine}</span>}
+      </div>
+    </div>
+  )
+}
+
+// ── Modal Édition Produit ────────────────────────────────────
+
+function ModalEditProduit({ produit, regions: regionsProp, appellations: appellationsProp, onClose, onSaved }: {
+  produit: any
   regions: any[]
   appellations: any[]
-  onCreated: (product: any, domaineId: string, prixHT: string, conditionnement: string) => void
   onClose: () => void
+  onSaved: () => void
 }) {
+  const [regions, setRegions] = useState<any[]>(regionsProp || [])
+  const [appellations, setAppellations] = useState<any[]>(appellationsProp || [])
+  const [domaines, setDomaines] = useState<any[]>([])
+
+  useEffect(() => {
+    const loadAll = async () => {
+      let regs = regionsProp || []
+      let apps = appellationsProp || []
+      if (regs.length === 0) {
+        const { data } = await supabase.from('regions').select('id, nom').order('nom')
+        regs = data || []; setRegions(regs)
+      }
+      if (apps.length === 0) {
+        const { data } = await supabase.from('appellations').select('id, nom, region_id').order('nom')
+        apps = data || []; setAppellations(apps)
+      }
+      const { data: doms } = await supabase.from('domaines').select('id, nom').order('nom')
+      setDomaines(doms || [])
+      const appNom = apps.find((a: any) => a.id === produit.appellation_id)?.nom || ''
+      setForm(f => ({ ...f, appellation_nom: appNom }))
+    }
+    loadAll()
+  }, [])
+
   const [form, setForm] = useState({
-    appellation_nom: '', nom_cuvee: '', domaine_nom: '', domaine_id: '',
-    contenance: '75cl', millesime: '', couleur: 'rouge', region_id: '', appellation_id: '',
-    prix_achat_ht: '', coeff_particulier: '2', prix_vente_ttc: '', coeff_pro: '1.70',
-    prix_vente_pro: '', conditionnement: '6', image_url: '',
-    bio: false, vegan: false, casher: false, naturel: false, biodynamique: false, actif: true,
+    appellation_nom: '',
+    nom_cuvee: produit.nom_cuvee || '',
+    domaine_id: produit.domaine_id || '',
+    contenance: produit.contenance || '75cl',
+    millesime: produit.millesime?.toString() || '',
+    couleur: produit.couleur || 'rouge',
+    region_id: produit.region_id || '',
+    appellation_id: produit.appellation_id || '',
+    prix_achat_ht: produit.prix_achat_ht?.toString() || '',
+    coeff_particulier: '2',
+    prix_vente_ttc: produit.prix_vente_ttc?.toString() || '',
+    coeff_pro: '1.70',
+    prix_vente_pro: produit.prix_vente_pro?.toString() || '',
+    description_courte: produit.description_courte || '',
+    image_url: produit.image_url || '',
+    bio: produit.bio || false,
+    vegan: produit.vegan || false,
+    casher: produit.casher || false,
+    naturel: produit.naturel || false,
+    biodynamique: produit.biodynamique || false,
+    actif: produit.actif !== false,
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const [showNouveauFournisseur, setShowNouveauFournisseur] = useState(false)
-  const [nouveauFournisseur, setNouveauFournisseur] = useState('')
-  const [creatingFournisseur, setCreatingFournisseur] = useState(false)
 
-  const appsFiltrees = form.region_id ? appellations.filter(a => a.region_id === form.region_id) : appellations
+  const appsFiltrees = form.region_id
+    ? appellations.filter((a: any) => a.region_id === form.region_id)
+    : appellations
 
+  // Calcul du nom automatique
   const buildNom = () => {
     const parts = []
     if (form.appellation_nom) parts.push(form.appellation_nom)
@@ -72,101 +475,101 @@ function ModalNouveauProduit({ domaines, regions, appellations, onCreated, onClo
     if (form.millesime) parts.push(form.millesime)
     if (form.contenance) parts.push(form.contenance)
     let nom = parts.join(' ')
-    if (form.domaine_nom) nom += ' - ' + form.domaine_nom
+    const domaineNom = domaines.find(d => d.id === form.domaine_id)?.nom || ''
+    if (domaineNom) nom += ' - ' + domaineNom
     return nom
   }
 
   const handleHTChange = (ht: string) => {
     const htNum = parseFloat(ht)
     setForm(f => ({
-      ...f, prix_achat_ht: ht,
+      ...f,
+      prix_achat_ht: ht,
       prix_vente_ttc: !isNaN(htNum) && htNum > 0 ? arrondir50(htNum * parseFloat(f.coeff_particulier)).toFixed(2) : f.prix_vente_ttc,
       prix_vente_pro: !isNaN(htNum) && htNum > 0 ? (htNum * parseFloat(f.coeff_pro)).toFixed(2) : f.prix_vente_pro,
     }))
   }
 
-  const createFournisseur = async () => {
-    if (!nouveauFournisseur.trim()) return
-    setCreatingFournisseur(true)
-    const { data } = await supabase.from('domaines').insert({ nom: nouveauFournisseur.trim() }).select().single()
-    if (data) {
-      domaines.push(data)
-      setForm(f => ({ ...f, domaine_id: data.id, domaine_nom: data.nom }))
-      setShowNouveauFournisseur(false)
-      setNouveauFournisseur('')
-    }
-    setCreatingFournisseur(false)
-  }
-
   const handleSave = async () => {
     const nomFinal = buildNom()
-    const prixNum = parseFloat(form.prix_vente_ttc)
     if (!nomFinal.trim()) { setError("Remplissez au moins l'appellation"); return }
-    if (!form.prix_vente_ttc || isNaN(prixNum) || prixNum <= 0) { setError('Le prix TTC est obligatoire (ex: 15.50)'); return }
-    setSaving(true); setError('')
-    const slug = nomFinal.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + Math.random().toString(36).substring(2, 7)
-    const { data: product, error: err } = await supabase.from('products').insert({
-      nom: nomFinal, slug, nom_cuvee: form.nom_cuvee || null, contenance: form.contenance || '75cl',
-      millesime: form.millesime ? parseInt(form.millesime) : null, couleur: form.couleur,
-      categorie: ['rouge','blanc','rosé','champagne','effervescent'].includes(form.couleur) ? 'vin' : form.couleur === 'spiritueux' ? 'spiritueux' : 'vin',
-      region_id: form.region_id || null, appellation_id: form.appellation_id || null, domaine_id: form.domaine_id || null,
-      prix_achat_ht: form.prix_achat_ht ? parseFloat(form.prix_achat_ht) : null, prix_vente_ttc: prixNum,
+    if (!form.prix_vente_ttc) { setError('Le prix TTC est obligatoire'); return }
+    setSaving(true)
+    setError('')
+    const { error: err } = await supabase.from('products').update({
+      nom: nomFinal,
+      nom_cuvee: form.nom_cuvee || null,
+      contenance: form.contenance || '75cl',
+      millesime: form.millesime ? parseInt(form.millesime) : null,
+      couleur: form.couleur,
+      region_id: form.region_id || null,
+      appellation_id: form.appellation_id || null,
+      domaine_id: form.domaine_id || null,
+      prix_vente_ttc: parseFloat(form.prix_vente_ttc),
       prix_vente_pro: form.prix_vente_pro ? parseFloat(form.prix_vente_pro) : null,
-      image_url: form.image_url || null, bio: form.bio, vegan: form.vegan, casher: form.casher,
-      naturel: form.naturel, biodynamique: form.biodynamique, actif: form.actif,
-    }).select('id, nom, millesime, couleur, prix_achat_ht, prix_vente_ttc, actif').single()
-    if (err) { setError(`Erreur: ${err.message}`); setSaving(false); return }
-    if (!product) { setError('Produit non créé'); setSaving(false); return }
+      prix_achat_ht: form.prix_achat_ht ? parseFloat(form.prix_achat_ht) : null,
+      description_courte: form.description_courte || null,
+      image_url: form.image_url || null,
+      bio: form.bio,
+      vegan: form.vegan,
+      casher: form.casher,
+      naturel: form.naturel,
+      biodynamique: form.biodynamique,
+      actif: form.actif,
+    }).eq('id', produit.id)
+    if (err) { setError(err.message); setSaving(false); return }
+    // Mettre à jour product_suppliers si domaine sélectionné
     if (form.domaine_id) {
       await supabase.from('product_suppliers').upsert({
-        product_id: product.id, domaine_id: form.domaine_id,
+        product_id: produit.id,
+        domaine_id: form.domaine_id,
         prix_achat_ht: form.prix_achat_ht ? parseFloat(form.prix_achat_ht) : null,
-        conditionnement: parseInt(form.conditionnement) || 6, fournisseur_principal: true,
+        conditionnement: 6,
+        fournisseur_principal: true,
       }, { onConflict: 'product_id,domaine_id' })
     }
-    setSaving(false)
-    onCreated(product, form.domaine_id, form.prix_achat_ht, form.conditionnement)
+    onSaved()
     onClose()
   }
 
+  const inp = { width: '100%', background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#e8e0d5', fontSize: 13, padding: '9px 12px', boxSizing: 'border-box' as const }
+  const lbl = { fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, display: 'block', marginBottom: 6 }
+  const sel = { ...inp, background: '#1a1408', border: '0.5px solid rgba(201,169,110,0.2)', cursor: 'pointer' }
   const CERTIFS = [
     { key: 'bio', label: '🌿 Bio' }, { key: 'vegan', label: '🌱 Vegan' },
     { key: 'casher', label: '✡ Casher' }, { key: 'naturel', label: '🍃 Naturel' },
     { key: 'biodynamique', label: '🌙 Biodynamique' },
   ]
-  const COULEUR_COLOR: Record<string, string> = {
-    rouge: '#e07070', blanc: '#c9b06e', rosé: '#e8a0b0',
-    champagne: '#c0c0d8', effervescent: '#c0c0d8', spiritueux: '#8ec98e', autre: '#888888',
-  }
 
   return (
-    <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }} onClick={onClose}>
-      <div style={{ background: '#18130e', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 8, width: '100%', maxWidth: 700, padding: '28px 32px', maxHeight: '90vh', overflowY: 'auto' as const }} onClick={e => e.stopPropagation()}>
+    <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }} onClick={onClose}>
+      <div style={{ background: '#18130e', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 8, width: '100%', maxWidth: 700, padding: '28px 32px', maxHeight: '92vh', overflowY: 'auto' as const }} onClick={e => e.stopPropagation()}>
+
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 22, fontWeight: 300, color: '#f0e8d8', margin: 0 }}>Nouveau produit</h2>
+          <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 300, color: '#f0e8d8', margin: 0 }}>Modifier le produit</h2>
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.4)', fontSize: 20, cursor: 'pointer' }}>✕</button>
         </div>
+
         {error && <div style={{ background: 'rgba(201,110,110,0.1)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 4, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: '#c96e6e' }}>{error}</div>}
-        {(form.appellation_nom || form.domaine_nom) && (
-          <div style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 4, padding: '10px 14px', marginBottom: 16 }}>
-            <div style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', textTransform: 'uppercase' as const, marginBottom: 6 }}>Aperçu du nom</div>
-            <div style={{ fontSize: 15, color: '#f0e8d8', fontFamily: 'Georgia, serif' }}>
-              {form.appellation_nom}
-              {form.nom_cuvee && <span style={{ fontStyle: 'italic', color: 'rgba(232,224,213,0.7)' }}> {form.nom_cuvee}</span>}
-              {form.couleur && <span style={{ color: COULEUR_COLOR[form.couleur] || '#e8e0d5', fontWeight: 500 }}> {form.couleur.charAt(0).toUpperCase() + form.couleur.slice(1)}</span>}
-              {form.millesime && <span style={{ color: 'rgba(232,224,213,0.6)' }}> {form.millesime}</span>}
-              {form.contenance && <span style={{ color: 'rgba(232,224,213,0.4)', fontSize: 12 }}> {form.contenance}</span>}
-              {form.domaine_nom && <span style={{ color: 'rgba(232,224,213,0.5)', fontSize: 13 }}> — {form.domaine_nom}</span>}
-            </div>
-          </div>
-        )}
-        <div style={{ fontSize: 10, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 10 }}>Identité du vin</div>
+
+        {/* Aperçu nom en temps réel */}
+        <NomVinPreview
+          appellation={form.appellation_nom || appsFiltrees.find((a: any) => a.id === form.appellation_id)?.nom || ''}
+          cuvee={form.nom_cuvee}
+          couleur={form.couleur}
+          millesime={form.millesime}
+          contenance={form.contenance}
+          domaine={domaines.find(d => d.id === form.domaine_id)?.nom || ''}
+        />
+
+        {/* Identité */}
+        <div style={{ fontSize: 10, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 10 }}>Identité</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
           <div>
             <label style={lbl}>Région viticole</label>
             <select value={form.region_id} onChange={e => setForm(f => ({ ...f, region_id: e.target.value, appellation_id: '', appellation_nom: '' }))} style={sel}>
-              <option value="">— Choisir —</option>
-              {regions.map(r => <option key={r.id} value={r.id}>{r.nom}</option>)}
+              <option value="" style={{ background: '#1a1408', color: '#888' }}>— Choisir —</option>
+              {regions.map(r => <option key={r.id} value={r.id} style={{ background: '#1a1408', color: '#f0e8d8' }}>{r.nom}</option>)}
             </select>
           </div>
           <div>
@@ -175,8 +578,8 @@ function ModalNouveauProduit({ domaines, regions, appellations, onCreated, onClo
               const app = appsFiltrees.find(a => a.id === e.target.value)
               setForm(f => ({ ...f, appellation_id: e.target.value, appellation_nom: app?.nom || '' }))
             }} style={sel}>
-              <option value="">— Choisir —</option>
-              {appsFiltrees.map(a => <option key={a.id} value={a.id}>{a.nom}</option>)}
+              <option value="" style={{ background: '#1a1408', color: '#888' }}>— Choisir —</option>
+              {appsFiltrees.map(a => <option key={a.id} value={a.id} style={{ background: '#1a1408', color: '#f0e8d8' }}>{a.nom}</option>)}
             </select>
           </div>
           <div>
@@ -184,9 +587,21 @@ function ModalNouveauProduit({ domaines, regions, appellations, onCreated, onClo
             <input value={form.nom_cuvee} onChange={e => setForm(f => ({ ...f, nom_cuvee: e.target.value }))} placeholder="Laisser vide si pas de cuvée" style={{ ...inp, fontStyle: 'italic' }} />
           </div>
           <div>
+            <label style={lbl}>Domaine / Fournisseur</label>
+            <select value={form.domaine_id} onChange={e => setForm(f => ({ ...f, domaine_id: e.target.value }))} style={sel}>
+              <option value="">— Choisir un domaine —</option>
+              {domaines.map(d => <option key={d.id} value={d.id} style={{ background: '#1a1408', color: '#f0e8d8' }}>{d.nom}</option>)}
+            </select>
+            <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.3)', marginTop: 4 }}>
+              Domaine introuvable ? <a href="/admin/fournisseurs" target="_blank" style={{ color: '#c9a96e', textDecoration: 'none' }}>Créer dans Fournisseurs →</a>
+            </div>
+          </div>
+          <div>
             <label style={lbl}>Couleur *</label>
             <select value={form.couleur} onChange={e => setForm(f => ({ ...f, couleur: e.target.value }))} style={{ ...sel, color: COULEUR_COLOR[form.couleur] || '#e8e0d5', fontWeight: 600 }}>
-              {COULEURS.map(c => <option key={c} value={c} style={{ background: '#1a1408', color: COULEUR_COLOR[c] || '#f0e8d8', fontWeight: 600 }}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
+              {Object.entries(COULEUR_STYLE).map(([k, v]) => (
+                <option key={k} value={k} style={{ background: '#1a1408', color: COULEUR_COLOR[k] || '#f0e8d8', fontWeight: 600 }}>{v.label}</option>
+              ))}
             </select>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -199,37 +614,9 @@ function ModalNouveauProduit({ domaines, regions, appellations, onCreated, onClo
               <input value={form.contenance} onChange={e => setForm(f => ({ ...f, contenance: e.target.value }))} placeholder="75cl" style={inp} />
             </div>
           </div>
-          <div>
-            <label style={lbl}>Conditionnement (btl)</label>
-            <input type="number" value={form.conditionnement} onChange={e => setForm(f => ({ ...f, conditionnement: e.target.value }))} placeholder="6" style={inp} />
-          </div>
         </div>
-        <div style={{ height: '0.5px', background: 'rgba(255,255,255,0.06)', margin: '8px 0 14px' }} />
-        <div style={{ fontSize: 10, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 10 }}>Fournisseur</div>
-        {!showNouveauFournisseur ? (
-          <div style={{ marginBottom: 8 }}>
-            <label style={lbl}>Domaine / Fournisseur</label>
-            <select value={form.domaine_id} onChange={e => {
-              const d = domaines.find(d => d.id === e.target.value)
-              setForm(f => ({ ...f, domaine_id: e.target.value, domaine_nom: d?.nom || '' }))
-            }} style={sel}>
-              <option value="">— Choisir un fournisseur —</option>
-              {domaines.map(d => <option key={d.id} value={d.id}>{d.nom}</option>)}
-            </select>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-            <input value={nouveauFournisseur} onChange={e => setNouveauFournisseur(e.target.value)} placeholder="Nom du nouveau fournisseur" style={{ ...inp, flex: 1 }} />
-            <button onClick={createFournisseur} disabled={creatingFournisseur} style={{ background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '9px 16px', fontSize: 11, cursor: 'pointer', fontWeight: 500 }}>
-              {creatingFournisseur ? '...' : 'Créer'}
-            </button>
-            <button onClick={() => setShowNouveauFournisseur(false)} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '9px 12px', fontSize: 11, cursor: 'pointer' }}>✕</button>
-          </div>
-        )}
-        <button onClick={() => setShowNouveauFournisseur(v => !v)} style={{ background: 'transparent', border: 'none', color: 'rgba(201,169,110,0.6)', fontSize: 11, cursor: 'pointer', padding: 0, marginBottom: 14 }}>
-          {showNouveauFournisseur ? '← Choisir existant' : '+ Créer un nouveau fournisseur'}
-        </button>
-        <div style={{ height: '0.5px', background: 'rgba(255,255,255,0.06)', margin: '4px 0 14px' }} />
+
+        {/* Prix */}
         <div style={{ fontSize: 10, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 10 }}>Prix</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr', gap: 10, marginBottom: 6 }}>
           <div>
@@ -241,7 +628,7 @@ function ModalNouveauProduit({ domaines, regions, appellations, onCreated, onClo
             <input type="number" step="0.01" value={form.coeff_particulier} onChange={e => setForm(f => ({ ...f, coeff_particulier: e.target.value }))} style={{ ...inp, color: '#c9b06e' }} />
           </div>
           <div>
-            <label style={lbl}>Prix TTC part. *</label>
+            <label style={lbl}>Prix TTC part. (€) *</label>
             <input type="number" step="0.50" value={form.prix_vente_ttc} onChange={e => setForm(f => ({ ...f, prix_vente_ttc: e.target.value }))} placeholder="0.00" style={inp} />
           </div>
           <div>
@@ -249,20 +636,32 @@ function ModalNouveauProduit({ domaines, regions, appellations, onCreated, onClo
             <input type="number" step="0.01" value={form.coeff_pro} onChange={e => setForm(f => ({ ...f, coeff_pro: e.target.value }))} style={{ ...inp, color: '#c9b06e' }} />
           </div>
           <div>
-            <label style={lbl}>Prix TTC pro</label>
+            <label style={lbl}>Prix TTC pro (€)</label>
             <input type="number" step="0.01" value={form.prix_vente_pro} onChange={e => setForm(f => ({ ...f, prix_vente_pro: e.target.value }))} placeholder="0.00" style={inp} />
           </div>
         </div>
-        {form.prix_achat_ht && parseFloat(form.prix_achat_ht) > 0 && (
+        {form.prix_achat_ht && (
           <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)', marginBottom: 14 }}>
-            {form.prix_achat_ht}€ × {form.coeff_particulier} = <strong style={{ color: '#c9a96e' }}>{arrondir50(parseFloat(form.prix_achat_ht) * parseFloat(form.coeff_particulier)).toFixed(2)}€</strong> part.
+            {form.prix_achat_ht}€ HT × {form.coeff_particulier} = <strong style={{ color: '#c9a96e' }}>{arrondir50(parseFloat(form.prix_achat_ht) * parseFloat(form.coeff_particulier)).toFixed(2)}€</strong> part.
             {' · '}× {form.coeff_pro} = <strong style={{ color: '#c9a96e' }}>{(parseFloat(form.prix_achat_ht) * parseFloat(form.coeff_pro)).toFixed(2)}€</strong> pro
           </div>
         )}
+
+        {/* Description & Photo */}
+        <div style={{ fontSize: 10, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 10 }}>Description & Photo</div>
+        <div style={{ marginBottom: 12 }}>
+          <label style={lbl}>Description courte</label>
+          <textarea value={form.description_courte} onChange={e => setForm(f => ({ ...f, description_courte: e.target.value }))} rows={2} style={{ ...inp, resize: 'vertical' as const }} />
+        </div>
         <div style={{ marginBottom: 14 }}>
           <label style={lbl}>URL photo</label>
           <input value={form.image_url} onChange={e => setForm(f => ({ ...f, image_url: e.target.value }))} placeholder="https://..." style={inp} />
+          {form.image_url && (
+            <img src={form.image_url} alt="" style={{ height: 60, marginTop: 8, borderRadius: 4, objectFit: 'contain' as const, background: '#100d0a', padding: 4 }} onError={e => (e.currentTarget.style.display = 'none')} />
+          )}
         </div>
+
+        {/* Certifications */}
         <div style={{ fontSize: 10, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 10 }}>Certifications</div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const, marginBottom: 16 }}>
           {CERTIFS.map(({ key, label }) => {
@@ -277,403 +676,18 @@ function ModalNouveauProduit({ domaines, regions, appellations, onCreated, onClo
             )
           })}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24 }}>
           <div onClick={() => setForm(f => ({ ...f, actif: !f.actif }))} style={{ width: 14, height: 14, borderRadius: 2, border: `0.5px solid ${form.actif ? '#c9a96e' : 'rgba(255,255,255,0.2)'}`, background: form.actif ? '#c9a96e' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
             {form.actif && <span style={{ fontSize: 9, color: '#0d0a08', fontWeight: 700 }}>✓</span>}
           </div>
           <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)', cursor: 'pointer' }} onClick={() => setForm(f => ({ ...f, actif: !f.actif }))}>Produit actif (visible en boutique)</span>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button onClick={onClose} style={{ flex: 1, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '12px', fontSize: 11, cursor: 'pointer' }}>Annuler</button>
-          <button onClick={handleSave} disabled={saving} style={{ flex: 2, background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '12px', fontSize: 11, letterSpacing: 2, cursor: 'pointer', fontWeight: 500, textTransform: 'uppercase' as const, opacity: saving ? 0.7 : 1 }}>
-            {saving ? '⟳ Création...' : '✓ Créer et ajouter'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
 
-function Sidebar({ view, setView, counts }: { view: View; setView: (v: View) => void; counts: Record<string, number> }) {
-  const items = [
-    { id: 'besoins',   label: 'Besoins',    icon: '◻', count: counts.besoins },
-    { id: 'commandes', label: 'Commandes',  icon: '◈', count: counts.commandes },
-    { id: 'reception', label: 'Réception',  icon: '📦', count: counts.reception },
-    { id: 'associer',  label: 'Assoc. fournisseurs', icon: '⬥' },
-  ]
-  return (
-    <aside style={{ width: 220, background: '#100d0a', borderRight: '0.5px solid rgba(255,255,255,0.06)', padding: '24px 0', position: 'fixed' as const, top: 0, left: 0, bottom: 0 }}>
-      <div style={{ padding: '0 20px 24px', borderBottom: '0.5px solid rgba(255,255,255,0.06)' }}>
-        <a href="/admin" style={{ display: 'block', marginBottom: 10, textDecoration: 'none' }}>
-          <img src="/logo.png" alt="Cave de Gilbert" onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} style={{ width: '100%', maxHeight: 52, objectFit: 'contain', cursor: 'pointer' }} />
-        </a>
-        <div style={{ fontFamily: 'Georgia, serif', fontSize: 15, color: '#c9a96e', letterSpacing: 3, textTransform: 'uppercase' as const, fontWeight: 300 }}>Cave de Gilbert</div>
-        <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.3)', letterSpacing: 1.5, marginTop: 3 }}>ADMINISTRATION</div>
-      </div>
-      <nav style={{ padding: '16px 0' }}>
-        {[
-          { label: 'Tableau de bord', href: '/admin', icon: '⬡' },
-          { label: 'Produits', href: '/admin', icon: '⬥' },
-          { label: 'Clients', href: '/admin/clients', icon: '◎' },
-          { label: 'Fournisseurs', href: '/admin/fournisseurs', icon: '◈' },
-          { label: 'Transferts', href: '/admin/transferts', icon: '⇄' },
-          { label: 'Inventaire', href: '/admin/inventaire', icon: '◉' },
-          { label: 'Assistant IA', href: '/admin/ia', icon: '✦' },
-        ].map(item => (
-          <a key={item.label} href={item.href} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 20px', fontSize: 12, color: 'rgba(232,224,213,0.45)', borderLeft: '2px solid transparent', textDecoration: 'none' }}>
-            <span>{item.icon}</span>{item.label}
-          </a>
-        ))}
-        <div style={{ height: '0.5px', background: 'rgba(255,255,255,0.06)', margin: '8px 0' }} />
-        <div style={{ padding: '8px 20px', fontSize: 9, letterSpacing: 2, color: 'rgba(232,224,213,0.25)', textTransform: 'uppercase' as const }}>Commandes</div>
-        {items.map(item => (
-          <button key={item.id} onClick={() => setView(item.id as View)} style={{
-            width: '100%', textAlign: 'left' as const, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '10px 20px', fontSize: 12, cursor: 'pointer',
-            background: view === item.id ? 'rgba(201,169,110,0.08)' : 'transparent',
-            color: view === item.id ? '#c9a96e' : 'rgba(232,224,213,0.45)',
-            borderLeft: `2px solid ${view === item.id ? '#c9a96e' : 'transparent'}`,
-            border: 'none', borderLeftStyle: 'solid' as const,
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}><span>{item.icon}</span>{item.label}</div>
-            {item.count !== undefined && item.count > 0 && (
-              <span style={{ background: '#c9a96e', color: '#0d0a08', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{item.count}</span>
-            )}
-          </button>
-        ))}
-      </nav>
-      <div style={{ padding: '16px 20px', borderTop: '0.5px solid rgba(255,255,255,0.06)', position: 'absolute' as const, bottom: 0, left: 0, right: 0 }}>
-        <a href="/" style={{ fontSize: 11, color: 'rgba(232,224,213,0.3)', textDecoration: 'none' }}>← Voir le site</a>
-      </div>
-    </aside>
-  )
-}
-
-function VueBesoins({ onRefresh }: { onRefresh: () => void }) {
-  const [besoins, setBesoins] = useState<any[]>([])
-  const [domaines, setDomaines] = useState<any[]>([])
-  const [regions, setRegions] = useState<any[]>([])
-  const [appellations, setAppellations] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
-  const [searchRes, setSearchRes] = useState<any[]>([])
-  const [generating, setGenerating] = useState(false)
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
-  const [showNouveauProduit, setShowNouveauProduit] = useState(false)
-
-  const loadBesoins = async () => {
-    setLoading(true)
-    const { data } = await supabase.from('order_needs').select('*, product:products(id, nom, millesime, couleur), fournisseur:domaines(id, nom)').eq('statut', 'en_attente').order('created_at', { ascending: false })
-    setBesoins(data || [])
-    setLoading(false)
-  }
-
-  useEffect(() => {
-    loadBesoins()
-    supabase.from('domaines').select('id, nom').order('nom').then(({ data }) => setDomaines(data || []))
-    supabase.from('regions').select('id, nom').order('nom').then(({ data }) => setRegions(data || []))
-    supabase.from('appellations').select('id, nom, region_id').order('nom').then(({ data }) => setAppellations(data || []))
-  }, [])
-
-  const searchProducts = async (q: string) => {
-    setSearch(q)
-    if (q.length < 2) { setSearchRes([]); return }
-    const { data } = await supabase.from('products').select('id, nom, millesime, couleur, prix_achat_ht').ilike('nom', `%${q}%`).eq('actif', true).limit(15)
-    setSearchRes(data || [])
-  }
-
-  const addBesoin = async (product: any) => {
-    if (besoins.find(b => b.product_id === product.id)) return
-    const { data: ps } = await supabase.from('product_suppliers').select('domaine_id, prix_achat_ht, conditionnement').eq('product_id', product.id).eq('fournisseur_principal', true).single()
-    await supabase.from('order_needs').insert({ product_id: product.id, domaine_id: ps?.domaine_id || null, quantite: ps?.conditionnement || 6, prix_achat_ht: ps?.prix_achat_ht || product.prix_achat_ht || 0, statut: 'en_attente' })
-    setSearch(''); setSearchRes([]); loadBesoins()
-  }
-
-  const updateQty = async (id: string, qty: number) => {
-    await supabase.from('order_needs').update({ quantite: Math.max(1, qty) }).eq('id', id)
-    loadBesoins()
-  }
-
-  const removeBesoin = async (id: string) => {
-    await supabase.from('order_needs').delete().eq('id', id)
-    loadBesoins()
-  }
-
-  const generateCommandes = async () => {
-    setGenerating(true); setError(''); setSuccess('')
-    const parFournisseur: Record<string, any[]> = {}
-    const sansFournisseur: any[] = []
-    for (const b of besoins) {
-      if (!b.domaine_id) { sansFournisseur.push(b); continue }
-      if (!parFournisseur[b.domaine_id]) parFournisseur[b.domaine_id] = []
-      parFournisseur[b.domaine_id].push(b)
-    }
-    let nbCommandes = 0
-    for (const [domaineId, items] of Object.entries(parFournisseur)) {
-      const { data: cmd } = await supabase.from('supplier_orders').insert({ domaine_id: domaineId, statut: 'brouillon', date_commande: new Date().toISOString().split('T')[0] }).select().single()
-      if (!cmd) continue
-      await supabase.from('supplier_order_items').insert(items.map(b => ({ order_id: cmd.id, product_id: b.product_id, product_nom: b.product?.nom || '', product_millesime: b.product?.millesime || null, quantite_commandee: b.quantite, prix_achat_ht: b.prix_achat_ht || 0 })))
-      await supabase.from('order_needs').update({ statut: 'commandé', supplier_order_id: cmd.id }).in('id', items.map(b => b.id))
-      nbCommandes++
-    }
-    setGenerating(false)
-    if (nbCommandes > 0) { setSuccess(`${nbCommandes} commande${nbCommandes > 1 ? 's' : ''} générée${nbCommandes > 1 ? 's' : ''} !`); loadBesoins(); onRefresh() }
-    if (sansFournisseur.length > 0) setError(`${sansFournisseur.length} produit(s) sans fournisseur — non commandé(s)`)
-  }
-
-  const besoinsAvecFournisseur = besoins.filter(b => b.domaine_id)
-
-  return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 }}>
-        <div>
-          <h1 style={{ fontFamily: 'Georgia, serif', fontSize: 26, fontWeight: 300, color: '#f0e8d8', marginBottom: 4 }}>Besoins</h1>
-          <p style={{ fontSize: 12, color: 'rgba(232,224,213,0.35)' }}>{besoins.length} produit{besoins.length > 1 ? 's' : ''} en attente</p>
-        </div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button onClick={() => setShowNouveauProduit(true)} style={{ background: 'transparent', border: '0.5px solid rgba(201,169,110,0.4)', color: '#c9a96e', borderRadius: 4, padding: '10px 18px', fontSize: 11, letterSpacing: 1.5, cursor: 'pointer' }}>+ Nouveau produit</button>
-          <button onClick={generateCommandes} disabled={generating || besoinsAvecFournisseur.length === 0} style={{ background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '11px 20px', fontSize: 11, letterSpacing: 2, cursor: besoinsAvecFournisseur.length === 0 ? 'not-allowed' : 'pointer', fontWeight: 500, textTransform: 'uppercase' as const, opacity: besoinsAvecFournisseur.length === 0 ? 0.5 : 1 }}>
-            {generating ? '⟳ Génération...' : `✓ Passer les commandes (${besoinsAvecFournisseur.length})`}
-          </button>
-        </div>
-      </div>
-      {error && <div style={{ background: 'rgba(201,110,110,0.1)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 4, padding: '12px 16px', marginBottom: 16, fontSize: 12, color: '#c96e6e' }}>{error}</div>}
-      {success && <div style={{ background: 'rgba(110,201,110,0.1)', border: '0.5px solid rgba(110,201,110,0.3)', borderRadius: 4, padding: '12px 16px', marginBottom: 16, fontSize: 12, color: '#6ec96e' }}>{success}</div>}
-      <div style={{ ...card, marginBottom: 20 }}>
-        <div style={lbl}>Ajouter un produit existant aux besoins</div>
-        <input value={search} onChange={e => searchProducts(e.target.value)} placeholder="Tapez le nom d'un vin..." style={inp} />
-        {searchRes.length > 0 && (
-          <div style={{ border: '0.5px solid rgba(255,255,255,0.08)', borderRadius: 4, overflow: 'hidden', marginTop: 4 }}>
-            {searchRes.map(p => (
-              <div key={p.id} onClick={() => addBesoin(p)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', cursor: 'pointer', borderBottom: '0.5px solid rgba(255,255,255,0.04)', background: besoins.find(b => b.product_id === p.id) ? 'rgba(201,169,110,0.08)' : '#18130e' }}
-                onMouseEnter={e => { if (!besoins.find(b => b.product_id === p.id)) e.currentTarget.style.background = 'rgba(255,255,255,0.03)' }}
-                onMouseLeave={e => { if (!besoins.find(b => b.product_id === p.id)) e.currentTarget.style.background = '#18130e' }}>
-                <span style={{ fontSize: 13, color: '#f0e8d8' }}>{p.nom}{p.millesime ? ` ${p.millesime}` : ''}</span>
-                {besoins.find(b => b.product_id === p.id) ? <span style={{ fontSize: 10, color: '#c9a96e' }}>✓ Déjà dans les besoins</span> : <span style={{ fontSize: 10, color: 'rgba(232,224,213,0.4)' }}>+ Ajouter</span>}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-      {loading ? <div style={{ textAlign: 'center' as const, padding: 48, color: 'rgba(232,224,213,0.3)' }}>Chargement...</div> : besoins.length === 0 ? (
-        <div style={{ ...card, textAlign: 'center' as const, padding: '48px' }}><p style={{ color: 'rgba(232,224,213,0.4)', fontSize: 14 }}>Aucun besoin en attente.</p></div>
-      ) : (
-        <div style={{ background: '#18130e', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 6, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' as const }}>
-            <thead>
-              <tr style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
-                {['Produit', 'Fournisseur', 'Prix HT', 'Quantité', ''].map(h => (
-                  <th key={h} style={{ padding: '10px 14px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', textTransform: 'uppercase' as const, fontWeight: 400 }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {besoins.map((b, i) => (
-                <tr key={b.id} style={{ borderBottom: i < besoins.length - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none' }}>
-                  <td style={{ padding: '12px 14px' }}>
-                    <div style={{ fontSize: 13, color: '#f0e8d8' }}>{b.product?.nom}</div>
-                    {b.product?.millesime && <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>{b.product.millesime}</div>}
-                  </td>
-                  <td style={{ padding: '12px 14px', fontSize: 13, color: b.fournisseur ? '#e8e0d5' : '#c96e6e' }}>{b.fournisseur?.nom || <span style={{ fontSize: 11 }}>⚠ Non associé</span>}</td>
-                  <td style={{ padding: '12px 14px', fontSize: 13, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{b.prix_achat_ht ? `${parseFloat(b.prix_achat_ht).toFixed(2)}€` : '—'}</td>
-                  <td style={{ padding: '12px 14px' }}>
-                    <input type="number" min={1} defaultValue={b.quantite}
-                      onBlur={e => updateQty(b.id, parseInt(e.target.value) || 1)}
-                      onKeyDown={e => { if (e.key === 'Enter') updateQty(b.id, parseInt((e.target as HTMLInputElement).value) || 1) }}
-                      style={{ width: 70, background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 3, color: '#e8e0d5', fontSize: 13, padding: '4px 8px', textAlign: 'center' as const }} />
-                  </td>
-                  <td style={{ padding: '12px 14px' }}>
-                    <button onClick={() => removeBesoin(b.id)} style={{ background: 'transparent', border: 'none', color: '#c96e6e', cursor: 'pointer', fontSize: 14 }}>✕</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      {showNouveauProduit && (
-        <ModalNouveauProduit domaines={domaines} regions={regions} appellations={appellations}
-          onCreated={async (product) => { if (product) await addBesoin(product); setShowNouveauProduit(false) }}
-          onClose={() => setShowNouveauProduit(false)} />
-      )}
-    </div>
-  )
-}
-
-function ModalNouvelleCommande({ domaines, preselectedDomaineId, onCreated, onClose }: {
-  domaines: any[]; preselectedDomaineId?: string; onCreated: (cmd: any) => void; onClose: () => void
-}) {
-  const [domaineId, setDomaineId] = useState(preselectedDomaineId || '')
-  const [produitsDomaine, setProduitsDomaine] = useState<any[]>([])
-  const [loadingProduits, setLoadingProduits] = useState(false)
-  const [search, setSearch] = useState('')
-  const [selected, setSelected] = useState<Record<string, number>>({})
-  const [stockParProduit, setStockParProduit] = useState<Record<string, Record<string, number>>>({})
-  const [sites, setSites] = useState<any[]>([])
-  const [notes, setNotes] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
-  const [internalDomaines, setInternalDomaines] = useState<any[]>([])
-
-  const allDomaines = domaines && domaines.length > 0 ? domaines : internalDomaines
-
-  const loadProduitsDomaine = async (id: string) => {
-    if (!id) { setProduitsDomaine([]); setStockParProduit({}); return }
-    setLoadingProduits(true)
-    const { data: ps } = await supabase.from('product_suppliers').select('product_id, prix_achat_ht, conditionnement').eq('domaine_id', id).eq('fournisseur_principal', true)
-    if (!ps || ps.length === 0) { setProduitsDomaine([]); setLoadingProduits(false); return }
-    const ids = ps.map(p => p.product_id)
-    const [{ data: prods }, { data: stockData }, { data: sitesData }] = await Promise.all([
-      supabase.from('products').select('id, nom, millesime, couleur, prix_achat_ht').in('id', ids).order('nom'),
-      supabase.from('stock').select('product_id, site_id, quantite').in('product_id', ids),
-      supabase.from('sites').select('id, nom, code').eq('actif', true).order('type'),
-    ])
-    setSites(sitesData || [])
-    const stockMap: Record<string, Record<string, number>> = {}
-    ;(stockData || []).forEach((s: any) => {
-      if (!stockMap[s.product_id]) stockMap[s.product_id] = {}
-      stockMap[s.product_id][s.site_id] = s.quantite || 0
-    })
-    setStockParProduit(stockMap)
-    const psMap = Object.fromEntries(ps.map(p => [p.product_id, p]))
-    setProduitsDomaine((prods || []).map(p => ({ ...p, prix_achat_ht: psMap[p.id]?.prix_achat_ht || p.prix_achat_ht || 0, conditionnement: psMap[p.id]?.conditionnement || 6 })))
-    setLoadingProduits(false)
-  }
-
-  useEffect(() => {
-    const urlDomaineId = new URLSearchParams(window.location.search).get('domaine')
-    const targetId = preselectedDomaineId || urlDomaineId || ''
-    supabase.from('domaines').select('id, nom').order('nom').then(({ data }) => {
-      setInternalDomaines(data || [])
-      if (targetId) { setDomaineId(targetId); loadProduitsDomaine(targetId) }
-    })
-  }, [])
-
-  const toggleProduit = (produit: any) => {
-    setSelected(prev => {
-      if (prev[produit.id] !== undefined) { const next = { ...prev }; delete next[produit.id]; return next }
-      return { ...prev, [produit.id]: produit.conditionnement || 6 }
-    })
-  }
-
-  const handleCreate = async () => {
-    if (!domaineId) { setError('Choisissez un fournisseur'); return }
-    const lignes = Object.entries(selected)
-    if (lignes.length === 0) { setError('Cochez au moins un produit'); return }
-    setSaving(true)
-    const { data: cmd } = await supabase.from('supplier_orders').insert({ domaine_id: domaineId, statut: 'brouillon', date_commande: new Date().toISOString().split('T')[0], notes }).select().single()
-    if (!cmd) { setError('Erreur création commande'); setSaving(false); return }
-    const prodMap = Object.fromEntries(produitsDomaine.map(p => [p.id, p]))
-    await supabase.from('supplier_order_items').insert(
-      lignes.map(([pid, qty]) => ({ order_id: cmd.id, product_id: pid, product_nom: prodMap[pid]?.nom || '', product_millesime: prodMap[pid]?.millesime || null, quantite_commandee: qty, prix_achat_ht: prodMap[pid]?.prix_achat_ht || 0 }))
-    )
-    onCreated(cmd)
-  }
-
-  const filtres = produitsDomaine.filter(p => !search || p.nom.toLowerCase().includes(search.toLowerCase()))
-  const nbSelectionnes = Object.keys(selected).length
-  const totalHT = Object.entries(selected).reduce((acc, [pid, qty]) => {
-    const p = produitsDomaine.find(x => x.id === pid)
-    return acc + (parseFloat(p?.prix_achat_ht || 0) * qty)
-  }, 0)
-
-  return (
-    <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }} onClick={onClose}>
-      <div style={{ background: '#18130e', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 8, width: '100%', maxWidth: 780, padding: '28px 32px', maxHeight: '90vh', overflowY: 'auto' as const }} onClick={e => e.stopPropagation()}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 300, color: '#f0e8d8', margin: 0 }}>Nouvelle commande</h2>
-          <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.4)', fontSize: 20, cursor: 'pointer' }}>✕</button>
-        </div>
-        {error && <div style={{ background: 'rgba(201,110,110,0.1)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 4, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: '#c96e6e' }}>{error}</div>}
-        <div style={{ marginBottom: 20 }}>
-          <label style={lbl}>Fournisseur *</label>
-          <select value={domaineId} onChange={e => { setDomaineId(e.target.value); setSelected({}); setSearch(''); loadProduitsDomaine(e.target.value) }} style={sel}>
-            <option value="" style={{ background: '#1a1408', color: '#888' }}>— Choisir un fournisseur —</option>
-            {allDomaines.map(d => <option key={d.id} value={d.id} style={{ background: '#1a1408', color: '#f0e8d8' }}>{d.nom}</option>)}
-          </select>
-        </div>
-        {domaineId && (
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <label style={lbl}>Produits référencés {produitsDomaine.length > 0 && <span style={{ color: 'rgba(232,224,213,0.3)', marginLeft: 8 }}>({produitsDomaine.length} références)</span>}</label>
-              {nbSelectionnes > 0 && <span style={{ fontSize: 11, color: '#c9a96e' }}>{nbSelectionnes} sélectionné{nbSelectionnes > 1 ? 's' : ''}</span>}
-            </div>
-            {produitsDomaine.length > 10 && <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Filtrer les produits..." style={{ ...inp, marginBottom: 8 }} />}
-            {loadingProduits ? (
-              <div style={{ textAlign: 'center' as const, padding: 24, color: 'rgba(232,224,213,0.4)', fontSize: 13 }}>Chargement des produits...</div>
-            ) : produitsDomaine.length === 0 ? (
-              <div style={{ padding: '16px', background: 'rgba(255,255,255,0.02)', borderRadius: 4, fontSize: 12, color: 'rgba(232,224,213,0.4)', textAlign: 'center' as const }}>
-                Aucun produit associé à ce fournisseur.<br />
-                <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.3)' }}>Associez des produits via Besoins → Assoc. fournisseurs</span>
-              </div>
-            ) : (
-              <>
-                <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                  <button onClick={() => setSelected(Object.fromEntries(filtres.map(p => [p.id, p.conditionnement || 6])))} style={{ background: 'transparent', border: '0.5px solid rgba(201,169,110,0.3)', color: '#c9a96e', borderRadius: 3, padding: '4px 10px', fontSize: 10, cursor: 'pointer', letterSpacing: 1 }}>✓ Tout sélectionner</button>
-                  <button onClick={() => setSelected({})} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 3, padding: '4px 10px', fontSize: 10, cursor: 'pointer' }}>Tout décocher</button>
-                </div>
-                <div style={{ border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 4, overflow: 'hidden', maxHeight: 340, overflowY: 'auto' as const }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse' as const }}>
-                    <thead style={{ position: 'sticky' as const, top: 0, background: '#14100c', zIndex: 1 }}>
-                      <tr style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
-                        <th style={{ width: 36, padding: '8px 12px' }}></th>
-                        <th style={{ padding: '8px 12px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', fontWeight: 400 }}>PRODUIT</th>
-                        <th style={{ padding: '8px 12px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', fontWeight: 400 }}>PRIX HT</th>
-                        {sites.map(s => <th key={s.id} style={{ padding: '8px 12px', textAlign: 'center' as const, fontSize: 9, letterSpacing: 1, color: 'rgba(201,169,110,0.5)', fontWeight: 400 }}>📦 {s.code || s.nom.split(' ')[0].toUpperCase()}</th>)}
-                        <th style={{ padding: '8px 12px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', fontWeight: 400 }}>QTÉ</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filtres.map((p, i) => {
-                        const checked = selected[p.id] !== undefined
-                        return (
-                          <tr key={p.id} onClick={() => toggleProduit(p)} style={{ borderBottom: i < filtres.length - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none', background: checked ? 'rgba(201,169,110,0.06)' : 'transparent', cursor: 'pointer' }}
-                            onMouseEnter={e => { if (!checked) e.currentTarget.style.background = 'rgba(255,255,255,0.02)' }}
-                            onMouseLeave={e => { if (!checked) e.currentTarget.style.background = 'transparent' }}>
-                            <td style={{ padding: '10px 12px' }}>
-                              <div style={{ width: 16, height: 16, borderRadius: 3, border: `1.5px solid ${checked ? '#c9a96e' : 'rgba(255,255,255,0.2)'}`, background: checked ? '#c9a96e' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                {checked && <span style={{ fontSize: 10, color: '#0d0a08', fontWeight: 700 }}>✓</span>}
-                              </div>
-                            </td>
-                            <td style={{ padding: '10px 12px' }}>
-                              <div style={{ fontSize: 13, color: '#f0e8d8' }}>{p.nom}</div>
-                              {p.millesime && <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>{p.millesime}</div>}
-                            </td>
-                            <td style={{ padding: '10px 12px', fontSize: 13, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{parseFloat(p.prix_achat_ht || 0).toFixed(2)}€</td>
-                            {sites.map(s => {
-                              const qty = stockParProduit[p.id]?.[s.id] || 0
-                              return <td key={s.id} style={{ padding: '10px 12px', textAlign: 'center' as const }} onClick={e => e.stopPropagation()}><span style={{ fontSize: 13, fontFamily: 'Georgia, serif', color: qty === 0 ? '#c96e6e' : qty <= 3 ? '#c9b06e' : '#6ec96e', fontWeight: 500 }}>{qty}</span></td>
-                            })}
-                            <td style={{ padding: '10px 12px' }} onClick={e => e.stopPropagation()}>
-                              {checked ? (
-                                <input type="number" min={1} value={selected[p.id]} onChange={e => setSelected(prev => ({ ...prev, [p.id]: parseInt(e.target.value) || 1 }))} style={{ width: 65, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 3, color: '#e8e0d5', fontSize: 13, padding: '4px 8px', textAlign: 'center' as const }} />
-                              ) : <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.25)' }}>{p.conditionnement || 6} btl</span>}
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </>
-            )}
-          </div>
-        )}
-        {nbSelectionnes > 0 && (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 16, marginBottom: 14, padding: '10px 14px', background: 'rgba(201,169,110,0.06)', borderRadius: 4 }}>
-            <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>{nbSelectionnes} référence{nbSelectionnes > 1 ? 's' : ''} — Total estimé :</span>
-            <span style={{ fontSize: 18, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{totalHT.toFixed(2)}€ HT</span>
-          </div>
-        )}
-        <div style={{ marginBottom: 20 }}>
-          <label style={lbl}>Notes (optionnel)</label>
-          <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Ex: Commande passée par téléphone le..." style={{ ...inp, resize: 'vertical' as const }} />
-        </div>
         <div style={{ display: 'flex', gap: 10 }}>
           <button onClick={onClose} style={{ flex: 1, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '11px', fontSize: 11, cursor: 'pointer' }}>Annuler</button>
-          <button onClick={handleCreate} disabled={saving || nbSelectionnes === 0 || !domaineId} style={{ flex: 2, background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '11px', fontSize: 11, letterSpacing: 2, cursor: 'pointer', fontWeight: 500, textTransform: 'uppercase' as const, opacity: (nbSelectionnes === 0 || !domaineId) ? 0.5 : 1 }}>
-            {saving ? '⟳ Création...' : `✓ Créer la commande (${nbSelectionnes} produit${nbSelectionnes > 1 ? 's' : ''})`}
+          <button onClick={handleSave} disabled={saving} style={{ flex: 2, background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '11px', fontSize: 11, letterSpacing: 2, cursor: 'pointer', fontWeight: 500, textTransform: 'uppercase' as const, opacity: saving ? 0.7 : 1 }}>
+            {saving ? '⟳ Enregistrement...' : '✓ Enregistrer'}
           </button>
         </div>
       </div>
@@ -681,108 +695,54 @@ function ModalNouvelleCommande({ domaines, preselectedDomaineId, onCreated, onCl
   )
 }
 
-function VueCommandes({ onSelectDetail, preselectedDomaineId, onClearPreselect }: {
-  onSelectDetail: (cmd: any) => void; preselectedDomaineId?: string | null; onClearPreselect?: () => void
-}) {
-  const [commandes, setCommandes] = useState<any[]>([])
-  const [domaines, setDomaines] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [filterStatut, setFilterStatut] = useState('tous')
-  const [showNouvelleCommande, setShowNouvelleCommande] = useState(false)
 
-  const loadCommandes = async () => {
-    setLoading(true)
-    const { data } = await supabase.from('supplier_orders').select('*, fournisseur:domaines(id, nom), items:supplier_order_items(id)').order('created_at', { ascending: false })
-    setCommandes(data || [])
-    setLoading(false)
-  }
+// ── Modal Nouveau Produit (admin catalogue) ──────────────────
+
+function ModalNouveauProduitAdmin({ regions: regionsProp, appellations: appellationsProp, onClose, onSaved }: {
+  regions: any[]
+  appellations: any[]
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [regions, setRegions] = useState<any[]>(regionsProp || [])
+  const [appellations, setAppellations] = useState<any[]>(appellationsProp || [])
+  const [domaines, setDomaines] = useState<any[]>([])
 
   useEffect(() => {
-    loadCommandes()
+    if (!regionsProp || regionsProp.length === 0) {
+      supabase.from('regions').select('id, nom').order('nom').then(({ data }) => setRegions(data || []))
+    }
+    if (!appellationsProp || appellationsProp.length === 0) {
+      supabase.from('appellations').select('id, nom, region_id').order('nom').then(({ data }) => setAppellations(data || []))
+    }
     supabase.from('domaines').select('id, nom').order('nom').then(({ data }) => setDomaines(data || []))
   }, [])
 
-  useEffect(() => {
-    if (preselectedDomaineId && domaines.length > 0) { setShowNouvelleCommande(true); if (onClearPreselect) onClearPreselect() }
-  }, [preselectedDomaineId, domaines.length])
-
-  const filtered = commandes.filter(c => filterStatut === 'tous' || c.statut === filterStatut)
-
-  return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 }}>
-        <div>
-          <h1 style={{ fontFamily: 'Georgia, serif', fontSize: 26, fontWeight: 300, color: '#f0e8d8', marginBottom: 4 }}>Commandes fournisseurs</h1>
-          <p style={{ fontSize: 12, color: 'rgba(232,224,213,0.35)' }}>{commandes.length} commande{commandes.length > 1 ? 's' : ''}</p>
-        </div>
-        <button onClick={() => setShowNouvelleCommande(true)} style={{ background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '11px 20px', fontSize: 11, letterSpacing: 2, cursor: 'pointer', fontWeight: 500, textTransform: 'uppercase' as const }}>+ Nouvelle commande</button>
-      </div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' as const }}>
-        {['tous', 'brouillon', 'envoyée', 'annulée'].map(s => (
-          <button key={s} onClick={() => setFilterStatut(s)} style={{ background: filterStatut === s ? 'rgba(201,169,110,0.15)' : 'transparent', border: `0.5px solid ${filterStatut === s ? 'rgba(201,169,110,0.4)' : 'rgba(255,255,255,0.1)'}`, color: filterStatut === s ? '#c9a96e' : 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '6px 14px', fontSize: 11, cursor: 'pointer' }}>{s === 'tous' ? 'Toutes' : STATUT_CMD[s]?.label || s}</button>
-        ))}
-      </div>
-      {loading ? <Spinner /> : filtered.length === 0 ? (
-        <div style={{ ...card, textAlign: 'center' as const, padding: '48px' }}>
-          <p style={{ color: 'rgba(232,224,213,0.4)', fontSize: 14 }}>Aucune commande.</p>
-          <button onClick={() => setShowNouvelleCommande(true)} style={{ background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '10px 20px', fontSize: 11, cursor: 'pointer', fontWeight: 500, letterSpacing: 1.5, marginTop: 12 }}>+ Créer la première commande</button>
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 10 }}>
-          {filtered.map(cmd => (
-            <div key={cmd.id} onClick={() => onSelectDetail(cmd)} style={{ ...card, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', transition: 'border-color 0.15s' }}
-              onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(201,169,110,0.25)')}
-              onMouseLeave={e => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)')}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6 }}>
-                  <span style={{ fontFamily: 'monospace', fontSize: 12, color: '#c9a96e' }}>{cmd.numero}</span>
-                  <Badge statut={cmd.statut} />
-                </div>
-                <div style={{ fontSize: 15, color: '#f0e8d8', marginBottom: 3, fontFamily: 'Georgia, serif', fontWeight: 300 }}>{cmd.fournisseur?.nom || '—'}</div>
-                <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)' }}>
-                  {cmd.items?.length || 0} référence{(cmd.items?.length || 0) > 1 ? 's' : ''}
-                  {cmd.date_commande && ` · ${new Date(cmd.date_commande).toLocaleDateString('fr-FR')}`}
-                  {cmd.total_ht && ` · ${parseFloat(cmd.total_ht).toFixed(2)}€ HT`}
-                </div>
-              </div>
-              <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>Voir →</span>
-            </div>
-          ))}
-        </div>
-      )}
-      {showNouvelleCommande && (
-        <ModalNouvelleCommande domaines={domaines} preselectedDomaineId={preselectedDomaineId || undefined}
-          onCreated={(cmd) => { loadCommandes(); setShowNouvelleCommande(false); onSelectDetail(cmd) }}
-          onClose={() => setShowNouvelleCommande(false)} />
-      )}
-    </div>
-  )
-}
-
-function ModalEditProduitCommande({ produit, regions, appellations, domaines, onClose, onSaved }: {
-  produit: any; regions: any[]; appellations: any[]; domaines: any[]; onClose: () => void; onSaved: () => void
-}) {
   const [form, setForm] = useState({
-    appellation_nom: '', appellation_id: produit.appellation_id || '', region_id: produit.region_id || '',
-    nom_cuvee: produit.nom_cuvee || '', domaine_id: produit.domaine_id || '',
-    contenance: produit.contenance || '75cl', millesime: produit.millesime ? String(produit.millesime) : '',
-    couleur: produit.couleur || 'rouge',
-    prix_achat_ht: produit.prix_achat_ht ? String(produit.prix_achat_ht) : '', coeff_part: '2',
-    prix_vente_ttc: produit.prix_vente_ttc ? String(produit.prix_vente_ttc) : '', coeff_pro: '1.70',
-    prix_vente_pro: produit.prix_vente_pro ? String(produit.prix_vente_pro) : '',
-    bio: produit.bio || false, vegan: produit.vegan || false, casher: produit.casher || false,
-    naturel: produit.naturel || false, biodynamique: produit.biodynamique || false, actif: produit.actif !== false,
+    appellation_nom: '',
+    nom_cuvee: '',
+    domaine_id: '',
+    contenance: '75cl',
+    millesime: '',
+    couleur: 'rouge',
+    region_id: '',
+    appellation_id: '',
+    prix_achat_ht: '',
+    coeff_particulier: '2',
+    prix_vente_ttc: '',
+    coeff_pro: '1.70',
+    prix_vente_pro: '',
+    description_courte: '',
+    image_url: '',
+    bio: false, vegan: false, casher: false, naturel: false, biodynamique: false,
+    actif: true,
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  useEffect(() => {
-    const app = appellations.find(a => a.id === produit.appellation_id)
-    if (app) setForm(f => ({ ...f, appellation_nom: app.nom }))
-  }, [appellations])
-
-  const appsFiltrees = form.region_id ? appellations.filter(a => a.region_id === form.region_id) : appellations
-  const arrondir50 = (n: number) => Math.ceil(n * 2) / 2
+  const appsFiltrees = form.region_id
+    ? appellations.filter((a: any) => a.region_id === form.region_id)
+    : appellations
 
   const buildNom = () => {
     const parts = []
@@ -792,88 +752,209 @@ function ModalEditProduitCommande({ produit, regions, appellations, domaines, on
     if (form.millesime) parts.push(form.millesime)
     if (form.contenance) parts.push(form.contenance)
     let nom = parts.join(' ')
-    const dom = domaines.find(d => d.id === form.domaine_id)
-    if (dom) nom += ' - ' + dom.nom
-    return nom || produit.nom
+    const domaineNom = domaines.find(d => d.id === form.domaine_id)?.nom || ''
+    if (domaineNom) nom += ' - ' + domaineNom
+    return nom
   }
 
   const handleHTChange = (ht: string) => {
-    const n = parseFloat(ht)
-    setForm(f => ({ ...f, prix_achat_ht: ht, prix_vente_ttc: !isNaN(n) && n > 0 ? arrondir50(n * parseFloat(f.coeff_part)).toFixed(2) : f.prix_vente_ttc, prix_vente_pro: !isNaN(n) && n > 0 ? (n * parseFloat(f.coeff_pro)).toFixed(2) : f.prix_vente_pro }))
+    const htNum = parseFloat(ht)
+    setForm(f => ({
+      ...f,
+      prix_achat_ht: ht,
+      prix_vente_ttc: !isNaN(htNum) && htNum > 0 ? arrondir50(htNum * parseFloat(f.coeff_particulier)).toFixed(2) : f.prix_vente_ttc,
+      prix_vente_pro: !isNaN(htNum) && htNum > 0 ? (htNum * parseFloat(f.coeff_pro)).toFixed(2) : f.prix_vente_pro,
+    }))
   }
 
   const handleSave = async () => {
-    setSaving(true); setError('')
-    const { error: err } = await supabase.from('products').update({
-      nom: buildNom(), nom_cuvee: form.nom_cuvee || null, contenance: form.contenance || '75cl',
-      millesime: form.millesime ? parseInt(form.millesime) : null, couleur: form.couleur,
-      region_id: form.region_id || null, appellation_id: form.appellation_id || null, domaine_id: form.domaine_id || null,
+    const nomFinal = buildNom()
+    if (!nomFinal.trim()) { setError("Remplissez au moins l'appellation"); return }
+    if (!form.prix_vente_ttc) { setError('Le prix TTC est obligatoire'); return }
+    setSaving(true)
+    setError('')
+    const slug = nomFinal.toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+      + '-' + Math.random().toString(36).substring(2, 7)
+    const { data: newProduct, error: err } = await supabase.from('products').insert({
+      nom: nomFinal,
+      slug,
+      nom_cuvee: form.nom_cuvee || null,
+      contenance: form.contenance || '75cl',
+      millesime: form.millesime ? parseInt(form.millesime) : null,
+      couleur: form.couleur,
+      region_id: form.region_id || null,
+      appellation_id: form.appellation_id || null,
+      domaine_id: form.domaine_id || null,
+      prix_vente_ttc: parseFloat(form.prix_vente_ttc),
+      prix_vente_pro: form.prix_vente_pro ? parseFloat(form.prix_vente_pro) : null,
       prix_achat_ht: form.prix_achat_ht ? parseFloat(form.prix_achat_ht) : null,
-      prix_vente_ttc: parseFloat(form.prix_vente_ttc) || null, prix_vente_pro: form.prix_vente_pro ? parseFloat(form.prix_vente_pro) : null,
-      bio: form.bio, vegan: form.vegan, casher: form.casher, naturel: form.naturel, biodynamique: form.biodynamique, actif: form.actif,
-    }).eq('id', produit.id)
+      description_courte: form.description_courte || null,
+      image_url: form.image_url || null,
+      bio: form.bio, vegan: form.vegan, casher: form.casher,
+      naturel: form.naturel, biodynamique: form.biodynamique,
+      actif: form.actif,
+    }).select('id').single()
     if (err) { setError(err.message); setSaving(false); return }
-    if (form.domaine_id) {
-      await supabase.from('product_suppliers').upsert({ product_id: produit.id, domaine_id: form.domaine_id, prix_achat_ht: form.prix_achat_ht ? parseFloat(form.prix_achat_ht) : null, conditionnement: 6, fournisseur_principal: true }, { onConflict: 'product_id,domaine_id' })
+    // Associer au fournisseur dans product_suppliers
+    if (form.domaine_id && newProduct?.id) {
+      await supabase.from('product_suppliers').upsert({
+        product_id: newProduct.id,
+        domaine_id: form.domaine_id,
+        prix_achat_ht: form.prix_achat_ht ? parseFloat(form.prix_achat_ht) : null,
+        conditionnement: 6,
+        fournisseur_principal: true,
+      }, { onConflict: 'product_id,domaine_id' })
     }
-    setSaving(false); onSaved()
+    setSaving(false)
+    onSaved()
+    onClose()
   }
 
-  const inpL = { width: '100%', background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#e8e0d5', fontSize: 13, padding: '9px 12px', boxSizing: 'border-box' as const }
-  const lblL = { fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, display: 'block', marginBottom: 6 }
-  const selL = { ...inpL, background: '#1a1408', border: '0.5px solid rgba(201,169,110,0.2)', cursor: 'pointer' }
-  const COULEUR_COLOR: Record<string, string> = { rouge:'#e07070', blanc:'#c9b06e', rosé:'#e8a0b0', champagne:'#c0c0d8', effervescent:'#c0c0d8', spiritueux:'#8ec98e', autre:'#888' }
-  const CERTIFS = [{ key:'bio', label:'🌿 Bio' },{ key:'vegan', label:'🌱 Vegan' },{ key:'casher', label:'✡ Casher' },{ key:'naturel', label:'🍃 Naturel' },{ key:'biodynamique', label:'🌙 Biodynamique' }]
+  const inp = { width: '100%', background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#e8e0d5', fontSize: 13, padding: '9px 12px', boxSizing: 'border-box' as const }
+  const lbl = { fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, display: 'block', marginBottom: 6 }
+  const sel = { ...inp, background: '#1a1408', border: '0.5px solid rgba(201,169,110,0.2)', cursor: 'pointer' }
+  const CERTIFS = [
+    { key: 'bio', label: '🌿 Bio' }, { key: 'vegan', label: '🌱 Vegan' },
+    { key: 'casher', label: '✡ Casher' }, { key: 'naturel', label: '🍃 Naturel' },
+    { key: 'biodynamique', label: '🌙 Biodynamique' },
+  ]
 
   return (
-    <div style={{ position:'fixed' as const, inset:0, background:'rgba(0,0,0,0.9)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:3000, padding:20 }} onClick={onClose}>
-      <div style={{ background:'#18130e', border:'0.5px solid rgba(201,169,110,0.2)', borderRadius:8, width:'100%', maxWidth:700, padding:'28px 32px', maxHeight:'92vh', overflowY:'auto' as const }} onClick={e => e.stopPropagation()}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
-          <h2 style={{ fontFamily:'Georgia, serif', fontSize:18, fontWeight:300, color:'#f0e8d8', margin:0 }}>Fiche produit — {produit.nom}</h2>
-          <button onClick={onClose} style={{ background:'transparent', border:'none', color:'rgba(232,224,213,0.4)', fontSize:20, cursor:'pointer' }}>✕</button>
+    <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }} onClick={onClose}>
+      <div style={{ background: '#18130e', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 8, width: '100%', maxWidth: 700, padding: '28px 32px', maxHeight: '92vh', overflowY: 'auto' as const }} onClick={e => e.stopPropagation()}>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 300, color: '#f0e8d8', margin: 0 }}>Nouveau produit</h2>
+          <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.4)', fontSize: 20, cursor: 'pointer' }}>✕</button>
         </div>
-        {error && <div style={{ background:'rgba(201,110,110,0.1)', border:'0.5px solid rgba(201,110,110,0.3)', borderRadius:4, padding:'10px 14px', marginBottom:16, fontSize:12, color:'#c96e6e' }}>{error}</div>}
-        <div style={{ background:'rgba(255,255,255,0.03)', border:'0.5px solid rgba(201,169,110,0.15)', borderRadius:4, padding:'10px 14px', marginBottom:20 }}>
-          <div style={{ fontSize:10, color:'rgba(232,224,213,0.3)', letterSpacing:1.5, marginBottom:4 }}>APERÇU DU NOM</div>
-          <div style={{ fontSize:14, color:'#f0e8d8', fontFamily:'Georgia, serif' }}>{buildNom()}</div>
-        </div>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:14 }}>
-          <div><label style={lblL}>Région</label><select value={form.region_id} onChange={e => setForm(f => ({ ...f, region_id:e.target.value, appellation_id:'', appellation_nom:'' }))} style={selL}><option value="">— Choisir —</option>{regions.map(r => <option key={r.id} value={r.id}>{r.nom}</option>)}</select></div>
-          <div><label style={lblL}>Appellation</label><select value={form.appellation_id} onChange={e => { const app = appsFiltrees.find(a => a.id === e.target.value); setForm(f => ({ ...f, appellation_id:e.target.value, appellation_nom:app?.nom||'' })) }} style={selL}><option value="">— Choisir —</option>{appsFiltrees.map(a => <option key={a.id} value={a.id}>{a.nom}</option>)}</select></div>
-          <div><label style={lblL}>Nom de la cuvée</label><input value={form.nom_cuvee} onChange={e => setForm(f => ({ ...f, nom_cuvee:e.target.value }))} placeholder="Laisser vide si pas de cuvée" style={{ ...inpL, fontStyle:'italic' }} /></div>
-          <div><label style={lblL}>Domaine / Fournisseur</label><select value={form.domaine_id} onChange={e => setForm(f => ({ ...f, domaine_id:e.target.value }))} style={selL}><option value="">— Choisir —</option>{domaines.map(d => <option key={d.id} value={d.id}>{d.nom}</option>)}</select></div>
-          <div><label style={lblL}>Couleur</label><select value={form.couleur} onChange={e => setForm(f => ({ ...f, couleur:e.target.value }))} style={{ ...selL, color: COULEUR_COLOR[form.couleur]||'#e8e0d5', fontWeight:600 }}>{['rouge','blanc','rosé','champagne','effervescent','spiritueux','autre'].map(c => <option key={c} value={c} style={{ background:'#1a1408', color:COULEUR_COLOR[c]||'#f0e8d8' }}>{c.charAt(0).toUpperCase()+c.slice(1)}</option>)}</select></div>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-            <div><label style={lblL}>Millésime</label><input type="number" value={form.millesime} onChange={e => setForm(f => ({ ...f, millesime:e.target.value }))} placeholder="2022" style={inpL} /></div>
-            <div><label style={lblL}>Contenance</label><input value={form.contenance} onChange={e => setForm(f => ({ ...f, contenance:e.target.value }))} placeholder="75cl" style={inpL} /></div>
+
+        {error && <div style={{ background: 'rgba(201,110,110,0.1)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 4, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: '#c96e6e' }}>{error}</div>}
+
+        <NomVinPreview
+          appellation={form.appellation_nom}
+          cuvee={form.nom_cuvee}
+          couleur={form.couleur}
+          millesime={form.millesime}
+          contenance={form.contenance}
+          domaine={domaines.find(d => d.id === form.domaine_id)?.nom || ''}
+        />
+
+        <div style={{ fontSize: 10, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 10 }}>Identité</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+          <div>
+            <label style={lbl}>Région viticole</label>
+            <select value={form.region_id} onChange={e => setForm(f => ({ ...f, region_id: e.target.value, appellation_id: '', appellation_nom: '' }))} style={sel}>
+              <option value="">— Choisir —</option>
+              {regions.map(r => <option key={r.id} value={r.id}>{r.nom}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={lbl}>Appellation *</label>
+            <select value={form.appellation_id} onChange={e => {
+              const app = appsFiltrees.find((a: any) => a.id === e.target.value)
+              setForm(f => ({ ...f, appellation_id: e.target.value, appellation_nom: app?.nom || '' }))
+            }} style={sel}>
+              <option value="">— Choisir —</option>
+              {appsFiltrees.map((a: any) => <option key={a.id} value={a.id}>{a.nom}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={lbl}>Nom de la cuvée</label>
+            <input value={form.nom_cuvee} onChange={e => setForm(f => ({ ...f, nom_cuvee: e.target.value }))} placeholder="Laisser vide si pas de cuvée" style={{ ...inp, fontStyle: 'italic' }} />
+          </div>
+          <div>
+            <label style={lbl}>Domaine / Fournisseur</label>
+            <select value={form.domaine_id} onChange={e => setForm(f => ({ ...f, domaine_id: e.target.value }))} style={sel}>
+              <option value="">— Choisir un domaine —</option>
+              {domaines.map(d => <option key={d.id} value={d.id} style={{ background: '#1a1408', color: '#f0e8d8' }}>{d.nom}</option>)}
+            </select>
+            <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.3)', marginTop: 4 }}>
+              Domaine introuvable ? <a href="/admin/fournisseurs" target="_blank" style={{ color: '#c9a96e', textDecoration: 'none' }}>Créer dans Fournisseurs →</a>
+            </div>
+          </div>
+          <div>
+            <label style={lbl}>Couleur *</label>
+            <select value={form.couleur} onChange={e => setForm(f => ({ ...f, couleur: e.target.value }))} style={{ ...sel, color: COULEUR_COLOR[form.couleur] || '#e8e0d5', fontWeight: 600 }}>
+              {Object.entries(COULEUR_STYLE).map(([k, v]) => (
+                <option key={k} value={k} style={{ background: '#1a1408', color: COULEUR_COLOR[k] || '#f0e8d8', fontWeight: 600 }}>{v.label}</option>
+              ))}
+            </select>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div>
+              <label style={lbl}>Millésime</label>
+              <input type="number" value={form.millesime} onChange={e => setForm(f => ({ ...f, millesime: e.target.value }))} placeholder="2022" style={inp} />
+            </div>
+            <div>
+              <label style={lbl}>Contenance</label>
+              <input value={form.contenance} onChange={e => setForm(f => ({ ...f, contenance: e.target.value }))} placeholder="75cl" style={inp} />
+            </div>
           </div>
         </div>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr 1fr', gap:10, marginBottom:8 }}>
-          <div><label style={lblL}>Prix achat HT</label><input type="number" step="0.01" value={form.prix_achat_ht} onChange={e => handleHTChange(e.target.value)} style={inpL} /></div>
-          <div><label style={lblL}>Coeff. part.</label><input type="number" step="0.01" value={form.coeff_part} onChange={e => setForm(f => ({ ...f, coeff_part:e.target.value }))} style={{ ...inpL, color:'#c9b06e' }} /></div>
-          <div><label style={lblL}>Prix TTC part.</label><input type="number" step="0.50" value={form.prix_vente_ttc} onChange={e => setForm(f => ({ ...f, prix_vente_ttc:e.target.value }))} style={inpL} /></div>
-          <div><label style={lblL}>Coeff. pro</label><input type="number" step="0.01" value={form.coeff_pro} onChange={e => setForm(f => ({ ...f, coeff_pro:e.target.value }))} style={{ ...inpL, color:'#c9b06e' }} /></div>
-          <div><label style={lblL}>Prix TTC pro</label><input type="number" step="0.01" value={form.prix_vente_pro} onChange={e => setForm(f => ({ ...f, prix_vente_pro:e.target.value }))} style={inpL} /></div>
+
+        <div style={{ fontSize: 10, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 10 }}>Prix</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr', gap: 10, marginBottom: 6 }}>
+          <div>
+            <label style={lbl}>Prix achat HT (€)</label>
+            <input type="number" step="0.01" value={form.prix_achat_ht} onChange={e => handleHTChange(e.target.value)} placeholder="0.00" style={inp} />
+          </div>
+          <div>
+            <label style={lbl}>Coeff. part.</label>
+            <input type="number" step="0.01" value={form.coeff_particulier} onChange={e => setForm(f => ({ ...f, coeff_particulier: e.target.value }))} style={{ ...inp, color: '#c9b06e' }} />
+          </div>
+          <div>
+            <label style={lbl}>Prix TTC part. (€) *</label>
+            <input type="number" step="0.50" value={form.prix_vente_ttc} onChange={e => setForm(f => ({ ...f, prix_vente_ttc: e.target.value }))} placeholder="0.00" style={inp} />
+          </div>
+          <div>
+            <label style={lbl}>Coeff. pro</label>
+            <input type="number" step="0.01" value={form.coeff_pro} onChange={e => setForm(f => ({ ...f, coeff_pro: e.target.value }))} style={{ ...inp, color: '#c9b06e' }} />
+          </div>
+          <div>
+            <label style={lbl}>Prix TTC pro (€)</label>
+            <input type="number" step="0.01" value={form.prix_vente_pro} onChange={e => setForm(f => ({ ...f, prix_vente_pro: e.target.value }))} placeholder="0.00" style={inp} />
+          </div>
         </div>
         {form.prix_achat_ht && parseFloat(form.prix_achat_ht) > 0 && (
-          <div style={{ fontSize:11, color:'rgba(232,224,213,0.35)', marginBottom:14 }}>
-            {form.prix_achat_ht}€ × {form.coeff_part} = <strong style={{ color:'#c9a96e' }}>{arrondir50(parseFloat(form.prix_achat_ht)*parseFloat(form.coeff_part)).toFixed(2)}€</strong> part.
-            {' · '}× {form.coeff_pro} = <strong style={{ color:'#c9a96e' }}>{(parseFloat(form.prix_achat_ht)*parseFloat(form.coeff_pro)).toFixed(2)}€</strong> pro
+          <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)', marginBottom: 14 }}>
+            {form.prix_achat_ht}€ HT × {form.coeff_particulier} = <strong style={{ color: '#c9a96e' }}>{arrondir50(parseFloat(form.prix_achat_ht) * parseFloat(form.coeff_particulier)).toFixed(2)}€</strong> part.
+            {' · '}× {form.coeff_pro} = <strong style={{ color: '#c9a96e' }}>{(parseFloat(form.prix_achat_ht) * parseFloat(form.coeff_pro)).toFixed(2)}€</strong> pro
           </div>
         )}
-        <div style={{ display:'flex', gap:8, flexWrap:'wrap' as const, marginBottom:16 }}>
-          {CERTIFS.map(({ key, label }) => { const active = (form as any)[key]; return <button key={key} onClick={() => setForm(f => ({ ...f, [key]: !(f as any)[key] }))} style={{ background: active?'rgba(201,169,110,0.15)':'rgba(255,255,255,0.03)', border:`0.5px solid ${active?'rgba(201,169,110,0.5)':'rgba(255,255,255,0.1)'}`, color:active?'#c9a96e':'rgba(232,224,213,0.4)', borderRadius:20, padding:'5px 12px', fontSize:12, cursor:'pointer' }}>{label}</button> })}
+
+        <div style={{ marginBottom: 12 }}>
+          <label style={lbl}>URL photo</label>
+          <input value={form.image_url} onChange={e => setForm(f => ({ ...f, image_url: e.target.value }))} placeholder="https://..." style={inp} />
         </div>
-        <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:20 }}>
-          <div onClick={() => setForm(f => ({ ...f, actif:!f.actif }))} style={{ width:14, height:14, borderRadius:2, border:`0.5px solid ${form.actif?'#c9a96e':'rgba(255,255,255,0.2)'}`, background:form.actif?'#c9a96e':'transparent', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer' }}>
-            {form.actif && <span style={{ fontSize:9, color:'#0d0a08', fontWeight:700 }}>✓</span>}
+
+        <div style={{ fontSize: 10, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 10 }}>Certifications</div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const, marginBottom: 16 }}>
+          {CERTIFS.map(({ key, label }) => {
+            const active = (form as any)[key]
+            return (
+              <button key={key} onClick={() => setForm(f => ({ ...f, [key]: !(f as any)[key] }))} style={{
+                background: active ? 'rgba(201,169,110,0.15)' : 'rgba(255,255,255,0.03)',
+                border: `0.5px solid ${active ? 'rgba(201,169,110,0.5)' : 'rgba(255,255,255,0.1)'}`,
+                color: active ? '#c9a96e' : 'rgba(232,224,213,0.4)',
+                borderRadius: 20, padding: '5px 12px', fontSize: 12, cursor: 'pointer',
+              }}>{label}</button>
+            )
+          })}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24 }}>
+          <div onClick={() => setForm(f => ({ ...f, actif: !f.actif }))} style={{ width: 14, height: 14, borderRadius: 2, border: `0.5px solid ${form.actif ? '#c9a96e' : 'rgba(255,255,255,0.2)'}`, background: form.actif ? '#c9a96e' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+            {form.actif && <span style={{ fontSize: 9, color: '#0d0a08', fontWeight: 700 }}>✓</span>}
           </div>
-          <span style={{ fontSize:12, color:'rgba(232,224,213,0.5)', cursor:'pointer' }} onClick={() => setForm(f => ({ ...f, actif:!f.actif }))}>Produit actif</span>
+          <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)', cursor: 'pointer' }} onClick={() => setForm(f => ({ ...f, actif: !f.actif }))}>Produit actif (visible en boutique)</span>
         </div>
-        <div style={{ display:'flex', gap:10 }}>
-          <button onClick={onClose} style={{ flex:1, background:'transparent', border:'0.5px solid rgba(255,255,255,0.1)', color:'rgba(232,224,213,0.4)', borderRadius:4, padding:'11px', fontSize:11, cursor:'pointer' }}>Annuler</button>
-          <button onClick={handleSave} disabled={saving} style={{ flex:2, background:'#c9a96e', color:'#0d0a08', border:'none', borderRadius:4, padding:'11px', fontSize:11, letterSpacing:2, cursor:'pointer', fontWeight:500, textTransform:'uppercase' as const, opacity:saving?0.7:1 }}>
-            {saving ? '⟳ Enregistrement...' : '✓ Enregistrer'}
+
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={onClose} style={{ flex: 1, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '11px', fontSize: 11, cursor: 'pointer' }}>Annuler</button>
+          <button onClick={handleSave} disabled={saving} style={{ flex: 2, background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '11px', fontSize: 11, letterSpacing: 2, cursor: 'pointer', fontWeight: 500, textTransform: 'uppercase' as const, opacity: saving ? 0.7 : 1 }}>
+            {saving ? '⟳ Création...' : '✓ Créer le produit'}
           </button>
         </div>
       </div>
@@ -881,114 +962,215 @@ function ModalEditProduitCommande({ produit, regions, appellations, domaines, on
   )
 }
 
-function ModalDupliquerCommande({ produit, commandeId, onCreated, onClose }: {
-  produit: any; commandeId: string; onCreated: () => void; onClose: () => void
+
+// ── Modal Dupliquer Produit ──────────────────────────────────
+
+function ModalDupliquer({ produit, onClose, onSaved }: {
+  produit: any
+  onClose: () => void
+  onSaved: () => void
 }) {
   const [millesime, setMillesime] = useState(produit.millesime ? String(produit.millesime + 1) : '')
-  const [prixAchatHT, setPrixAchatHT] = useState(produit.prix_achat_ht_override ? String(produit.prix_achat_ht_override) : produit.prix_achat_ht ? String(produit.prix_achat_ht) : '')
+  const [prixAchatHT, setPrixAchatHT] = useState(produit.prix_achat_ht ? String(produit.prix_achat_ht) : '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
   const arrondir50 = (n: number) => Math.ceil(n * 2) / 2
-  const prixTTC = prixAchatHT && parseFloat(prixAchatHT) > 0 ? arrondir50(parseFloat(prixAchatHT) * 2) : produit.prix_vente_ttc
-  const prixPro = prixAchatHT && parseFloat(prixAchatHT) > 0 ? Math.round(parseFloat(prixAchatHT) * 1.70 * 100) / 100 : produit.prix_vente_pro
 
-  const buildNomDuplique = () => {
-    let nom = produit.nom || ''
-    if (produit.millesime && millesime) nom = nom.replace(String(produit.millesime), millesime)
-    return nom
-  }
+  const prixTTC = prixAchatHT && parseFloat(prixAchatHT) > 0
+    ? arrondir50(parseFloat(prixAchatHT) * 2)
+    : produit.prix_vente_ttc
+  const prixPro = prixAchatHT && parseFloat(prixAchatHT) > 0
+    ? Math.round(parseFloat(prixAchatHT) * 1.70 * 100) / 100
+    : produit.prix_vente_pro
 
-  const handleDupliquer = async (archiverOriginal = false) => {
-    setSaving(true); setError('')
-    const nomFinal = buildNomDuplique()
-    const slug = nomFinal.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + Math.random().toString(36).substring(2, 7)
-    const prixHT = prixAchatHT && parseFloat(prixAchatHT) > 0 ? parseFloat(prixAchatHT) : (produit.prix_achat_ht || null)
-    const mil = millesime && millesime.trim() !== '' ? parseInt(millesime) : (produit.millesime || null)
-    const ttc = prixHT ? arrondir50(prixHT * 2) : (produit.prix_vente_ttc || null)
-    const pro = prixHT ? Math.round(prixHT * 1.70 * 100) / 100 : (produit.prix_vente_pro || null)
-    // Déduire la catégorie depuis le produit original ou la couleur
-    const couleursVin = ['rouge', 'blanc', 'rosé', 'champagne', 'effervescent']
-    const couleursSpiriteux = ['spiritueux']
-    let categorie = produit.categorie || null
-    if (!categorie) {
-      if (couleursVin.includes(produit.couleur)) categorie = 'vin'
-      else if (couleursSpiriteux.includes(produit.couleur)) categorie = 'spiritueux'
-      else categorie = 'vin'
+  const handleDupliquer = async () => {
+    setSaving(true)
+    setError('')
+
+    let newNom = produit.nom
+    if (produit.millesime && millesime) {
+      newNom = produit.nom.replace(String(produit.millesime), millesime)
     }
+
+    const slug = newNom.toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+      + '-' + Math.random().toString(36).substring(2, 7)
+
     const { data: newProd, error: err } = await supabase.from('products').insert({
-      nom: nomFinal, slug, nom_cuvee: produit.nom_cuvee || null, contenance: produit.contenance || '75cl',
-      millesime: mil, couleur: produit.couleur, categorie,
-      region_id: produit.region_id || null, appellation_id: produit.appellation_id || null, domaine_id: produit.domaine_id || null,
-      prix_achat_ht: prixHT, prix_vente_ttc: ttc, prix_vente_pro: pro,
+      nom: newNom,
+      slug,
+      nom_cuvee: produit.nom_cuvee || null,
+      contenance: produit.contenance || '75cl',
+      millesime: millesime ? parseInt(millesime) : null,
+      couleur: produit.couleur,
+      region_id: produit.region_id || null,
+      appellation_id: produit.appellation_id || null,
+      domaine_id: produit.domaine_id || null,
+      prix_achat_ht: prixAchatHT ? parseFloat(prixAchatHT) : (produit.prix_achat_ht || null),
+      prix_vente_ttc: prixTTC || null,
+      prix_vente_pro: prixPro || null,
+      description_courte: produit.description_courte || null,
       image_url: produit.image_url || null,
-      bio: produit.bio || false, vegan: produit.vegan || false, casher: produit.casher || false,
-      naturel: produit.naturel || false, biodynamique: produit.biodynamique || false, actif: true,
-    }).select('id, nom, millesime').single()
-    if (err) { setError('Erreur création produit: ' + err.message); setSaving(false); return }
-    if (!newProd?.id) { setError('Produit non créé — vérifiez les données'); setSaving(false); return }
-    if (produit.domaine_id && newProd.id) {
-      await supabase.from('product_suppliers').upsert({ product_id: newProd.id, domaine_id: produit.domaine_id, prix_achat_ht: prixHT, conditionnement: 6, fournisseur_principal: true }, { onConflict: 'product_id,domaine_id' })
+      bio: produit.bio || false,
+      vegan: produit.vegan || false,
+      casher: produit.casher || false,
+      naturel: produit.naturel || false,
+      biodynamique: produit.biodynamique || false,
+      actif: true,
+    }).select('id').single()
+
+    if (err) { setError(err.message); setSaving(false); return }
+
+    // Dupliquer aussi l'association fournisseur
+    if (produit.domaine_id && newProd?.id) {
+      const { data: ps } = await supabase.from('product_suppliers')
+        .select('*').eq('product_id', produit.id).eq('fournisseur_principal', true).maybeSingle()
+      if (ps) {
+        await supabase.from('product_suppliers').insert({
+          product_id: newProd.id,
+          domaine_id: ps.domaine_id,
+          prix_achat_ht: ps.prix_achat_ht,
+          conditionnement: ps.conditionnement,
+          fournisseur_principal: true,
+        })
+      }
     }
-    await supabase.from('supplier_order_items').insert({ order_id: commandeId, product_id: newProd.id, product_nom: newProd.nom, product_millesime: newProd.millesime, quantite_commandee: 6, prix_achat_ht: prixHT })
-    if (archiverOriginal) {
-      await supabase.from('products').update({ actif: false }).eq('id', produit.id)
-    }
-    setSaving(false); onCreated()
+
+    setSaving(false)
+    onSaved()
+    onClose()
   }
 
-  const inpD = { width: '100%', background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#e8e0d5', fontSize: 14, padding: '10px 12px', boxSizing: 'border-box' as const }
+  const handleDupliquerEtArchiver = async () => {
+    setSaving(true)
+    setError('')
+    let newNom = produit.nom
+    if (produit.millesime && millesime) {
+      newNom = produit.nom.replace(String(produit.millesime), millesime)
+    }
+    const slug = newNom.toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+      + '-' + Math.random().toString(36).substring(2, 7)
+    const { data: newProd, error: err } = await supabase.from('products').insert({
+      nom: newNom, slug,
+      nom_cuvee: produit.nom_cuvee || null,
+      contenance: produit.contenance || '75cl',
+      millesime: millesime ? parseInt(millesime) : null,
+      couleur: produit.couleur,
+      region_id: produit.region_id || null,
+      appellation_id: produit.appellation_id || null,
+      domaine_id: produit.domaine_id || null,
+      prix_achat_ht: prixAchatHT ? parseFloat(prixAchatHT) : (produit.prix_achat_ht || null),
+      prix_vente_ttc: prixTTC || null,
+      prix_vente_pro: prixPro || null,
+      description_courte: produit.description_courte || null,
+      image_url: produit.image_url || null,
+      bio: produit.bio || false, vegan: produit.vegan || false,
+      casher: produit.casher || false, naturel: produit.naturel || false,
+      biodynamique: produit.biodynamique || false, actif: true,
+    }).select('id').single()
+    if (err) { setError(err.message); setSaving(false); return }
+    if (produit.domaine_id && newProd?.id) {
+      const { data: ps } = await supabase.from('product_suppliers')
+        .select('*').eq('product_id', produit.id).eq('fournisseur_principal', true).maybeSingle()
+      if (ps) {
+        await supabase.from('product_suppliers').insert({
+          product_id: newProd.id, domaine_id: ps.domaine_id,
+          prix_achat_ht: ps.prix_achat_ht, conditionnement: ps.conditionnement,
+          fournisseur_principal: true,
+        })
+      }
+    }
+    // Archiver original - jamais supprime, historique conserve
+    await supabase.from('products').update({ actif: false }).eq('id', produit.id)
+    setSaving(false)
+    onSaved()
+    onClose()
+  }
+
+  const inp = { width: '100%', background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#e8e0d5', fontSize: 14, padding: '10px 12px', boxSizing: 'border-box' as const }
 
   return (
     <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 }} onClick={onClose}>
-      <div style={{ background: '#18130e', border: '0.5px solid rgba(201,169,110,0.25)', borderRadius: 8, width: 440, padding: '28px 32px' }} onClick={e => e.stopPropagation()}>
+      <div style={{ background: '#18130e', border: '0.5px solid rgba(201,169,110,0.25)', borderRadius: 8, width: 420, padding: '28px 32px' }} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 18, fontWeight: 300, color: '#f0e8d8', margin: 0 }}>Dupliquer le produit</h2>
+          <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 18, fontWeight: 300, color: '#f0e8d8', margin: 0 }}>⧉ Dupliquer le produit</h2>
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.4)', fontSize: 20, cursor: 'pointer' }}>✕</button>
         </div>
+
+        {/* Aperçu produit original */}
         <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 4, padding: '10px 14px', marginBottom: 20 }}>
-          <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.3)', letterSpacing: 1.5, marginBottom: 4 }}>PRODUIT ORIGINAL</div>
+          <div style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', textTransform: 'uppercase' as const, marginBottom: 4 }}>Produit original</div>
           <div style={{ fontSize: 13, color: '#e8e0d5' }}>{produit.nom}</div>
         </div>
+
         {error && <div style={{ background: 'rgba(201,110,110,0.1)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 4, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: '#c96e6e' }}>{error}</div>}
+
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
           <div>
-            <label style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, display: 'block', marginBottom: 8 }}>Nouveau millésime</label>
-            <input type="number" value={millesime} onChange={e => setMillesime(e.target.value)} placeholder="Ex: 2024" style={inpD} autoFocus />
+            <label style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, display: 'block', marginBottom: 8 }}>
+              Nouveau millésime
+            </label>
+            <input
+              type="number"
+              value={millesime}
+              onChange={e => setMillesime(e.target.value)}
+              placeholder="Ex: 2024"
+              style={inp}
+              autoFocus
+            />
             <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.25)', marginTop: 4 }}>Vide = même millésime</div>
           </div>
           <div>
-            <label style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, display: 'block', marginBottom: 8 }}>Prix achat HT (€)</label>
-            <input type="number" step="0.01" value={prixAchatHT} onChange={e => setPrixAchatHT(e.target.value)} placeholder="0.00" style={inpD} />
+            <label style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, display: 'block', marginBottom: 8 }}>
+              Prix achat HT (€)
+            </label>
+            <input
+              type="number" step="0.01"
+              value={prixAchatHT}
+              onChange={e => setPrixAchatHT(e.target.value)}
+              placeholder={produit.prix_achat_ht ? String(produit.prix_achat_ht) : '0.00'}
+              style={inp}
+            />
             <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.25)', marginTop: 4 }}>Vide = même prix</div>
           </div>
         </div>
         {prixAchatHT && parseFloat(prixAchatHT) > 0 && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
-            <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 4, padding: '8px', textAlign: 'center' as const }}>
+            <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 4, padding: '8px 12px', textAlign: 'center' as const }}>
               <div style={{ fontSize: 9, color: 'rgba(232,224,213,0.3)', letterSpacing: 1, marginBottom: 4 }}>TTC PARTICULIER</div>
-              <div style={{ fontSize: 16, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{prixTTC?.toFixed(2)}€</div>
+              <div style={{ fontSize: 15, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{prixTTC?.toFixed(2)}€</div>
             </div>
-            <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 4, padding: '8px', textAlign: 'center' as const }}>
+            <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 4, padding: '8px 12px', textAlign: 'center' as const }}>
               <div style={{ fontSize: 9, color: 'rgba(232,224,213,0.3)', letterSpacing: 1, marginBottom: 4 }}>TTC PRO</div>
-              <div style={{ fontSize: 16, color: '#6e9ec9', fontFamily: 'Georgia, serif' }}>{prixPro?.toFixed(2)}€</div>
+              <div style={{ fontSize: 15, color: '#6e9ec9', fontFamily: 'Georgia, serif' }}>{prixPro?.toFixed(2)}€</div>
             </div>
           </div>
         )}
+
+        {/* Aperçu du nouveau nom */}
         {millesime && produit.millesime && (
-          <div style={{ background: 'rgba(201,169,110,0.06)', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 4, padding: '10px 14px', marginBottom: 16 }}>
-            <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.3)', letterSpacing: 1.5, marginBottom: 4 }}>NOUVEAU PRODUIT</div>
-            <div style={{ fontSize: 13, color: '#c9a96e' }}>{buildNomDuplique()}</div>
-            <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.3)', marginTop: 4 }}>Sera ajouté à la commande · Qté: 6 btl</div>
+          <div style={{ background: 'rgba(201,169,110,0.06)', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 4, padding: '10px 14px', marginBottom: 20 }}>
+            <div style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', textTransform: 'uppercase' as const, marginBottom: 4 }}>Nouveau produit</div>
+            <div style={{ fontSize: 13, color: '#c9a96e' }}>
+              {produit.nom.replace(String(produit.millesime), millesime)}
+            </div>
+            <div style={{ fontSize: 10, color: '#6ec96e', marginTop: 4 }}>✓ Sera créé actif</div>
           </div>
         )}
+
         <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
-          <button onClick={onClose} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '11px', fontSize: 11, cursor: 'pointer' }}>Annuler</button>
-          <button onClick={() => handleDupliquer(false)} disabled={saving} style={{ background: 'rgba(201,169,110,0.1)', border: '0.5px solid rgba(201,169,110,0.3)', color: '#c9a96e', borderRadius: 4, padding: '11px', fontSize: 11, letterSpacing: 1, cursor: 'pointer', fontWeight: 500, opacity: saving ? 0.7 : 1 }}>
-            {saving ? '⟳ Création...' : 'Dupliquer'}
+          <button onClick={onClose} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '11px', fontSize: 11, cursor: 'pointer' }}>
+            Annuler
           </button>
-          <button onClick={() => handleDupliquer(true)} disabled={saving} style={{ background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '11px', fontSize: 11, letterSpacing: 1, cursor: 'pointer', fontWeight: 500, opacity: saving ? 0.7 : 1 }}>
-            {saving ? '⟳ Création...' : 'Dupliquer & archiver original'}
+          <button onClick={handleDupliquer} disabled={saving} style={{ background: 'rgba(201,169,110,0.1)', border: '0.5px solid rgba(201,169,110,0.3)', color: '#c9a96e', borderRadius: 4, padding: '11px', fontSize: 11, letterSpacing: 1, cursor: 'pointer', fontWeight: 500, textTransform: 'uppercase' as const, opacity: saving ? 0.7 : 1 }}>
+            {saving ? 'Chargement...' : 'Dupliquer'}
+          </button>
+          <button onClick={handleDupliquerEtArchiver} disabled={saving} style={{ background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '11px', fontSize: 11, letterSpacing: 1, cursor: 'pointer', fontWeight: 500, textTransform: 'uppercase' as const, opacity: saving ? 0.7 : 1 }}>
+            {saving ? 'Chargement...' : 'Dupliquer & archiver original'}
           </button>
         </div>
       </div>
@@ -996,1017 +1178,779 @@ function ModalDupliquerCommande({ produit, commandeId, onCreated, onClose }: {
   )
 }
 
-// ── Détail commande ─────────────────────────────────────────
+// ── Page principale ──────────────────────────────────────────
 
-function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack: () => void; onRefresh: () => void }) {
-  const [items, setItems] = useState<any[]>([])
-  const [sites, setSites] = useState<any[]>([])
-  const [siteReception, setSiteReception] = useState('')
-  const [loading, setLoading] = useState(true)
-  const [processing, setProcessing] = useState(false)
-  const [qtesRecues, setQtesRecues] = useState<Record<string, number>>({})
-  const [prixRecus, setPrixRecus] = useState<Record<string, number>>({})
-  const [popupPrix, setPopupPrix] = useState<{ item: any; newPrix: number } | null>(null)
-  const [showReception, setShowReception] = useState(false)
-  const [statutLocal, setStatutLocal] = useState(commande.statut)
-  const [showAnnuler, setShowAnnuler] = useState(false)
-  const [raisonAnnulation, setRaisonAnnulation] = useState('')
-  const [showSupprimer, setShowSupprimer] = useState(false)
-  const [confirmSuppr, setConfirmSuppr] = useState('')
-  const [actionLoading, setActionLoading] = useState(false)
-  const [editQty, setEditQty] = useState<Record<string, number>>({})
-  const [editPrix, setEditPrix] = useState<Record<string, number>>({})
-  const [showNouveauProduit, setShowNouveauProduit] = useState(false)
-  const [showDupliquer, setShowDupliquer] = useState<any>(null)
-  const [editingProduit, setEditingProduit] = useState<any>(null)
-  const [regions, setRegions] = useState<any[]>([])
-  const [appellations, setAppellations] = useState<any[]>([])
-  const [domaines, setDomaines] = useState<any[]>([])
-  // ── NOUVEAU : ajouter produit existant au brouillon ──────
-  const [showAjouterProduit, setShowAjouterProduit] = useState(false)
-  const [searchAjout, setSearchAjout] = useState('')
-  const [searchAjoutRes, setSearchAjoutRes] = useState<any[]>([])
-  const [gratuitesCmd, setGratuitesCmd] = useState<Record<string, number>>({})
-  const [fraisPortCmd, setFraisPortCmd] = useState('')
+const CATEGORIES = [
+  { id: 'vins',        label: 'Vins',               icon: '🍷', cat: 'vin' },
+  { id: 'bieres',      label: 'Bières',             icon: '🍺', cat: 'biere' },
+  { id: 'spiritueux',  label: 'Spiritueux',         icon: '🥃', cat: 'spiritueux' },
+  { id: 'sans_alcool', label: 'Boissons s/alcool',  icon: '🧃', cat: 'sans_alcool' },
+  { id: 'epicerie',    label: 'Épicerie',            icon: '🧀', cat: 'epicerie' },
+]
 
-  useEffect(() => {
-    const load = async () => {
-      const [{ data: itemsData }, { data: sitesData }, { data: regsData }, { data: appsData }, { data: domsData }] = await Promise.all([
-        supabase.from('supplier_order_items').select('*, product:products(id, nom, millesime)').eq('order_id', commande.id),
-        supabase.from('sites').select('*').eq('actif', true).order('type'),
-        supabase.from('regions').select('id, nom').order('nom'),
-        supabase.from('appellations').select('id, nom, region_id').order('nom'),
-        supabase.from('domaines').select('id, nom').order('nom'),
-      ])
-      setItems(itemsData || [])
-      setSites(sitesData || [])
-      setRegions(regsData || [])
-      setAppellations(appsData || [])
-      setDomaines(domsData || [])
-      const entrepot = sitesData?.find(s => s.type === 'entrepot')
-      setSiteReception(entrepot?.id || sitesData?.[0]?.id || '')
-      const init: Record<string, number> = {}
-      itemsData?.forEach(item => { init[item.id] = item.quantite_commandee })
-      setQtesRecues(init)
-      setLoading(false)
-    }
-    load()
-  }, [commande.id])
+export default function AdminPage() {
+  const [section, setSection] = useState<Section>('dashboard')
 
-  const saveItemEdit = async (itemId: string) => {
-    const qty = editQty[itemId]; const prix = editPrix[itemId]
-    if (!qty || qty < 1) return
-    await supabase.from('supplier_order_items').update({ quantite_commandee: qty, prix_achat_ht: prix }).eq('id', itemId)
-    setItems(prev => prev.map(i => i.id === itemId ? { ...i, quantite_commandee: qty, prix_achat_ht: prix } : i))
-  }
-
-  const reloadItems = async () => {
-    const { data } = await supabase.from('supplier_order_items').select('*, product:products(id, nom, millesime)').eq('order_id', commande.id)
-    setItems(data || [])
-    const initQty: Record<string, number> = {}
-    const initPrix: Record<string, number> = {}
-    ;(data || []).forEach((i: any) => { initQty[i.id] = i.quantite_commandee; initPrix[i.id] = parseFloat(i.prix_achat_ht || 0) })
-    setEditQty(initQty); setEditPrix(initPrix)
-  }
-
-  const handleSendEmail = async () => {
-    const body = items.map(i => `- ${i.product_nom}${i.product_millesime ? ` ${i.product_millesime}` : ''} : ${i.quantite_commandee} btl @ ${parseFloat(i.prix_achat_ht || 0).toFixed(2)}€ HT`).join('\n')
-    const totalHT = items.reduce((acc, i) => acc + (parseFloat(i.prix_achat_ht || 0) * i.quantite_commandee), 0)
-    const subject = `Commande ${commande.numero} — Cave de Gilbert`
-    const mailBody = `Bonjour,\n\nVeuillez trouver notre commande ${commande.numero} :\n\n${body}\n\nTotal HT : ${totalHT.toFixed(2)}€\n\nCordialement,\nLa Cave de Gilbert`
-    window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(mailBody)}`)
-    await supabase.from('supplier_orders').update({ statut: 'envoyée' }).eq('id', commande.id)
-    onRefresh(); onBack()
-  }
-
-  const handleReception = async () => {
-    setProcessing(true)
-    for (const item of items) {
-      const qty = qtesRecues[item.id] ?? item.quantite_commandee
-      if (qty <= 0) continue
-      const gratuites = gratuitesCmd[item.id] ?? 0
-      const rawPrix = prixRecus[item.id] ?? parseFloat(item.prix_achat_ht || 0)
-      const prixFinal = gratuites > 0 && qty > 0
-        ? Math.round((rawPrix * (qty - gratuites)) / qty * 10000) / 10000
-        : rawPrix
-      await supabase.from('supplier_order_items').update({ quantite_recue: qty, prix_achat_ht: prixFinal }).eq('id', item.id)
-      if (siteReception) {
-        await supabase.rpc('move_stock', { p_product_id: item.product_id, p_site_id: siteReception, p_raison: 'achat', p_quantite: qty, p_note: `Réception ${commande.numero}`, p_order_id: null, p_transfer_id: null })
-      }
-    }
-    await supabase.from('supplier_orders').update({ statut: 'reçue', date_livraison_effective: new Date().toISOString().split('T')[0] }).eq('id', commande.id)
-    setProcessing(false); onRefresh(); onBack()
-  }
-
-  const totalHT = items.reduce((acc, i) => acc + (parseFloat(i.prix_achat_ht || 0) * i.quantite_commandee), 0)
-
-  return (
-    <div style={{ maxWidth: 800 }}>
-      <button onClick={onBack} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.4)', fontSize: 11, cursor: 'pointer', padding: 0, marginBottom: 12 }}>← Retour</button>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
-        <div>
-          <div style={{ fontFamily: 'monospace', fontSize: 12, color: '#c9a96e', marginBottom: 4 }}>{commande.numero}</div>
-          <h1 style={{ fontFamily: 'Georgia, serif', fontSize: 24, fontWeight: 300, color: '#f0e8d8', margin: 0 }}>{commande.fournisseur?.nom || '—'}</h1>
-          {commande.date_commande && <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', marginTop: 4 }}>Commandé le {new Date(commande.date_commande).toLocaleDateString('fr-FR')}</div>}
-        </div>
-        <Badge statut={statutLocal} />
-      </div>
-
-      {showAnnuler && (
-        <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div style={{ background: '#18130e', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 8, padding: '28px 32px', maxWidth: 460, width: '100%' }}>
-            <h3 style={{ fontFamily: 'Georgia, serif', fontSize: 18, fontWeight: 300, color: '#f0e8d8', marginBottom: 6 }}>Annuler la commande</h3>
-            <p style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)', marginBottom: 16 }}>{commande.numero} — {commande.fournisseur?.nom}</p>
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.35)', textTransform: 'uppercase' as const, display: 'block', marginBottom: 8 }}>Raison de l'annulation *</label>
-              <textarea value={raisonAnnulation} onChange={e => setRaisonAnnulation(e.target.value)} rows={3} placeholder="Ex: Rupture de stock chez le fournisseur..." style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#e8e0d5', fontSize: 13, padding: '9px 12px', boxSizing: 'border-box' as const, resize: 'vertical' as const }} />
-            </div>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={() => { setShowAnnuler(false); setRaisonAnnulation('') }} style={{ flex: 1, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '11px', fontSize: 11, cursor: 'pointer' }}>Retour</button>
-              <button disabled={!raisonAnnulation.trim() || actionLoading} onClick={async () => {
-                setActionLoading(true)
-                await supabase.from('supplier_orders').update({ statut: 'annulée', notes: `[Annulée] ${raisonAnnulation}` }).eq('id', commande.id)
-                setActionLoading(false); setShowAnnuler(false); setRaisonAnnulation(''); onRefresh(); onBack()
-              }} style={{ flex: 2, background: raisonAnnulation.trim() ? '#c96e6e' : '#333', color: raisonAnnulation.trim() ? '#fff' : '#666', border: 'none', borderRadius: 4, padding: '11px', fontSize: 11, cursor: raisonAnnulation.trim() ? 'pointer' : 'not-allowed', fontWeight: 500, letterSpacing: 1 }}>
-                {actionLoading ? '⟳ Annulation...' : "Confirmer l'annulation"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showSupprimer && (
-        <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div style={{ background: '#18130e', border: '0.5px solid rgba(201,110,110,0.4)', borderRadius: 8, padding: '28px 32px', maxWidth: 440, width: '100%' }}>
-            <h3 style={{ fontFamily: 'Georgia, serif', fontSize: 18, fontWeight: 300, color: '#c96e6e', marginBottom: 6 }}>Suppression définitive</h3>
-            <p style={{ fontSize: 13, color: '#e8e0d5', marginBottom: 4 }}>{commande.numero} — {commande.fournisseur?.nom}</p>
-            <p style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)', marginBottom: 20 }}>Cette action est irréversible.</p>
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ fontSize: 11, color: 'rgba(232,224,213,0.5)', display: 'block', marginBottom: 8 }}>Tapez <strong style={{ color: '#c96e6e' }}>SUPPRIMER</strong> pour confirmer :</label>
-              <input value={confirmSuppr} onChange={e => setConfirmSuppr(e.target.value)} placeholder="SUPPRIMER" style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: `0.5px solid ${confirmSuppr === 'SUPPRIMER' ? 'rgba(201,110,110,0.6)' : 'rgba(255,255,255,0.12)'}`, borderRadius: 4, color: '#e8e0d5', fontSize: 14, padding: '10px 12px', boxSizing: 'border-box' as const, letterSpacing: 2, textAlign: 'center' as const }} />
-            </div>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={() => { setShowSupprimer(false); setConfirmSuppr('') }} style={{ flex: 1, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '11px', fontSize: 11, cursor: 'pointer' }}>Annuler</button>
-              <button disabled={confirmSuppr !== 'SUPPRIMER' || actionLoading} onClick={async () => {
-                setActionLoading(true)
-                await supabase.from('supplier_order_items').delete().eq('order_id', commande.id)
-                await supabase.from('supplier_orders').delete().eq('id', commande.id)
-                setActionLoading(false); setShowSupprimer(false); setConfirmSuppr(''); onRefresh(); onBack()
-              }} style={{ flex: 2, background: confirmSuppr === 'SUPPRIMER' ? '#c96e6e' : '#2a1a1a', color: confirmSuppr === 'SUPPRIMER' ? '#fff' : '#666', border: 'none', borderRadius: 4, padding: '11px', fontSize: 11, cursor: confirmSuppr === 'SUPPRIMER' ? 'pointer' : 'not-allowed', fontWeight: 500, letterSpacing: 1 }}>
-                {actionLoading ? '⟳ Suppression...' : 'Supprimer définitivement'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {!showReception && (
-        <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' as const }}>
-          {['brouillon', 'envoyée'].includes(statutLocal) && (
-            <button onClick={handleSendEmail} style={{ background: '#1e1e2a', border: '0.5px solid rgba(110,158,201,0.4)', color: '#6e9ec9', borderRadius: 4, padding: '10px 18px', fontSize: 11, cursor: 'pointer', letterSpacing: 1 }}>
-              📧 Envoyer par email
-            </button>
-          )}
-          {statutLocal === 'brouillon' && (
-            <button onClick={async () => {
-              const { error } = await supabase.from('supplier_orders').update({ statut: 'envoyée' }).eq('id', commande.id)
-              if (!error) { onRefresh(); onBack() }
-            }} style={{ background: '#1e2a1e', border: '0.5px solid rgba(110,201,110,0.3)', color: '#6ec96e', borderRadius: 4, padding: '10px 18px', fontSize: 11, cursor: 'pointer', letterSpacing: 1 }}>
-              ✓ Valider (téléphone / visuel)
-            </button>
-          )}
-          {statutLocal === 'envoyée' && (
-            <button onClick={() => setShowReception(true)} style={{ background: '#1e2a1e', border: '0.5px solid rgba(110,201,110,0.4)', color: '#6ec96e', borderRadius: 4, padding: '10px 18px', fontSize: 11, cursor: 'pointer', letterSpacing: 1 }}>
-              📦 Réceptionner
-            </button>
-          )}
-          {['brouillon', 'envoyée'].includes(statutLocal) && (
-            <button onClick={() => setShowAnnuler(true)} style={{ background: 'transparent', border: '0.5px solid rgba(201,110,110,0.3)', color: '#c96e6e', borderRadius: 4, padding: '10px 18px', fontSize: 11, cursor: 'pointer', letterSpacing: 1 }}>
-              ✕ Annuler la commande
-            </button>
-          )}
-          {statutLocal === 'brouillon' && (
-            <>
-              <button onClick={() => setShowNouveauProduit(true)} style={{ background: 'transparent', border: '0.5px solid rgba(110,158,201,0.3)', color: '#6e9ec9', borderRadius: 4, padding: '10px 18px', fontSize: 11, cursor: 'pointer', letterSpacing: 1 }}>
-                + Nouveau produit
-              </button>
-              <button onClick={() => setShowAjouterProduit(v => !v)} style={{ background: showAjouterProduit ? 'rgba(201,169,110,0.1)' : 'transparent', border: '0.5px solid rgba(201,169,110,0.3)', color: '#c9a96e', borderRadius: 4, padding: '10px 18px', fontSize: 11, cursor: 'pointer', letterSpacing: 1 }}>
-                + Ajouter produit existant
-              </button>
-            </>
-          )}
-          {statutLocal === 'reçue' && (
-            <button onClick={() => setShowSupprimer(true)} style={{ background: 'transparent', border: '0.5px solid rgba(201,110,110,0.2)', color: 'rgba(201,110,110,0.6)', borderRadius: 4, padding: '10px 18px', fontSize: 11, cursor: 'pointer', letterSpacing: 1 }}>
-              🗑 Supprimer
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Panel recherche produit existant – brouillon uniquement */}
-      {showAjouterProduit && statutLocal === 'brouillon' && (
-        <div style={{ background: '#18130e', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 6, padding: '16px 20px', marginBottom: 16 }}>
-          <div style={{ fontSize: 10, letterSpacing: 1.5, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 10 }}>Ajouter un produit existant</div>
-          <input
-            value={searchAjout}
-            onChange={async e => {
-              setSearchAjout(e.target.value)
-              if (e.target.value.length < 2) { setSearchAjoutRes([]); return }
-              const { data } = await supabase.from('products').select('id, nom, millesime, prix_achat_ht').ilike('nom', `%${e.target.value}%`).eq('actif', true).limit(10)
-              setSearchAjoutRes(data || [])
-            }}
-            placeholder="Tapez le nom d'un vin..."
-            style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#e8e0d5', fontSize: 13, padding: '9px 12px', boxSizing: 'border-box' as const, marginBottom: 8 }}
-          />
-          {searchAjoutRes.length > 0 && (
-            <div style={{ border: '0.5px solid rgba(255,255,255,0.08)', borderRadius: 4, overflow: 'hidden' }}>
-              {searchAjoutRes.map(p => (
-                <div key={p.id} onClick={async () => {
-                  const { data: newItem } = await supabase.from('supplier_order_items').insert({
-                    order_id: commande.id, product_id: p.id, product_nom: p.nom,
-                    product_millesime: p.millesime || null, quantite_commandee: 6, prix_achat_ht: p.prix_achat_ht || 0,
-                  }).select('*, product:products(id, nom, millesime)').single()
-                  if (newItem) {
-                    setItems(prev => [...prev, newItem])
-                    setEditQty(prev => ({ ...prev, [newItem.id]: 6 }))
-                    setEditPrix(prev => ({ ...prev, [newItem.id]: parseFloat(p.prix_achat_ht || 0) }))
-                  }
-                  setSearchAjout(''); setSearchAjoutRes([]); setShowAjouterProduit(false)
-                }} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', cursor: 'pointer', background: '#18130e', borderBottom: '0.5px solid rgba(255,255,255,0.04)' }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.03)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = '#18130e')}
-                >
-                  <span style={{ fontSize: 13, color: '#f0e8d8' }}>{p.nom}{p.millesime ? ` ${p.millesime}` : ''}</span>
-                  <span style={{ fontSize: 10, color: '#c9a96e' }}>+ Ajouter</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {showReception && (
-        <div style={{ ...card, marginBottom: 20, border: '0.5px solid rgba(110,201,110,0.2)' }}>
-          <div style={{ fontSize: 13, color: '#6ec96e', marginBottom: 14 }}>📦 Réception — saisir les quantités reçues</div>
-          <div style={{ marginBottom: 14 }}>
-            <div style={lbl}>Site de réception</div>
-            <select value={siteReception} onChange={e => setSiteReception(e.target.value)} style={{ ...sel, width: 300 }}>
-              {sites.map(s => <option key={s.id} value={s.id} style={{ background: '#1a1408', color: '#f0e8d8' }}>{s.nom} — {s.ville}</option>)}
-            </select>
-          </div>
-          {popupPrix && (
-            <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 }}>
-              <div style={{ background: '#18130e', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 8, padding: '24px 28px', maxWidth: 380, width: '100%' }}>
-                <h3 style={{ fontFamily: 'Georgia, serif', fontSize: 16, fontWeight: 300, color: '#f0e8d8', marginBottom: 16 }}>Mise à jour des prix</h3>
-                <p style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)', marginBottom: 16 }}>{popupPrix.item.product_nom}</p>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 20 }}>
-                  {[
-                    { label: 'Prix achat HT', val: `${popupPrix.newPrix.toFixed(2)}€`, color: '#e8e0d5' },
-                    { label: 'Prix TTC part.', val: `${(Math.ceil(popupPrix.newPrix * 2 * 2) / 2).toFixed(2)}€`, color: '#c9a96e' },
-                    { label: 'Prix TTC pro', val: `${(Math.round(popupPrix.newPrix * 1.70 * 100) / 100).toFixed(2)}€`, color: '#6e9ec9' },
-                  ].map(({ label, val, color }) => (
-                    <div key={label} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 4, padding: '10px', textAlign: 'center' as const }}>
-                      <div style={{ fontSize: 9, letterSpacing: 1.5, color: 'rgba(232,224,213,0.35)', textTransform: 'uppercase' as const, marginBottom: 6 }}>{label}</div>
-                      <div style={{ fontSize: 16, color, fontFamily: 'Georgia, serif' }}>{val}</div>
-                    </div>
-                  ))}
-                </div>
-                <div style={{ display: 'flex', gap: 10 }}>
-                  <button onClick={() => { setPrixRecus(p => ({ ...p, [popupPrix.item.id]: parseFloat(popupPrix.item.prix_achat_ht || 0) })); setPopupPrix(null) }} style={{ flex: 1, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '9px', fontSize: 11, cursor: 'pointer' }}>Annuler</button>
-                  <button onClick={() => setPopupPrix(null)} style={{ flex: 2, background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '9px', fontSize: 11, cursor: 'pointer', fontWeight: 500 }}>✓ Confirmer</button>
-                </div>
-              </div>
-            </div>
-          )}
-          <div style={{ marginBottom: 14 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '2fr 90px 110px 70px 80px 100px', gap: 8, padding: '6px 0', borderBottom: '0.5px solid rgba(255,255,255,0.06)' }}>
-              {['Produit', 'Commandé', 'Prix achat HT', 'Offertes', 'Reçu', 'Prix HT réel'].map(h => (
-                <div key={h} style={{ fontSize: 9, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', textTransform: 'uppercase' as const }}>{h}</div>
-              ))}
-            </div>
-            {items.map(item => {
-              const currentPrix = prixRecus[item.id] ?? parseFloat(item.prix_achat_ht || 0)
-              const originalPrix = parseFloat(item.prix_achat_ht || 0)
-              const prixChanged = Math.abs(currentPrix - originalPrix) > 0.0001
-              const gratuites = gratuitesCmd[item.id] ?? 0
-              const recu = qtesRecues[item.id] ?? item.quantite_commandee
-              const prixHTReel = gratuites > 0 && recu > 0
-                ? Math.round((currentPrix * (recu - gratuites)) / recu * 10000) / 10000
-                : currentPrix
-              return (
-                <div key={item.id} style={{ display: 'grid', gridTemplateColumns: '2fr 90px 110px 70px 80px 100px', gap: 8, alignItems: 'center', padding: '6px 0', borderBottom: '0.5px solid rgba(255,255,255,0.04)' }}>
-                  <div>
-                    <div style={{ fontSize: 13, color: '#e8e0d5' }}>{item.product_nom}</div>
-                    {item.product_millesime && <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>{item.product_millesime}</div>}
-                  </div>
-                  <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>{item.quantite_commandee} btl</div>
-                  <div>
-                    <input type="number" step="0.0001" value={currentPrix}
-                      onChange={e => { const v = parseFloat(e.target.value) || 0; setPrixRecus(p => ({ ...p, [item.id]: v })) }}
-                      onBlur={e => { const v = parseFloat(e.target.value) || 0; if (Math.abs(v - originalPrix) > 0.0001) setPopupPrix({ item, newPrix: v }) }}
-                      style={{ width: '100%', background: prixChanged ? 'rgba(201,169,110,0.08)' : 'rgba(255,255,255,0.04)', border: `0.5px solid ${prixChanged ? 'rgba(201,169,110,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 3, color: prixChanged ? '#c9a96e' : '#e8e0d5', fontSize: 12, padding: '4px 6px', textAlign: 'center' as const }}
-                    />
-                    {prixChanged && <div style={{ fontSize: 9, color: '#c9a96e', textAlign: 'center' as const, marginTop: 2 }}>Modifié ✓</div>}
-                  </div>
-                  <div>
-                    <input type="number" min={0} value={gratuites}
-                      onChange={e => setGratuitesCmd(g => ({ ...g, [item.id]: parseInt(e.target.value) || 0 }))}
-                      style={{ width: '100%', background: gratuites > 0 ? 'rgba(110,201,110,0.08)' : 'rgba(255,255,255,0.04)', border: `0.5px solid ${gratuites > 0 ? 'rgba(110,201,110,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 3, color: gratuites > 0 ? '#6ec96e' : '#e8e0d5', fontSize: 12, padding: '4px 6px', textAlign: 'center' as const }}
-                    />
-                    {gratuites > 0 && <div style={{ fontSize: 9, color: '#6ec96e', textAlign: 'center' as const, marginTop: 2 }}>+{gratuites}</div>}
-                  </div>
-                  <input type="number" min={0} defaultValue={qtesRecues[item.id] ?? item.quantite_commandee}
-                    onChange={e => setQtesRecues(q => ({ ...q, [item.id]: parseInt(e.target.value) || 0 }))}
-                    style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 3, color: '#e8e0d5', fontSize: 12, padding: '4px 6px', textAlign: 'center' as const }}
-                  />
-                  <div>
-                    {gratuites > 0 ? (
-                      <div>
-                        <div style={{ fontSize: 12, color: '#6ec96e', fontFamily: 'Georgia, serif', fontWeight: 600 }}>{prixHTReel.toFixed(4)}€</div>
-                        <div style={{ fontSize: 9, color: 'rgba(110,201,110,0.5)', marginTop: 1 }}>vs {currentPrix.toFixed(4)}€</div>
-                      </div>
-                    ) : <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.25)' }}>—</span>}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-          {/* ── Récapitulatif réception ── */}
-          {(() => {
-            const totalHTBase = items.reduce((acc, item) => {
-              const gratuites = gratuitesCmd[item.id] ?? 0
-              const qty = qtesRecues[item.id] ?? item.quantite_commandee
-              const prix = prixRecus[item.id] ?? parseFloat(item.prix_achat_ht || 0)
-              const prixReel = gratuites > 0 && qty > 0 ? Math.round((prix * (qty - gratuites)) / qty * 10000) / 10000 : prix
-              return acc + prixReel * qty
-            }, 0)
-            const fp = parseFloat(fraisPortCmd) || 0
-            const totalHTFinal = totalHTBase + fp
-            const totalTTC = totalHTFinal * 1.20
-            return (
-              <div style={{ background: 'rgba(201,169,110,0.06)', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 6, padding: '14px 16px', marginBottom: 12 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                  <div style={{ fontSize: 10, letterSpacing: 1.5, color: '#c9a96e', textTransform: 'uppercase' as const }}>Récapitulatif</div>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
-                  <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>Total HT marchandises</div>
-                  <div style={{ fontSize: 12, color: '#e8e0d5', textAlign: 'right' as const }}>{totalHTBase.toFixed(2)} €</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>Frais de port HT</span>
-                  </div>
-                  <div style={{ textAlign: 'right' as const }}>
-                    <input type="number" step="0.01" min={0} value={fraisPortCmd}
-                      onChange={e => setFraisPortCmd(e.target.value)}
-                      placeholder="0.00"
-                      style={{ width: 90, background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.15)', borderRadius: 3, color: '#e8e0d5', fontSize: 12, padding: '3px 6px', textAlign: 'right' as const }}
-                    />
-                    <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.3)', marginLeft: 4 }}>€</span>
-                  </div>
-                  <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)', paddingTop: 6, borderTop: '0.5px solid rgba(255,255,255,0.06)' }}>Total HT</div>
-                  <div style={{ fontSize: 14, color: '#c9a96e', fontFamily: 'Georgia, serif', fontWeight: 600, textAlign: 'right' as const, paddingTop: 6, borderTop: '0.5px solid rgba(255,255,255,0.06)' }}>{totalHTFinal.toFixed(2)} €</div>
-                  <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>TVA 20%</div>
-                  <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', textAlign: 'right' as const }}>{(totalHTFinal * 0.20).toFixed(2)} €</div>
-                  <div style={{ fontSize: 13, color: '#f0e8d8', fontWeight: 600 }}>Total TTC</div>
-                  <div style={{ fontSize: 16, color: '#f0e8d8', fontFamily: 'Georgia, serif', fontWeight: 700, textAlign: 'right' as const }}>{totalTTC.toFixed(2)} €</div>
-                </div>
-              </div>
-            )
-          })()}
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button onClick={() => setShowReception(false)} style={{ flex: 1, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '10px', fontSize: 11, cursor: 'pointer' }}>Annuler</button>
-            <button onClick={handleReception} disabled={processing} style={{ flex: 2, background: '#6ec96e', color: '#0a1a0a', border: 'none', borderRadius: 4, padding: '10px', fontSize: 11, cursor: 'pointer', fontWeight: 500, letterSpacing: 1.5, textTransform: 'uppercase' as const }}>
-              {processing ? '⟳ En cours...' : '✓ Valider la réception'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {loading ? <Spinner /> : (
-        <div style={{ background: '#18130e', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 6, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' as const }}>
-            <thead>
-              <tr style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
-                {[...['Produit', statutLocal === 'brouillon' ? 'Qté commandée' : 'Qté', statutLocal === 'brouillon' ? 'Prix achat HT' : 'Prix HT', ...(statutLocal === 'brouillon' ? ['Gratuités', 'Prix HT réel'] : []), 'Total HT', 'Reçu'], ...(statutLocal === 'brouillon' ? [''] : [])].map((h, idx) => (
-                  <th key={idx} style={{ padding: '10px 14px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', textTransform: 'uppercase' as const, fontWeight: 400 }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item, i) => (
-                <tr key={item.id} style={{ borderBottom: i < items.length - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none' }}>
-                  <td style={{ padding: '11px 14px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <div>
-                        <div onClick={async () => {
-                          if (!item.product_id) return
-                          const { data: prod } = await supabase.from('products').select('*').eq('id', item.product_id).single()
-                          if (prod) setEditingProduit(prod)
-                        }} style={{ fontSize: 13, color: '#f0e8d8', cursor: 'pointer', textDecoration: 'underline', textDecorationColor: 'rgba(201,169,110,0.3)' }} title="Ouvrir la fiche produit">
-                          {item.product_nom}
-                        </div>
-                        {item.product_millesime && <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>{item.product_millesime}</div>}
-                      </div>
-                      {statutLocal === 'brouillon' && item.product_id && (
-                        <button onClick={async () => {
-                          const { data: prod } = await supabase.from('products').select('*').eq('id', item.product_id).single()
-                          if (prod) setShowDupliquer({ ...prod, prix_achat_ht_override: editPrix[item.id] })
-                        }} title="Dupliquer ce produit (changer millésime)" style={{ background: 'transparent', border: '0.5px solid rgba(201,169,110,0.2)', color: 'rgba(201,169,110,0.5)', borderRadius: 3, padding: '3px 7px', fontSize: 11, cursor: 'pointer' }}>⧉</button>
-                      )}
-                    </div>
-                  </td>
-                  <td style={{ padding: '11px 14px' }}>
-                    {statutLocal === 'brouillon' ? (
-                      <input type="number" min={1} value={editQty[item.id] ?? item.quantite_commandee}
-                        onChange={e => setEditQty(prev => ({ ...prev, [item.id]: parseInt(e.target.value) || 1 }))}
-                        onBlur={() => saveItemEdit(item.id)}
-                        style={{ width: 70, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 3, color: '#e8e0d5', fontSize: 13, padding: '4px 8px', textAlign: 'center' as const }}
-                      />
-                    ) : <span style={{ fontSize: 13 }}>{item.quantite_commandee}</span>}
-                  </td>
-                  <td style={{ padding: '11px 14px' }}>
-                    {statutLocal === 'brouillon' ? (
-                      <div>
-                        <input type="number" step="0.0001" value={editPrix[item.id] ?? parseFloat(item.prix_achat_ht || 0)}
-                          onChange={e => setEditPrix(prev => ({ ...prev, [item.id]: parseFloat(e.target.value) || 0 }))}
-                          onBlur={() => saveItemEdit(item.id)}
-                          style={{ width: 95, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 3, color: '#c9a96e', fontSize: 13, padding: '4px 8px', textAlign: 'center' as const }}
-                        />
-                        <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.3)' }}> €</span>
-                      </div>
-                    ) : <span style={{ fontSize: 13, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{parseFloat(item.prix_achat_ht || 0).toFixed(4)}€</span>}
-                  </td>
-                  {statutLocal === 'brouillon' && (() => {
-                    const gratuites = gratuitesCmd[item.id] ?? 0
-                    const qty = editQty[item.id] ?? item.quantite_commandee
-                    const prix = editPrix[item.id] ?? parseFloat(item.prix_achat_ht || 0)
-                    const prixReel = gratuites > 0 && qty > 0
-                      ? Math.round((prix * (qty - gratuites)) / qty * 10000) / 10000
-                      : prix
-                    return (
-                      <>
-                        <td style={{ padding: '11px 14px' }}>
-                          <input type="number" min={0} value={gratuites}
-                            onChange={e => setGratuitesCmd(g => ({ ...g, [item.id]: parseInt(e.target.value) || 0 }))}
-                            style={{ width: 60, background: gratuites > 0 ? 'rgba(110,201,110,0.08)' : 'rgba(255,255,255,0.04)', border: `0.5px solid ${gratuites > 0 ? 'rgba(110,201,110,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 3, color: gratuites > 0 ? '#6ec96e' : '#e8e0d5', fontSize: 13, padding: '4px 6px', textAlign: 'center' as const }}
-                          />
-                          {gratuites > 0 && <div style={{ fontSize: 9, color: '#6ec96e', textAlign: 'center' as const, marginTop: 2 }}>+{gratuites}</div>}
-                        </td>
-                        <td style={{ padding: '11px 14px' }}>
-                          {gratuites > 0 ? (
-                            <div>
-                              <div style={{ fontSize: 13, color: '#6ec96e', fontFamily: 'Georgia, serif', fontWeight: 600 }}>{prixReel.toFixed(4)}€</div>
-                              <div style={{ fontSize: 9, color: 'rgba(110,201,110,0.5)', marginTop: 1 }}>vs {prix.toFixed(4)}€</div>
-                            </div>
-                          ) : <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.25)' }}>—</span>}
-                        </td>
-                      </>
-                    )
-                  })()}
-                  <td style={{ padding: '11px 14px', fontSize: 13, fontFamily: 'Georgia, serif' }}>
-                    {((editPrix[item.id] ?? parseFloat(item.prix_achat_ht || 0)) * (editQty[item.id] ?? item.quantite_commandee)).toFixed(2)}€
-                  </td>
-                  <td style={{ padding: '11px 14px', fontSize: 13, color: item.quantite_recue != null ? '#6ec96e' : 'rgba(232,224,213,0.3)' }}>
-                    {item.quantite_recue != null ? `${item.quantite_recue} ✓` : '—'}
-                  </td>
-                  {/* ── BOUTON SUPPRIMER LIGNE – brouillon uniquement ── */}
-                  {statutLocal === 'brouillon' && (
-                    <td style={{ padding: '11px 14px' }}>
-                      <button onClick={async () => {
-                        if (!window.confirm('Supprimer cette ligne de la commande ?')) return
-                        await supabase.from('supplier_order_items').delete().eq('id', item.id)
-                        setItems(prev => prev.filter(i => i.id !== item.id))
-                      }} style={{ background: 'transparent', border: '0.5px solid rgba(201,110,110,0.3)', color: '#c96e6e', borderRadius: 4, padding: '4px 10px', fontSize: 13, cursor: 'pointer' }}>
-                        ✕
-                      </button>
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr style={{ borderTop: '0.5px solid rgba(255,255,255,0.1)' }}>
-                <td colSpan={statutLocal === 'brouillon' ? 5 : 3} style={{ padding: '12px 14px', textAlign: 'right' as const, fontSize: 11, color: 'rgba(232,224,213,0.4)', letterSpacing: 1 }}>TOTAL HT</td>
-                <td style={{ padding: '12px 14px', fontSize: 18, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{totalHT.toFixed(2)}€</td>
-                <td />{statutLocal === 'brouillon' && <><td /><td /><td /></>}
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      )}
-
-      {showNouveauProduit && (
-        <ModalNouveauProduit domaines={domaines} regions={regions} appellations={appellations}
-          onCreated={async (product) => {
-            if (product?.id) {
-              await supabase.from('supplier_order_items').insert({ order_id: commande.id, product_id: product.id, product_nom: product.nom, product_millesime: product.millesime || null, quantite_commandee: 6, prix_achat_ht: product.prix_achat_ht || 0 })
-              await reloadItems()
-            }
-            setShowNouveauProduit(false)
-          }}
-          onClose={() => setShowNouveauProduit(false)} />
-      )}
-
-      {showDupliquer && (
-        <ModalDupliquerCommande produit={showDupliquer} commandeId={commande.id}
-          onCreated={async () => { await reloadItems(); setShowDupliquer(null) }}
-          onClose={() => setShowDupliquer(null)} />
-      )}
-
-      {editingProduit && (
-        <ModalEditProduitCommande produit={editingProduit} regions={regions} appellations={appellations} domaines={domaines}
-          onClose={() => setEditingProduit(null)}
-          onSaved={async () => { await reloadItems(); setEditingProduit(null) }} />
-      )}
-    </div>
-  )
-}
-
-function VueAssocierFournisseurs() {
-  const [search, setSearch] = useState('')
+  // Données réelles depuis Supabase
   const [produits, setProduits] = useState<any[]>([])
-  const [domaines, setDomaines] = useState<any[]>([])
-  const [loading, setLoading] = useState(false)
-  const [saving, setSaving] = useState<string | null>(null)
-  const [success, setSuccess] = useState<string | null>(null)
-
-  useEffect(() => {
-    supabase.from('domaines').select('id, nom').order('nom').then(({ data }) => setDomaines(data || []))
-  }, [])
-
-  const searchProduits = async (q: string) => {
-    setSearch(q)
-    if (q.length < 2) { setProduits([]); return }
-    setLoading(true)
-    const { data } = await supabase.from('products').select('id, nom, millesime, couleur, prix_achat_ht').ilike('nom', `%${q}%`).eq('actif', true).limit(20)
-    const ids = (data || []).map(p => p.id)
-    const { data: suppliers } = await supabase.from('product_suppliers').select('product_id, domaine_id, prix_achat_ht, conditionnement').in('product_id', ids).eq('fournisseur_principal', true)
-    const suppMap = Object.fromEntries((suppliers || []).map(s => [s.product_id, s]))
-    setProduits((data || []).map(p => ({ ...p, supplier: suppMap[p.id] || null })))
-    setLoading(false)
-  }
-
-  const saveFournisseur = async (productId: string, domaineId: string, prixHT: string, conditionnement: string) => {
-    setSaving(productId)
-    await supabase.from('product_suppliers').upsert({ product_id: productId, domaine_id: domaineId, prix_achat_ht: prixHT ? parseFloat(prixHT) : null, conditionnement: conditionnement ? parseInt(conditionnement) : 6, fournisseur_principal: true }, { onConflict: 'product_id,domaine_id' })
-    setSuccess(productId); setTimeout(() => setSuccess(null), 2000); setSaving(null); searchProduits(search)
-  }
-
-  return (
-    <div>
-      <div style={{ marginBottom: 28 }}>
-        <h1 style={{ fontFamily: 'Georgia, serif', fontSize: 26, fontWeight: 300, color: '#f0e8d8', marginBottom: 4 }}>Fournisseurs par produit</h1>
-        <p style={{ fontSize: 12, color: 'rgba(232,224,213,0.35)' }}>Associez un fournisseur principal à chaque vin</p>
-      </div>
-      <div style={{ ...card, marginBottom: 20 }}>
-        <div style={lbl}>Rechercher un produit</div>
-        <input value={search} onChange={e => searchProduits(e.target.value)} placeholder="Tapez le nom d'un vin (min. 2 caractères)..." style={inp} />
-      </div>
-      {loading ? <Spinner /> : (
-        <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 10 }}>
-          {produits.map(p => <AssocierRow key={p.id} produit={p} domaines={domaines} saving={saving} success={success} onSave={saveFournisseur} />)}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function AssocierRow({ produit, domaines, saving, success, onSave }: {
-  produit: any; domaines: any[]; saving: string | null; success: string | null;
-  onSave: (productId: string, domaineId: string, prixHT: string, conditionnement: string) => void
-}) {
-  const [domaineId, setDomaineId] = useState(produit.supplier?.domaine_id || '')
-  const [prixHT, setPrixHT] = useState(produit.supplier?.prix_achat_ht?.toString() || produit.prix_achat_ht?.toString() || '')
-  const [conditionnement, setConditionnement] = useState(produit.supplier?.conditionnement?.toString() || '6')
-  const isSaved = success === produit.id
-
-  return (
-    <div style={{ ...card, display: 'grid', gridTemplateColumns: '2fr 2fr 1fr 1fr auto', gap: 12, alignItems: 'end' }}>
-      <div>
-        <div style={{ fontSize: 13, color: '#f0e8d8' }}>{produit.nom}</div>
-        {produit.millesime && <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>{produit.millesime}</div>}
-        {produit.supplier && <div style={{ fontSize: 10, color: '#6ec96e', marginTop: 2 }}>✓ Déjà associé</div>}
-      </div>
-      <select value={domaineId} onChange={e => setDomaineId(e.target.value)} style={sel}>
-        <option value="" style={{ background: '#1a1408', color: '#888' }}>— Choisir —</option>
-        {domaines.map(d => <option key={d.id} value={d.id} style={{ background: '#1a1408', color: '#f0e8d8' }}>{d.nom}</option>)}
-      </select>
-      <div><div style={lbl}>Prix HT €</div><input type="number" value={prixHT} onChange={e => setPrixHT(e.target.value)} placeholder="0.00" style={inp} /></div>
-      <div><div style={lbl}>Cdt.</div><input type="number" value={conditionnement} onChange={e => setConditionnement(e.target.value)} placeholder="6" style={inp} /></div>
-      <button onClick={() => onSave(produit.id, domaineId, prixHT, conditionnement)} disabled={!domaineId || saving === produit.id} style={{ background: isSaved ? '#1e2a1e' : '#c9a96e', color: isSaved ? '#6ec96e' : '#0d0a08', border: 'none', borderRadius: 4, padding: '9px 16px', fontSize: 11, cursor: !domaineId ? 'not-allowed' : 'pointer', fontWeight: 500, whiteSpace: 'nowrap' as const, opacity: !domaineId ? 0.5 : 1 }}>
-        {saving === produit.id ? '...' : isSaved ? '✓ Sauvé' : 'Enregistrer'}
-      </button>
-    </div>
-  )
-}
-
-function VueReception({ onRefresh }: { onRefresh: () => void }) {
-  const [commandesEnvoyees, setCommandesEnvoyees] = useState<any[]>([])
-  const [selectedCmd, setSelectedCmd] = useState<any>(null)
-  const [items, setItems] = useState<any[]>([])
+  const [stockParSite, setStockParSite] = useState<any[]>([])
   const [sites, setSites] = useState<any[]>([])
-  const [siteReception, setSiteReception] = useState('')
-  const [qtesRecues, setQtesRecues] = useState<Record<string, number>>({})
-  const [prixRecus, setPrixRecus] = useState<Record<string, number>>({})
-  const [gratuitesRecues, setGratuitesRecues] = useState<Record<string, number>>({})
-  const [fraisPortRec, setFraisPortRec] = useState('')
-  const [popupPrix, setPopupPrix] = useState<{ item: any; newPrix: number; ttcPart: number; ttcPro: number } | null>(null)
-  const [prixVenteRecus, setPrixVenteRecus] = useState<Record<string, { ttcPart: number; ttcPro: number }>>({})
-  const [searchProd, setSearchProd] = useState('')
-  const [searchProdRes, setSearchProdRes] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [processing, setProcessing] = useState(false)
-  const [success, setSuccess] = useState('')
-  const [error, setError] = useState('')
-  const [showForm, setShowForm] = useState(false)
-  const [showNouveauProduit, setShowNouveauProduit] = useState(false)
-  const [domaines, setDomaines] = useState<any[]>([])
+
+  const [alertes, setAlertes] = useState<any[]>([])
   const [regions, setRegions] = useState<any[]>([])
   const [appellations, setAppellations] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true)
-      const [{ data: cmds }, { data: sitesData }, { data: domainesData }, { data: regionsData }, { data: appellationsData }] = await Promise.all([
-        supabase.from('supplier_orders').select('*, fournisseur:domaines(id, nom), items:supplier_order_items(id)').eq('statut', 'envoyée').order('created_at', { ascending: false }),
-        supabase.from('sites').select('*').eq('actif', true).order('type'),
-        supabase.from('domaines').select('id, nom').order('nom'),
+  // Modals
+  const [showModalProduit, setShowModalProduit] = useState(false)
+  const [showNouveauProduit, setShowNouveauProduit] = useState(false)
+  const [dupliquerProduit, setDupliquerProduit] = useState<any>(null)
+  const [showModalMouvement, setShowModalMouvement] = useState(false)
+  const [selectedProduit, setSelectedProduit] = useState<any>(null)
+  const [activeCategorie, setActiveCategorie] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
+  const [filterRegion, setFilterRegion] = useState('')
+  const [filterAppellation, setFilterAppellation] = useState('')
+  const [filterCouleur, setFilterCouleur] = useState('')
+  const [filterPrixMax, setFilterPrixMax] = useState<number>(500)
+  const [filterPrixMin, setFilterPrixMin] = useState<number>(0)
+  const [prixMaxCatalogue, setPrixMaxCatalogue] = useState<number>(500)
+  const [filterMillesime, setFilterMillesime] = useState('')
+  const [filterCertif, setFilterCertif] = useState('')
+  const [filterActif, setFilterActif] = useState<'tous' | 'actif' | 'inactif'>('actif')
+  const [filterDomaine, setFilterDomaine] = useState('')
+  const [sortCol, setSortCol] = useState<string>('nom')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+
+  const handleSort = (col: string) => {
+    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortCol(col); setSortDir('asc') }
+  }
+
+  const sortIcon = (col: string) => sortCol === col ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ' ·'
+
+  // ── Chargement des données ───────────────────────────────
+
+  const loadData = useCallback(async () => {
+    setLoading(true)
+    try {
+      const [
+        { data: prods },
+        { data: stock },
+        { data: sitesData },
+      ] = await Promise.all([
+        supabase.from('products').select('id, nom, nom_cuvee, contenance, millesime, couleur, categorie, prix_vente_ttc, prix_vente_pro, prix_achat_ht, actif, bio, vegan, casher, naturel, biodynamique, ia_generated, domaine_id, slug, region_id, appellation_id, description_courte, image_url').order('nom').limit(5000),
+        supabase.from('v_stock_par_site').select('*'),
+        supabase.from('sites').select('*').eq('actif', true).order('nom'),
+      ])
+
+      // Charger domaines pour affichage
+      const { data: domainesData } = await supabase.from('domaines').select('id, nom')
+      const domaineMap = Object.fromEntries((domainesData || []).map((d: any) => [d.id, d.nom]))
+      const prodsWithDomaine = (prods || []).map((p: any) => ({ ...p, domaine_nom: domaineMap[p.domaine_id] || '' }))
+      setProduits(prodsWithDomaine)
+      if (prods && prods.length > 0) {
+        const maxP = Math.ceil(Math.max(...prods.map((p: any) => parseFloat(p.prix_vente_ttc || 0))))
+        setPrixMaxCatalogue(maxP)
+        setFilterPrixMax(maxP)
+      }
+      setStockParSite(stock || [])
+      setSites(sitesData || [])
+
+      // Alertes : grouper par produit et sommer tous les sites (vins uniquement)
+      const couleursVin = new Set(['rouge', 'blanc', 'rosé', 'champagne', 'effervescent'])
+      const produitsVin = new Set((prods || []).filter((p: any) => couleursVin.has(p.couleur)).map((p: any) => p.id))
+      
+      const stockParProduit: Record<string, any> = {}
+      ;(stock || []).forEach((s: any) => {
+        if (!produitsVin.has(s.product_id)) return // ignorer non-vins
+        if (!stockParProduit[s.product_id]) {
+          stockParProduit[s.product_id] = {
+            product_id: s.product_id,
+            produit: s.produit,
+            millesime: s.millesime,
+            quantite: 0,
+          }
+        }
+        stockParProduit[s.product_id].quantite += s.quantite || 0
+      })
+      // Seuil d'alerte : total < 6 bouteilles = alerte, total = 0 = rupture
+      const alertesData = Object.values(stockParProduit)
+        .filter((p: any) => p.quantite <= 6)
+        .map((p: any) => ({
+          ...p,
+          site: 'Tous sites',
+          stock_statut: p.quantite === 0 ? 'rupture' : 'alerte',
+        }))
+        .sort((a: any, b: any) => a.quantite - b.quantite)
+      setAlertes(alertesData)
+
+    } catch (e) {
+      console.error('Erreur chargement données:', e)
+    } finally {
+      setLoading(false)
+    }
+
+    // Charger régions et appellations séparément (ne bloque pas le reste)
+    try {
+      const [{ data: regs }, { data: apps }] = await Promise.all([
         supabase.from('regions').select('id, nom').order('nom'),
         supabase.from('appellations').select('id, nom, region_id').order('nom'),
       ])
-      setCommandesEnvoyees(cmds || []); setSites(sitesData || []); setDomaines(domainesData || [])
-      setRegions(regionsData || []); setAppellations(appellationsData || [])
-      const entrepot = sitesData?.find((s: any) => s.type === 'entrepot')
-      setSiteReception(entrepot?.id || sitesData?.[0]?.id || '')
-      setLoading(false)
+      setRegions(regs || [])
+      setAppellations(apps || [])
+    } catch (e) {
+      console.error('Erreur chargement régions:', e)
     }
-    load()
   }, [])
 
-  const selectCommande = async (cmd: any) => {
-    setSelectedCmd(cmd); setError(''); setSuccess('')
-    const { data } = await supabase.from('supplier_order_items').select('*, product:products(id, nom, millesime, couleur)').eq('order_id', cmd.id)
-    const itemsData = data || []
-    setItems(itemsData)
-    const initQty: Record<string, number> = {}; const initPrix: Record<string, number> = {}
-    itemsData.forEach((item: any) => { initQty[item.id] = item.quantite_commandee; initPrix[item.id] = parseFloat(item.prix_achat_ht || 0) })
-    setQtesRecues(initQty); setPrixRecus(initPrix); setShowForm(true)
+  useEffect(() => { loadData() }, [loadData])
+
+  // ── Stats dashboard ──────────────────────────────────────
+
+  const stats = {
+    references: produits.filter(p => p.actif).length,
+    stockTotal: stockParSite.reduce((acc: number, s: any) => acc + (s.quantite || 0), 0),
+    ruptures: stockParSite.filter((s: any) => s.stock_statut === 'rupture').length,
   }
 
-  const searchProducts = async (q: string) => {
-    setSearchProd(q)
-    if (q.length < 2) { setSearchProdRes([]); return }
-    const { data } = await supabase.from('products').select('id, nom, millesime, prix_achat_ht').ilike('nom', `%${q}%`).eq('actif', true).limit(10)
-    setSearchProdRes(data || [])
-  }
+  // ── Regroupement stock par produit et site ───────────────
 
-  const addProduitSupplementaire = async (prod: any) => {
-    if (!selectedCmd) return
-    const { data: newItem } = await supabase.from('supplier_order_items').insert({ order_id: selectedCmd.id, product_id: prod.id, product_nom: prod.nom, product_millesime: prod.millesime, quantite_commandee: 1, prix_achat_ht: prod.prix_achat_ht || 0 }).select().single()
-    if (newItem) {
-      setItems(prev => [...prev, { ...newItem, product: prod }])
-      setQtesRecues(prev => ({ ...prev, [newItem.id]: 1 }))
-      setPrixRecus(prev => ({ ...prev, [newItem.id]: parseFloat(prod.prix_achat_ht || 0) }))
-    }
-    setSearchProd(''); setSearchProdRes([])
-  }
+  const sitesUniques = [...new Set(stockParSite.map((s: any) => s.site))].slice(0, 4)
 
-  const handleReception = async () => {
-    if (!selectedCmd) return
-    setProcessing(true); setError(''); let hasError = false
-    for (const item of items) {
-      const qty = qtesRecues[item.id] ?? 0
-      const gratuites = gratuitesRecues[item.id] ?? 0
-      const rawPrix = prixRecus[item.id] ?? parseFloat(item.prix_achat_ht || 0)
-      // Prix HT réel = prix unitaire ajusté avec les gratuités
-      const newPrix = gratuites > 0 && qty > 0
-        ? Math.round((rawPrix * (qty - gratuites)) / qty * 10000) / 10000
-        : rawPrix
-      const oldPrix = parseFloat(item.prix_achat_ht || 0)
-      await supabase.from('supplier_order_items').update({ quantite_recue: qty, prix_achat_ht: newPrix }).eq('id', item.id)
-      if (Math.abs(newPrix - oldPrix) > 0.001 && item.product_id) {
-        const confirmed = prixVenteRecus[item.id]
-        const newTTC = confirmed ? confirmed.ttcPart : Math.ceil(newPrix * 2 * 2) / 2
-        const newPro = confirmed ? confirmed.ttcPro : Math.round(newPrix * 1.70 * 100) / 100
-        await supabase.from('products').update({ prix_achat_ht: newPrix, prix_vente_ttc: newTTC, prix_vente_pro: newPro }).eq('id', item.product_id)
-        await supabase.from('product_suppliers').update({ prix_achat_ht: newPrix }).eq('product_id', item.product_id).eq('fournisseur_principal', true)
+  const stockGroupé = produits.map(p => {
+    const lignes = stockParSite.filter((s: any) => s.product_id === p.id)
+    const parSite: Record<string, number> = {}
+    sitesUniques.forEach(site => {
+      const ligne = lignes.find((l: any) => l.site === site)
+      parSite[site] = ligne?.quantite || 0
+    })
+    return { ...p, parSite }
+  })
+
+  const appellationsFiltered = filterRegion
+    ? appellations.filter(a => a.region_id === filterRegion)
+    : appellations
+
+  const categorieActive = CATEGORIES.find(c => c.id === section)?.cat || null
+
+  const produitsFiltres = produits
+    .filter(p =>
+      p.nom?.toLowerCase().includes(search.toLowerCase()) &&
+      (categorieActive ? p.categorie === categorieActive : !CATEGORIES.map(c => c.cat).includes(p.categorie)) &&
+      (filterRegion === '' || p.region_id === filterRegion) &&
+      (filterAppellation === '' || p.appellation_id === filterAppellation) &&
+      (filterCouleur === '' || p.couleur === filterCouleur) &&
+      (filterDomaine === '' || p.domaine_id === filterDomaine) &&
+      (parseFloat(p.prix_vente_ttc || 0) >= filterPrixMin) &&
+      (parseFloat(p.prix_vente_ttc || 0) <= filterPrixMax) &&
+      (filterMillesime === '' || String(p.millesime || '') === filterMillesime) &&
+      (filterCertif === '' || p[filterCertif] === true) &&
+      (filterActif === 'tous' || (filterActif === 'actif' ? p.actif : !p.actif))
+    )
+    .sort((a, b) => {
+      // Tri sur stock d'un site spécifique
+      if (sortCol.startsWith('stock_')) {
+        const site = sortCol.replace('stock_', '')
+        const qa = stockParSite.find((s: any) => s.product_id === a.id && s.site === site)?.quantite || 0
+        const qb = stockParSite.find((s: any) => s.product_id === b.id && s.site === site)?.quantite || 0
+        return sortDir === 'asc' ? qa - qb : qb - qa
       }
-      if (qty > 0 && siteReception) {
-        const { error: stockErr } = await supabase.rpc('move_stock', { p_product_id: item.product_id, p_site_id: siteReception, p_raison: 'achat', p_quantite: qty, p_note: `Réception ${selectedCmd.numero}`, p_order_id: null, p_transfer_id: null })
-        if (stockErr) { console.error(stockErr); hasError = true }
+      if (sortCol === 'stock_total') {
+        const qa = stockParSite.filter((s: any) => s.product_id === a.id).reduce((acc: number, s: any) => acc + (s.quantite || 0), 0)
+        const qb = stockParSite.filter((s: any) => s.product_id === b.id).reduce((acc: number, s: any) => acc + (s.quantite || 0), 0)
+        return sortDir === 'asc' ? qa - qb : qb - qa
       }
-    }
-    await supabase.from('supplier_orders').update({ statut: 'reçue', date_livraison_effective: new Date().toISOString().split('T')[0] }).eq('id', selectedCmd.id)
-    setProcessing(false)
-    if (hasError) setError("Réception enregistrée mais certains stocks n'ont pas pu être mis à jour.")
-    else setSuccess(`Réception de ${selectedCmd.numero} validée ! Stock mis à jour.`)
-    setShowForm(false); setSelectedCmd(null); setCommandesEnvoyees(prev => prev.filter(c => c.id !== selectedCmd.id)); onRefresh()
-  }
+      let va = (a as any)[sortCol] ?? ''
+      let vb = (b as any)[sortCol] ?? ''
+      if (typeof va === 'string') va = va.toLowerCase()
+      if (typeof vb === 'string') vb = vb.toLowerCase()
+      if (va < vb) return sortDir === 'asc' ? -1 : 1
+      if (va > vb) return sortDir === 'asc' ? 1 : -1
+      return 0
+    })
+
+  // ── Navigation ───────────────────────────────────────────
+
+  const navItems: { id: Section; label: string; icon: string }[] = [
+    { id: 'dashboard',  label: 'Tableau de bord',  icon: '⬡' },
+    { id: 'produits',   label: 'Produits',          icon: '⬥' },
+  ]
+
+  const [produitsOpen, setProduitsOpen] = useState(false)
+
+  const navLinks = [
+    { label: 'Clients',       href: '/admin/clients',       icon: '◎' },
+    { label: 'Fournisseurs',  href: '/admin/fournisseurs',  icon: '◈' },
+    { label: 'Commandes',     href: '/admin/commandes',     icon: '◻' },
+    { label: 'Transferts',    href: '/admin/transferts',    icon: '⇄' },
+    { label: 'Inventaire',    href: '/admin/inventaire',    icon: '◉' },
+    { label: 'Assistant IA',  href: '/admin/ia',            icon: '✦' },
+    { label: 'Location',      href: '/admin/location',      icon: '🍺' },
+    { label: 'Utilisateurs',  href: '/admin/utilisateurs',  icon: '👤' },
+    { label: 'Import',        href: '/admin/import',        icon: '↑' },
+  ]
+
+  const inputStyle = {
+    background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.12)',
+    borderRadius: 4, color: '#e8e0d5', fontSize: 13, padding: '9px 12px',
+  } as const
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 }}>
-        <div>
-          <h1 style={{ fontFamily: 'Georgia, serif', fontSize: 26, fontWeight: 300, color: '#f0e8d8', marginBottom: 4 }}>Réception</h1>
-          <p style={{ fontSize: 12, color: 'rgba(232,224,213,0.35)' }}>{commandesEnvoyees.length} commande{commandesEnvoyees.length > 1 ? 's' : ''} en attente de réception</p>
+    <div style={{ display: 'flex', minHeight: '100vh', background: '#0d0a08', fontFamily: "'DM Sans', system-ui, sans-serif", color: '#e8e0d5' }}>
+
+      {/* Sidebar */}
+      <aside style={{ width: 220, background: '#100d0a', borderRight: '0.5px solid rgba(255,255,255,0.06)', display: 'flex', flexDirection: 'column' as const, padding: '24px 0', position: 'fixed' as const, top: 0, left: 0, bottom: 0, zIndex: 100 }}>
+        <div style={{ padding: '0 20px 28px', borderBottom: '0.5px solid rgba(255,255,255,0.06)' }}>
+          {/* Logo — remplacez /logo.png par votre fichier dans le dossier public/ */}
+          <a href="/" style={{ display: 'block', marginBottom: 10 }}>
+            <img
+              src="/logo.png"
+              alt="Cave de Gilbert"
+              onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+              style={{ width: '100%', maxHeight: 60, objectFit: 'contain', cursor: 'pointer' }}
+            />
+          </a>
+          <div style={{ fontFamily: 'Georgia, serif', fontSize: 15, color: '#c9a96e', letterSpacing: 3, textTransform: 'uppercase' as const, fontWeight: 300 }}>Cave de Gilbert</div>
+          <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.3)', letterSpacing: 1.5, marginTop: 3 }}>ADMINISTRATION</div>
         </div>
-        {!showForm && commandesEnvoyees.length > 0 && (
-          <button onClick={() => setShowForm(true)} style={{ background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '11px 20px', fontSize: 11, letterSpacing: 2, cursor: 'pointer', fontWeight: 500, textTransform: 'uppercase' as const }}>📦 Créer une réception</button>
-        )}
-      </div>
-      {success && <div style={{ background: 'rgba(110,201,110,0.1)', border: '0.5px solid rgba(110,201,110,0.3)', borderRadius: 4, padding: '14px 18px', marginBottom: 20, fontSize: 13, color: '#6ec96e' }}>✓ {success}</div>}
-      {error && <div style={{ background: 'rgba(201,110,110,0.1)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 4, padding: '14px 18px', marginBottom: 20, fontSize: 13, color: '#c96e6e' }}>⚠ {error}</div>}
-      {loading ? <Spinner /> : commandesEnvoyees.length === 0 && !showForm ? (
-        <div style={{ ...card, textAlign: 'center' as const, padding: '48px' }}>
-          <p style={{ color: 'rgba(232,224,213,0.4)', fontSize: 14 }}>Aucune commande en attente de réception.</p>
-          <p style={{ color: 'rgba(232,224,213,0.3)', fontSize: 12, marginTop: 8 }}>Les commandes envoyées apparaîtront ici.</p>
-        </div>
-      ) : !showForm ? (
-        <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 10 }}>
-          {commandesEnvoyees.map(cmd => (
-            <div key={cmd.id} style={{ ...card, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6 }}>
-                  <span style={{ fontFamily: 'monospace', fontSize: 12, color: '#c9a96e' }}>{cmd.numero}</span>
-                  <Badge statut={cmd.statut} />
-                </div>
-                <div style={{ fontSize: 15, color: '#f0e8d8', fontFamily: 'Georgia, serif', fontWeight: 300, marginBottom: 3 }}>{cmd.fournisseur?.nom}</div>
-                <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)' }}>
-                  {cmd.items?.length || 0} référence{(cmd.items?.length || 0) > 1 ? 's' : ''}
-                  {cmd.date_commande && ` · Commandée le ${new Date(cmd.date_commande).toLocaleDateString('fr-FR')}`}
-                </div>
-              </div>
-              <button onClick={() => selectCommande(cmd)} style={{ background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '9px 18px', fontSize: 11, cursor: 'pointer', fontWeight: 500, letterSpacing: 1 }}>Réceptionner →</button>
-            </div>
-          ))}
-        </div>
-      ) : !selectedCmd ? (
-        <div style={card}>
-          <div style={{ fontSize: 10, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 14 }}>Choisir la commande à réceptionner</div>
-          <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
-            {commandesEnvoyees.map(cmd => (
-              <div key={cmd.id} onClick={() => selectCommande(cmd)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: 'rgba(255,255,255,0.03)', borderRadius: 4, cursor: 'pointer', border: '0.5px solid rgba(255,255,255,0.06)' }}
-                onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(201,169,110,0.3)')}
-                onMouseLeave={e => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)')}>
-                <div>
-                  <div style={{ fontFamily: 'monospace', fontSize: 12, color: '#c9a96e' }}>{cmd.numero}</div>
-                  <div style={{ fontSize: 14, color: '#f0e8d8' }}>{cmd.fournisseur?.nom}</div>
-                  <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)' }}>{cmd.items?.length || 0} réf.</div>
-                </div>
-                <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>Sélectionner →</span>
-              </div>
-            ))}
-          </div>
-          <button onClick={() => setShowForm(false)} style={{ marginTop: 16, background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.4)', fontSize: 11, cursor: 'pointer', padding: 0 }}>← Annuler</button>
-        </div>
-      ) : (
-        <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-            <div>
-              <div style={{ fontFamily: 'monospace', fontSize: 12, color: '#c9a96e', marginBottom: 4 }}>{selectedCmd.numero}</div>
-              <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 300, color: '#f0e8d8', margin: 0 }}>{selectedCmd.fournisseur?.nom}</h2>
-            </div>
-            <button onClick={() => { setSelectedCmd(null); setShowForm(true) }} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.4)', fontSize: 11, cursor: 'pointer' }}>← Changer de commande</button>
-          </div>
-          <div style={{ ...card, marginBottom: 16 }}>
-            <div style={lbl}>Site de réception (où entrer le stock)</div>
-            <select value={siteReception} onChange={e => setSiteReception(e.target.value)} style={{ ...sel, maxWidth: 350 }}>
-              {sites.map(s => <option key={s.id} value={s.id} style={{ background: '#1a1408', color: '#f0e8d8' }}>{s.nom} — {s.ville}</option>)}
-            </select>
-          </div>
-          <div style={{ ...card, marginBottom: 16 }}>
-            <div style={{ fontSize: 10, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 14 }}>Quantités reçues</div>
-            <table style={{ width: '100%', borderCollapse: 'collapse' as const }}>
-              <thead>
-                <tr style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
-                  {['Produit', 'Commandé', 'Prix achat HT', 'Offertes', 'Reçu', 'Prix HT réel', 'Différence'].map(h => (
-                    <th key={h} style={{ padding: '8px 12px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', fontWeight: 400 }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {popupPrix && (
-                  <tr>
-                    <td colSpan={7} style={{ padding: 0 }}>
-                      <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 }}>
-                        <div style={{ background: '#18130e', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 8, padding: '24px 28px', maxWidth: 440, width: '100%' }}>
-                          <h3 style={{ fontFamily: 'Georgia, serif', fontSize: 16, fontWeight: 300, color: '#f0e8d8', marginBottom: 4 }}>Mise à jour des prix</h3>
-                          <p style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)', marginBottom: 16 }}>{popupPrix.item.product_nom}</p>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 8 }}>
-                            <div>
-                              <div style={{ fontSize: 9, letterSpacing: 1, color: 'rgba(232,224,213,0.3)', textTransform: 'uppercase' as const, marginBottom: 6 }}>Prix achat HT</div>
-                              <div style={{ fontSize: 15, color: '#e8e0d5', fontFamily: 'Georgia, serif', padding: '6px 0' }}>{popupPrix.newPrix.toFixed(2)}€</div>
-                            </div>
-                            <div>
-                              <div style={{ fontSize: 9, letterSpacing: 1, color: 'rgba(232,224,213,0.3)', textTransform: 'uppercase' as const, marginBottom: 6 }}>Prix TTC particulier</div>
-                              <input type="number" step="0.50" value={popupPrix.ttcPart} onChange={e => setPopupPrix(p => p ? { ...p, ttcPart: parseFloat(e.target.value) || 0 } : p)} style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(201,169,110,0.4)', borderRadius: 3, color: '#c9a96e', fontSize: 14, padding: '6px 8px', textAlign: 'center' as const, fontFamily: 'Georgia, serif' }} />
-                              <div style={{ fontSize: 9, color: 'rgba(232,224,213,0.25)', textAlign: 'center' as const, marginTop: 3 }}>Modifiable</div>
-                            </div>
-                            <div>
-                              <div style={{ fontSize: 9, letterSpacing: 1, color: 'rgba(232,224,213,0.3)', textTransform: 'uppercase' as const, marginBottom: 6 }}>Prix TTC pro</div>
-                              <input type="number" step="0.01" value={popupPrix.ttcPro} onChange={e => setPopupPrix(p => p ? { ...p, ttcPro: parseFloat(e.target.value) || 0 } : p)} style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(110,158,201,0.4)', borderRadius: 3, color: '#6e9ec9', fontSize: 14, padding: '6px 8px', textAlign: 'center' as const, fontFamily: 'Georgia, serif' }} />
-                              <div style={{ fontSize: 9, color: 'rgba(232,224,213,0.25)', textAlign: 'center' as const, marginTop: 3 }}>Modifiable</div>
-                            </div>
-                          </div>
-                          <p style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)', marginBottom: 16 }}>Les prix seront mis à jour sur la fiche produit à la validation de la réception.</p>
-                          <div style={{ display: 'flex', gap: 10 }}>
-                            <button onClick={() => { setPrixRecus(p => ({ ...p, [popupPrix.item.id]: parseFloat(popupPrix.item.prix_achat_ht || 0) })); setPopupPrix(null) }} style={{ flex: 1, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '9px', fontSize: 11, cursor: 'pointer' }}>Annuler</button>
-                            <button onClick={() => { setPrixVenteRecus(p => ({ ...p, [popupPrix.item.id]: { ttcPart: popupPrix.ttcPart, ttcPro: popupPrix.ttcPro } })); setPopupPrix(null) }} style={{ flex: 2, background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '9px', fontSize: 11, cursor: 'pointer', fontWeight: 500 }}>✓ Confirmer</button>
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-                  </tr>
-                )}
-                {items.map((item, i) => {
-                  const recu = qtesRecues[item.id] ?? item.quantite_commandee
-                  const gratuites = gratuitesRecues[item.id] ?? 0
-                  const diff = recu - item.quantite_commandee
-                  const currentPrix = prixRecus[item.id] ?? parseFloat(item.prix_achat_ht || 0)
-                  const originalPrix = parseFloat(item.prix_achat_ht || 0)
-                  const prixChanged = Math.abs(currentPrix - originalPrix) > 0.0001
-                  // Prix HT réel = (prix unitaire × qté payée) / (qté payée + gratuites)
-                  const totalPaye = recu
-                  const prixHTReel = gratuites > 0 && totalPaye > 0
-                    ? (currentPrix * (totalPaye - gratuites)) / totalPaye
-                    : currentPrix
-                  return (
-                    <tr key={item.id} style={{ borderBottom: i < items.length - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none' }}>
-                      <td style={{ padding: '10px 12px' }}>
-                        <div style={{ fontSize: 13, color: '#f0e8d8' }}>{item.product_nom}</div>
-                        {item.product_millesime && <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>{item.product_millesime}</div>}
-                        {item.quantite_commandee === 0 && <div style={{ fontSize: 10, color: '#c9b06e' }}>Ajouté à la réception</div>}
-                      </td>
-                      <td style={{ padding: '10px 12px', fontSize: 13, color: 'rgba(232,224,213,0.5)' }}>{item.quantite_commandee > 0 ? `${item.quantite_commandee} btl` : '—'}</td>
-                      <td style={{ padding: '10px 12px' }}>
-                        <input type="number" step="0.0001" value={currentPrix}
-                          onChange={e => setPrixRecus(p => ({ ...p, [item.id]: parseFloat(e.target.value) || 0 }))}
-                          onBlur={e => { const v = parseFloat(e.target.value) || 0; if (Math.abs(v - originalPrix) > 0.0001) setPopupPrix({ item, newPrix: prixHTReel > 0 ? prixHTReel : v, ttcPart: Math.ceil((prixHTReel || v) * 2 * 2) / 2, ttcPro: Math.round((prixHTReel || v) * 1.70 * 100) / 100 }) }}
-                          style={{ width: 100, background: prixChanged ? 'rgba(201,169,110,0.08)' : 'rgba(255,255,255,0.04)', border: `0.5px solid ${prixChanged ? 'rgba(201,169,110,0.5)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 3, color: prixChanged ? '#c9a96e' : '#e8e0d5', fontSize: 13, padding: '5px 8px', textAlign: 'center' as const }}
-                        />
-                        {prixChanged && <div style={{ fontSize: 9, color: '#c9a96e', textAlign: 'center' as const, marginTop: 2 }}>Modifié ✓</div>}
-                      </td>
-                      <td style={{ padding: '10px 12px' }}>
-                        <input type="number" min={0} value={gratuites}
-                          onChange={e => setGratuitesRecues(g => ({ ...g, [item.id]: parseInt(e.target.value) || 0 }))}
-                          style={{ width: 60, background: gratuites > 0 ? 'rgba(110,201,110,0.08)' : 'rgba(255,255,255,0.04)', border: `0.5px solid ${gratuites > 0 ? 'rgba(110,201,110,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 3, color: gratuites > 0 ? '#6ec96e' : '#e8e0d5', fontSize: 13, padding: '5px 8px', textAlign: 'center' as const }}
-                        />
-                        {gratuites > 0 && <div style={{ fontSize: 9, color: '#6ec96e', textAlign: 'center' as const, marginTop: 2 }}>+{gratuites} offert{gratuites > 1 ? 's' : ''}</div>}
-                      </td>
-                      <td style={{ padding: '10px 12px' }}>
-                        <input type="number" min={0} value={recu} onChange={e => setQtesRecues(q => ({ ...q, [item.id]: parseInt(e.target.value) || 0 }))}
-                          style={{ width: 70, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 3, color: '#e8e0d5', fontSize: 13, padding: '5px 8px', textAlign: 'center' as const }}
-                        />
-                      </td>
-                      <td style={{ padding: '10px 12px' }}>
-                        {gratuites > 0 ? (
-                          <div>
-                            <div style={{ fontSize: 13, color: '#6ec96e', fontFamily: 'Georgia, serif', fontWeight: 600 }}>{prixHTReel.toFixed(4)}€</div>
-                            <div style={{ fontSize: 9, color: 'rgba(110,201,110,0.6)', marginTop: 2 }}>vs {currentPrix.toFixed(4)}€</div>
-                          </div>
-                        ) : (
-                          <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.3)' }}>—</span>
-                        )}
-                      </td>
-                      <td style={{ padding: '10px 12px', fontSize: 13, color: diff === 0 ? '#6ec96e' : diff > 0 ? '#c9b06e' : '#c96e6e', fontWeight: 500 }}>
-                        {item.quantite_commandee > 0 ? (diff === 0 ? '✓ Complet' : diff > 0 ? `+${diff}` : `${diff}`) : '—'}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-            <div style={{ marginTop: 16, borderTop: '0.5px solid rgba(255,255,255,0.06)', paddingTop: 14 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>Produit non prévu dans la commande :</div>
-                <button onClick={() => setShowNouveauProduit(true)} style={{ background: 'transparent', border: '0.5px solid rgba(201,169,110,0.3)', color: '#c9a96e', borderRadius: 4, padding: '6px 12px', fontSize: 11, cursor: 'pointer', letterSpacing: 0.5 }}>+ Créer un nouveau produit</button>
-              </div>
-              <input value={searchProd} onChange={e => searchProducts(e.target.value)} placeholder="Rechercher un produit existant..." style={{ ...inp, maxWidth: 420 }} />
-              {searchProdRes.length > 0 && (
-                <div style={{ border: '0.5px solid rgba(255,255,255,0.08)', borderRadius: 4, overflow: 'hidden', marginTop: 4, maxWidth: 420 }}>
-                  {searchProdRes.map(p => (
-                    <div key={p.id} onClick={() => addProduitSupplementaire(p)} style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 14px', cursor: 'pointer', background: '#18130e', borderBottom: '0.5px solid rgba(255,255,255,0.04)' }}
-                      onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.03)')}
-                      onMouseLeave={e => (e.currentTarget.style.background = '#18130e')}>
-                      <span style={{ fontSize: 13, color: '#f0e8d8' }}>{p.nom}{p.millesime ? ` ${p.millesime}` : ''}</span>
-                      <span style={{ fontSize: 10, color: '#c9a96e' }}>+ Ajouter</span>
-                    </div>
+        <nav style={{ flex: 1, padding: '16px 0', overflowY: 'auto' as const }}>
+          <div style={{ fontSize: 9, letterSpacing: 2, color: 'rgba(232,224,213,0.25)', padding: '4px 20px 8px', textTransform: 'uppercase' as const }}>Catalogue & Stock</div>
+          {navItems.map(({ id, label, icon }) => (
+            <div key={id}>
+              <button onClick={() => {
+                if (id === 'produits') { setProduitsOpen(o => !o) }
+                else { setSection(id) }
+              }} style={{
+                width: '100%', textAlign: 'left' as const,
+                background: (section === id || (id === 'produits' && CATEGORIES.some(c => c.id === section))) ? 'rgba(201,169,110,0.08)' : 'transparent',
+                borderLeft: '2px solid transparent',
+                border: 'none', borderLeftStyle: 'solid' as const,
+                color: (section === id || (id === 'produits' && CATEGORIES.some(c => c.id === section))) ? '#c9a96e' : 'rgba(232,224,213,0.45)',
+                padding: '10px 20px', fontSize: 12, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 10, letterSpacing: 0.5,
+              }}>
+                <span style={{ fontSize: 14 }}>{icon}</span>
+                <span style={{ flex: 1 }}>{label}</span>
+                {id === 'produits' && <span style={{ fontSize: 10, opacity: 0.5 }}>{produitsOpen ? '▾' : '▸'}</span>}
+              </button>
+              {id === 'produits' && produitsOpen && (
+                <div style={{ background: 'rgba(0,0,0,0.2)' }}>
+                  {CATEGORIES.map(cat => (
+                    <button key={cat.id} onClick={() => { setSection(cat.id as Section); setActiveCategorie(cat.cat) }}
+                      style={{
+                        width: '100%', textAlign: 'left' as const,
+                        background: section === cat.id ? 'rgba(201,169,110,0.1)' : 'transparent',
+                        borderLeft: `2px solid ${section === cat.id ? '#c9a96e' : 'transparent'}`,
+                        border: 'none', borderLeftStyle: 'solid' as const,
+                        color: section === cat.id ? '#c9a96e' : 'rgba(232,224,213,0.35)',
+                        padding: '8px 20px 8px 36px', fontSize: 11, cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', gap: 8,
+                      }}>
+                      <span>{cat.icon}</span>{cat.label}
+                    </button>
                   ))}
                 </div>
               )}
             </div>
-          </div>
-          {/* ── Récapitulatif réception ── */}
-          {(() => {
-            const totalHTBase = items.reduce((acc, item) => {
-              const gratuites = gratuitesRecues[item.id] ?? 0
-              const qty = qtesRecues[item.id] ?? item.quantite_commandee
-              const prix = prixRecus[item.id] ?? parseFloat(item.prix_achat_ht || 0)
-              const prixReel = gratuites > 0 && qty > 0 ? Math.round((prix * (qty - gratuites)) / qty * 10000) / 10000 : prix
-              return acc + prixReel * qty
-            }, 0)
-            const fp = parseFloat(fraisPortRec) || 0
-            const totalHTFinal = totalHTBase + fp
-            const totalTTC = totalHTFinal * 1.20
-            return (
-              <div style={{ background: 'rgba(201,169,110,0.06)', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 6, padding: '14px 16px', marginBottom: 12 }}>
-                <div style={{ fontSize: 10, letterSpacing: 1.5, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 10 }}>Récapitulatif</div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
-                  <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>Total HT marchandises</div>
-                  <div style={{ fontSize: 12, color: '#e8e0d5', textAlign: 'right' as const }}>{totalHTBase.toFixed(2)} €</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>Frais de port HT</span>
+          ))}
+          <div style={{ height: '0.5px', background: 'rgba(255,255,255,0.06)', margin: '10px 0' }} />
+          <div style={{ fontSize: 9, letterSpacing: 2, color: 'rgba(232,224,213,0.25)', padding: '4px 20px 8px', textTransform: 'uppercase' as const }}>Gestion</div>
+          {navLinks.map(({ href, label, icon }) => (
+            <a key={href} href={href} style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '10px 20px', fontSize: 12, letterSpacing: 0.5,
+              color: 'rgba(232,224,213,0.45)',
+              borderLeft: '2px solid transparent',
+              textDecoration: 'none',
+            }}
+              onMouseEnter={e => { e.currentTarget.style.color = '#c9a96e'; e.currentTarget.style.background = 'rgba(201,169,110,0.05)' }}
+              onMouseLeave={e => { e.currentTarget.style.color = 'rgba(232,224,213,0.45)'; e.currentTarget.style.background = 'transparent' }}
+            >
+              <span style={{ fontSize: 14 }}>{icon}</span>{label}
+            </a>
+          ))}
+        </nav>
+        <div style={{ padding: '16px 20px', borderTop: '0.5px solid rgba(255,255,255,0.06)' }}>
+          <a href="/" style={{ fontSize: 11, color: 'rgba(232,224,213,0.3)', textDecoration: 'none', letterSpacing: 1 }}>← Voir le site</a>
+        </div>
+      </aside>
+
+      {/* Contenu principal */}
+      <main style={{ marginLeft: 220, flex: 1, padding: '32px 36px', maxWidth: 'calc(100vw - 220px)' }}>
+
+        {/* Bouton retour pour les sous-sections */}
+        {section !== 'dashboard' && (
+          <button onClick={() => setSection('dashboard')} style={{
+            background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.1)',
+            color: 'rgba(232,224,213,0.6)', fontSize: 12, cursor: 'pointer',
+            padding: '7px 14px', marginBottom: 24, borderRadius: 4,
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+          }}>
+            ← Tableau de bord
+          </button>
+        )}
+
+        {/* ── DASHBOARD ── */}
+        {section === 'dashboard' && (
+          <>
+            <h1 style={{ fontFamily: 'Georgia, serif', fontSize: 28, fontWeight: 300, color: '#f0e8d8', marginBottom: 6 }}>Tableau de bord</h1>
+            <p style={{ fontSize: 12, color: 'rgba(232,224,213,0.35)', marginBottom: 32 }}>
+              {new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+            </p>
+
+            {loading ? <Spinner /> : (
+              <>
+                {/* KPIs */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 32 }}>
+                  {[
+                    { label: 'Références actives', value: stats.references, color: '#c9a96e' },
+                    { label: 'Stock total', value: stats.stockTotal, color: '#6ec9a0' },
+                    { label: 'En rupture', value: stats.ruptures, color: '#c96e6e' },
+                  ].map(({ label, value, color }) => (
+                    <div key={label} style={{ background: '#18130e', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 6, padding: '20px 22px' }}>
+                      <div style={{ fontSize: 10, letterSpacing: 2, color: 'rgba(232,224,213,0.35)', textTransform: 'uppercase' as const, marginBottom: 10 }}>{label}</div>
+                      <div style={{ fontSize: 36, color, fontFamily: 'Georgia, serif', fontWeight: 300 }}>{value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Alertes */}
+                {alertes.length > 0 && (
+                  <div style={{ marginBottom: 32 }}>
+                    <h2 style={{ fontSize: 11, letterSpacing: 2, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, marginBottom: 14 }}>Alertes stock</h2>
+                    <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
+                      {alertes.slice(0, 10).map((a: any) => (
+                        <div key={a.product_id + a.site_id} style={{
+                          background: a.stock_statut === 'rupture' ? 'rgba(201,110,110,0.08)' : 'rgba(201,176,110,0.08)',
+                          border: `0.5px solid ${a.stock_statut === 'rupture' ? 'rgba(201,110,110,0.2)' : 'rgba(201,176,110,0.2)'}`,
+                          borderRadius: 5, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: a.stock_statut === 'rupture' ? '#c96e6e' : '#c9b06e', display: 'inline-block' }} />
+                            <span style={{ fontSize: 13 }}>{a.produit}{a.millesime ? ` ${a.millesime}` : ''}</span>
+                            <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)' }}>{a.site}</span>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                            <span style={{ fontSize: 12, color: a.stock_statut === 'rupture' ? '#c96e6e' : '#c9b06e' }}>
+                              {a.quantite === 0 ? 'Rupture' : `${a.quantite} bouteille${a.quantite > 1 ? 's' : ''}`}
+                            </span>
+                            <button onClick={async (e) => {
+                              e.stopPropagation()
+                              const btn = e.currentTarget
+                              btn.disabled = true
+                              btn.textContent = '⟳'
+                              const { data: existing } = await supabase.from('order_needs').select('id').eq('product_id', a.product_id).eq('statut', 'en_attente').maybeSingle()
+                              if (existing) { btn.textContent = '✓ Déjà ajouté'; btn.style.color = '#6ec96e'; return }
+                              const { data: ps } = await supabase.from('product_suppliers').select('domaine_id, prix_achat_ht, conditionnement').eq('product_id', a.product_id).eq('fournisseur_principal', true).maybeSingle()
+                              await supabase.from('order_needs').insert({ product_id: a.product_id, domaine_id: ps?.domaine_id || null, quantite: ps?.conditionnement || 6, prix_achat_ht: ps?.prix_achat_ht || 0, statut: 'en_attente' })
+                              btn.textContent = '✓ Ajouté'
+                              btn.style.color = '#6ec96e'
+                              btn.style.borderColor = 'rgba(110,201,110,0.3)'
+                            }} style={{
+                              background: 'transparent',
+                              border: `0.5px solid ${a.stock_statut === 'rupture' ? 'rgba(201,110,110,0.3)' : 'rgba(201,176,110,0.3)'}`,
+                              color: a.stock_statut === 'rupture' ? '#c96e6e' : '#c9b06e',
+                              borderRadius: 4, padding: '4px 10px', fontSize: 10,
+                              cursor: 'pointer', whiteSpace: 'nowrap' as const,
+                            }}>+ Besoins</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <div style={{ textAlign: 'right' as const }}>
-                    <input type="number" step="0.01" min={0} value={fraisPortRec}
-                      onChange={e => setFraisPortRec(e.target.value)}
-                      placeholder="0.00"
-                      style={{ width: 90, background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.15)', borderRadius: 3, color: '#e8e0d5', fontSize: 12, padding: '3px 6px', textAlign: 'right' as const }}
+                )}
+
+                {/* Raccourci Location */}
+                <div style={{ marginBottom: 24 }}>
+                  <a href="/admin/location" style={{ display: 'flex', alignItems: 'center', gap: 14, background: '#18130e', border: '0.5px solid rgba(201,169,110,0.15)', borderRadius: 6, padding: '16px 20px', textDecoration: 'none' }}
+                    onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(201,169,110,0.35)')}
+                    onMouseLeave={e => (e.currentTarget.style.borderColor = 'rgba(201,169,110,0.15)')}>
+                    <span style={{ fontSize: 24 }}>🍺</span>
+                    <div>
+                      <div style={{ fontSize: 14, color: '#c9a96e', marginBottom: 2 }}>Location tireuses & fûts</div>
+                      <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.35)' }}>Réservations, stock fûts, commandes La Loupiote, consignes</div>
+                    </div>
+                    <span style={{ marginLeft: 'auto', color: 'rgba(232,224,213,0.3)', fontSize: 18 }}>→</span>
+                  </a>
+                </div>
+
+                {alertes.length === 0 && produits.length === 0 && (
+                  <div style={{ background: '#18130e', border: '0.5px solid rgba(201,169,110,0.15)', borderRadius: 6, padding: '32px', textAlign: 'center' as const }}>
+                    <p style={{ color: '#c9a96e', fontSize: 16, fontFamily: 'Georgia, serif', marginBottom: 8 }}>Base de données connectée ✓</p>
+                    <p style={{ color: 'rgba(232,224,213,0.4)', fontSize: 13, marginBottom: 20 }}>Votre catalogue est vide. Ajoutez votre premier vin pour commencer.</p>
+                    <button onClick={() => { setSection('produits'); setShowModalProduit(true) }} style={{ background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '11px 24px', fontSize: 11, letterSpacing: 2, cursor: 'pointer', fontWeight: 500, textTransform: 'uppercase' as const }}>
+                      ✦ Ajouter mon premier vin
+                    </button>
+                  </div>
+                )}
+
+
+              </>
+            )}
+          </>
+        )}
+
+        {/* ── PRODUITS ── */}
+        {(section === 'produits' || CATEGORIES.some(c => c.id === section)) && (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 }}>
+              <div>
+                <h1 style={{ fontFamily: 'Georgia, serif', fontSize: 28, fontWeight: 300, color: '#f0e8d8', marginBottom: 4 }}>
+                  {categorieActive ? CATEGORIES.find(c => c.cat === categorieActive)?.icon + ' ' + CATEGORIES.find(c => c.cat === categorieActive)?.label : 'Catalogue'}
+                </h1>
+                <p style={{ fontSize: 12, color: 'rgba(232,224,213,0.35)' }}>{produitsFiltres.length} référence{produitsFiltres.length > 1 ? 's' : ''}</p>
+              </div>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                {/* Toggle actif/inactif */}
+                <div style={{ display: 'flex', background: 'rgba(255,255,255,0.04)', borderRadius: 4, border: '0.5px solid rgba(255,255,255,0.1)', overflow: 'hidden' }}>
+                  {([['actif', 'Actifs'], ['inactif', 'Inactifs'], ['tous', 'Tous']] as const).map(([val, label]) => (
+                    <button key={val} onClick={() => setFilterActif(val)} style={{
+                      background: filterActif === val ? 'rgba(201,169,110,0.15)' : 'transparent',
+                      color: filterActif === val ? '#c9a96e' : 'rgba(232,224,213,0.4)',
+                      border: 'none', borderRight: val !== 'tous' ? '0.5px solid rgba(255,255,255,0.08)' : 'none',
+                      padding: '8px 14px', fontSize: 11, cursor: 'pointer',
+                    }}>{label}</button>
+                  ))}
+                </div>
+                <button onClick={() => setShowNouveauProduit(true)} style={{ background: 'transparent', border: '0.5px solid rgba(201,169,110,0.4)', color: '#c9a96e', borderRadius: 4, padding: '11px 20px', fontSize: 11, letterSpacing: 2, cursor: 'pointer', fontWeight: 500, textTransform: 'uppercase' as const }}>
+                  + Nouveau produit
+                </button>
+                <button onClick={() => setShowModalProduit(true)} style={{ background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '11px 20px', fontSize: 11, letterSpacing: 2, cursor: 'pointer', fontWeight: 500, textTransform: 'uppercase' as const }}>
+                  ✦ Ajouter par IA
+                </button>
+              </div>
+            </div>
+
+            {/* Barre de recherche */}
+            <div style={{ display: 'flex', gap: 12, marginBottom: 12, flexWrap: 'wrap' as const }}>
+              <input placeholder="🔍 Rechercher un vin..." value={search} onChange={e => setSearch(e.target.value)} style={{ flex: '2 1 200px', ...inputStyle, boxSizing: 'border-box' as const }} />
+              <select value={filterRegion} onChange={e => { setFilterRegion(e.target.value); setFilterAppellation('') }} style={{ flex: '1 1 150px', ...inputStyle, background: '#1a1408', cursor: 'pointer' }}>
+                <option value="">Toutes les régions</option>
+                {regions.map(r => <option key={r.id} value={r.id}>{r.nom}</option>)}
+              </select>
+              <select value={filterAppellation} onChange={e => setFilterAppellation(e.target.value)} style={{ flex: '1 1 180px', ...inputStyle, background: '#1a1408', cursor: 'pointer' }}>
+                <option value="">Toutes les appellations</option>
+                {(filterRegion ? appellations.filter(a => a.region_id === filterRegion) : appellations).map(a => <option key={a.id} value={a.id}>{a.nom}</option>)}
+              </select>
+              <select value={filterDomaine} onChange={e => setFilterDomaine(e.target.value)}
+                style={{ background: '#1a1408', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 4, color: filterDomaine ? '#c9a96e' : '#f0e8d8', fontSize: 12, padding: '8px 10px', cursor: 'pointer' }}>
+                <option value="">Tous les fournisseurs</option>
+                {[...new Map(produits.filter((p: any) => p.domaine_id && p.domaine_nom).map((p: any) => [p.domaine_id, p.domaine_nom])).entries()].sort((a: any, b: any) => a[1].localeCompare(b[1])).map(([id, nom]: any) => (
+                  <option key={id} value={id}>{nom}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Filtres couleur + prix */}
+            <div style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' as const }}>
+              {/* Filtre couleur */}
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
+                {[
+                  { key: '', label: 'Toutes', bg: 'rgba(255,255,255,0.06)', color: '#e8e0d5' },
+                  { key: 'rouge', label: 'Rouge', bg: '#7b1e1e', color: '#f5d0d0' },
+                  { key: 'blanc', label: 'Blanc', bg: '#b8a96a', color: '#1a1408' },
+                  { key: 'rosé', label: 'Rosé', bg: '#c97b7b', color: '#1a0808' },
+                  { key: 'champagne', label: 'Champagne', bg: '#c9b06e', color: '#1a0e00' },
+                  { key: 'effervescent', label: 'Effervescent', bg: '#8888aa', color: '#f0f0ff' },
+                  { key: 'spiritueux', label: 'Spiritueux', bg: '#6e8b6e', color: '#0a1a0a' },
+                ].map(({ key, label, bg, color }) => (
+                  <button key={key} onClick={() => setFilterCouleur(key)} style={{
+                    background: filterCouleur === key ? bg : 'rgba(255,255,255,0.04)',
+                    color: filterCouleur === key ? color : 'rgba(232,224,213,0.45)',
+                    border: `0.5px solid ${filterCouleur === key ? bg : 'rgba(255,255,255,0.1)'}`,
+                    borderRadius: 20, padding: '5px 12px', fontSize: 11, cursor: 'pointer',
+                    fontWeight: filterCouleur === key ? 600 : 400,
+                    transition: 'all 0.15s',
+                  }}>{label}</button>
+                ))}
+              </div>
+
+              {/* Filtre prix */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginLeft: 'auto' }}>
+                <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', whiteSpace: 'nowrap' as const }}>Prix TTC :</span>
+                <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 4, minWidth: 200 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: 11, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{filterPrixMin}€</span>
+                    <span style={{ fontSize: 11, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{filterPrixMax}€</span>
+                  </div>
+                  <div style={{ position: 'relative' as const, height: 20, display: 'flex', alignItems: 'center' }}>
+                    <div style={{ position: 'absolute' as const, left: 0, right: 0, height: 3, background: 'rgba(255,255,255,0.08)', borderRadius: 2 }} />
+                    <div style={{
+                      position: 'absolute' as const,
+                      left: `${(filterPrixMin / prixMaxCatalogue) * 100}%`,
+                      right: `${100 - (filterPrixMax / prixMaxCatalogue) * 100}%`,
+                      height: 3, background: '#c9a96e', borderRadius: 2,
+                    }} />
+                    <input type="range" min={0} max={prixMaxCatalogue} value={filterPrixMin}
+                      onChange={e => setFilterPrixMin(Math.min(parseInt(e.target.value), filterPrixMax - 1))}
+                      style={{ position: 'absolute' as const, width: '100%', opacity: 0, cursor: 'pointer', zIndex: 2, height: 20 }}
                     />
-                    <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.3)', marginLeft: 4 }}>€</span>
+                    <input type="range" min={0} max={prixMaxCatalogue} value={filterPrixMax}
+                      onChange={e => setFilterPrixMax(Math.max(parseInt(e.target.value), filterPrixMin + 1))}
+                      style={{ position: 'absolute' as const, width: '100%', opacity: 0, cursor: 'pointer', zIndex: 3, height: 20 }}
+                    />
                   </div>
-                  <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)', paddingTop: 6, borderTop: '0.5px solid rgba(255,255,255,0.06)' }}>Total HT</div>
-                  <div style={{ fontSize: 14, color: '#c9a96e', fontFamily: 'Georgia, serif', fontWeight: 600, textAlign: 'right' as const, paddingTop: 6, borderTop: '0.5px solid rgba(255,255,255,0.06)' }}>{totalHTFinal.toFixed(2)} €</div>
-                  <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>TVA 20%</div>
-                  <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', textAlign: 'right' as const }}>{(totalHTFinal * 0.20).toFixed(2)} €</div>
-                  <div style={{ fontSize: 13, color: '#f0e8d8', fontWeight: 600 }}>Total TTC</div>
-                  <div style={{ fontSize: 16, color: '#f0e8d8', fontFamily: 'Georgia, serif', fontWeight: 700, textAlign: 'right' as const }}>{totalTTC.toFixed(2)} €</div>
+                  <style>{`input[type=range]::-webkit-slider-thumb { width: 14px; height: 14px; border-radius: 50%; background: #c9a96e; cursor: pointer; -webkit-appearance: none; }`}</style>
+                </div>
+                <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.3)', whiteSpace: 'nowrap' as const }}>max {prixMaxCatalogue}€</span>
+              </div>
+            </div>
+
+            {/* Filtres millésime + certifications */}
+            <div style={{ display: 'flex', gap: 12, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' as const }}>
+              {/* Filtre millésime */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', whiteSpace: 'nowrap' as const }}>Millésime :</span>
+                <select value={filterMillesime} onChange={e => setFilterMillesime(e.target.value)} style={{ background: '#1a1408', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#e8e0d5', fontSize: 12, padding: '6px 10px', cursor: 'pointer' }}>
+                  <option value="">Tous</option>
+                  {[...new Set(produits.map(p => p.millesime).filter(Boolean))].sort((a, b) => b - a).map(m => (
+                    <option key={m} value={String(m)}>{m}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Filtre certifications */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', whiteSpace: 'nowrap' as const }}>Certification :</span>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {[
+                    { key: '', label: 'Toutes' },
+                    { key: 'bio', label: '🌿 Bio' },
+                    { key: 'vegan', label: '🌱 Vegan' },
+                    { key: 'casher', label: '✡ Casher' },
+                    { key: 'naturel', label: '🍃 Naturel' },
+                    { key: 'biodynamique', label: '🌙 Biodynamique' },
+                  ].map(({ key, label }) => (
+                    <button key={key} onClick={() => setFilterCertif(key)} style={{
+                      background: filterCertif === key ? 'rgba(201,169,110,0.15)' : 'rgba(255,255,255,0.03)',
+                      border: `0.5px solid ${filterCertif === key ? 'rgba(201,169,110,0.5)' : 'rgba(255,255,255,0.1)'}`,
+                      color: filterCertif === key ? '#c9a96e' : 'rgba(232,224,213,0.4)',
+                      borderRadius: 20, padding: '4px 10px', fontSize: 11, cursor: 'pointer',
+                    }}>{label}</button>
+                  ))}
                 </div>
               </div>
-            )
-          })()}
-          <div style={{ display: 'flex', gap: 12 }}>
-            <button onClick={() => setSelectedCmd(null)} style={{ flex: 1, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '12px', fontSize: 11, cursor: 'pointer' }}>← Retour</button>
-            <button onClick={handleReception} disabled={processing} style={{ flex: 3, background: '#6ec96e', color: '#0a1a0a', border: 'none', borderRadius: 4, padding: '12px', fontSize: 11, cursor: 'pointer', fontWeight: 500, letterSpacing: 1.5, textTransform: 'uppercase' as const, opacity: processing ? 0.7 : 1 }}>
-              {processing ? '⟳ Validation en cours...' : '✓ Valider la réception et mettre le stock à jour'}
-            </button>
-          </div>
-        </div>
-      )}
-      {showNouveauProduit && selectedCmd && (
-        <ModalNouveauProduit domaines={domaines} regions={regions} appellations={appellations}
-          onCreated={async (product: any) => {
-            if (!product || !product.id) { console.error('Product null or missing id'); return }
-            const cmdId = selectedCmd?.id
-            if (!cmdId) { console.error('selectedCmd null'); return }
-            const { data: newItem, error: insertErr } = await supabase.from('supplier_order_items').insert({ order_id: cmdId, product_id: product.id, product_nom: product.nom || '', product_millesime: product.millesime || null, quantite_commandee: 1, prix_achat_ht: product.prix_achat_ht || 0 }).select().single()
-            if (insertErr) { console.error('Insert error:', insertErr.message, insertErr.code) }
-            if (newItem) {
-              setItems((prev: any[]) => [...prev, { ...newItem, product }])
-              setQtesRecues((prev: Record<string, number>) => ({ ...prev, [newItem.id]: 1 }))
-            }
-            setShowNouveauProduit(false)
-          }}
-          onClose={() => setShowNouveauProduit(false)} />
-      )}
-    </div>
-  )
-}
+            </div>
 
-export default function AdminCommandesPage() {
-  const [view, setView] = useState<View>('commandes')
-  const [selectedCommande, setSelectedCommande] = useState<any>(null)
-  const [counts, setCounts] = useState({ besoins: 0, commandes: 0, reception: 0 })
-  const [refreshKey, setRefreshKey] = useState(0)
-  const [preselectedDomaineId, setPreselectedDomaineId] = useState<string | null>(null)
+            {/* Résumé filtres actifs + bouton effacer */}
+            {(filterRegion || filterAppellation || filterCouleur || filterPrixMin > 0 || filterPrixMax < prixMaxCatalogue || filterMillesime || filterCertif) && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>
+                  {produitsFiltres.length} résultat{produitsFiltres.length > 1 ? 's' : ''}
+                  {filterCouleur && ` · ${filterCouleur}`}
+                  {filterMillesime && ` · ${filterMillesime}`}
+                  {filterCertif && ` · ${filterCertif}`}
+                  {filterPrixMin > 0 || filterPrixMax < prixMaxCatalogue ? ` · ${filterPrixMin}€ – ${filterPrixMax}€` : ''}
+                </span>
+                <button onClick={() => {
+                  setFilterRegion(''); setFilterAppellation(''); setFilterCouleur('')
+                  setFilterPrixMin(0); setFilterPrixMax(prixMaxCatalogue)
+                  setFilterMillesime(''); setFilterCertif('')
+                }} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.12)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '4px 10px', fontSize: 10, cursor: 'pointer' }}>
+                  ✕ Effacer les filtres
+                </button>
+              </div>
+            )}
 
-  const loadCounts = useCallback(async () => {
-    const [{ count: cB }, { count: cC }, { count: cR }] = await Promise.all([
-      supabase.from('order_needs').select('*', { count: 'exact', head: true }).eq('statut', 'en_attente'),
-      supabase.from('supplier_orders').select('*', { count: 'exact', head: true }).in('statut', ['brouillon']),
-      supabase.from('supplier_orders').select('*', { count: 'exact', head: true }).eq('statut', 'envoyée'),
-    ])
-    setCounts({ besoins: cB || 0, commandes: cC || 0, reception: cR || 0 })
-  }, [])
-
-  useEffect(() => { loadCounts() }, [loadCounts])
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    const domaineId = params.get('domaine')
-    if (domaineId) { setPreselectedDomaineId(domaineId); setView('commandes') }
-  }, [])
-
-  const handleRefresh = useCallback(() => { loadCounts(); setRefreshKey(k => k + 1) }, [loadCounts])
-
-  const handleSelectDetail = async (cmd: any) => {
-    const { data } = await supabase.from('supplier_orders').select('*, fournisseur:domaines(id, nom)').eq('id', cmd.id).single()
-    setSelectedCommande(data || cmd); setView('detail')
-  }
-
-  const goToCommandes = () => { setView('commandes'); setSelectedCommande(null); handleRefresh() }
-
-  return (
-    <div style={{ minHeight: '100vh', background: '#0d0a08', fontFamily: "'DM Sans', system-ui, sans-serif", color: '#e8e0d5', display: 'flex' }}>
-      <Sidebar view={view} setView={v => { setView(v); setSelectedCommande(null); handleRefresh() }} counts={counts} />
-      <main style={{ marginLeft: 220, flex: 1, padding: '32px 36px' }}>
-        {view === 'besoins' && <VueBesoins onRefresh={handleRefresh} />}
-        {view === 'commandes' && <VueCommandes key={refreshKey} onSelectDetail={handleSelectDetail} preselectedDomaineId={preselectedDomaineId} onClearPreselect={() => setPreselectedDomaineId(null)} />}
-        {view === 'reception' && <VueReception key={refreshKey} onRefresh={handleRefresh} />}
-        {view === 'detail' && selectedCommande && (
-          <DetailCommande commande={selectedCommande} onBack={goToCommandes} onRefresh={handleRefresh} />
+            {loading ? <Spinner /> : produits.length === 0 ? (
+              <Empty message="Aucun produit dans la base. Cliquez sur « Ajouter par IA » pour commencer." />
+            ) : (
+              <div style={{ background: '#18130e', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 6, overflow: 'hidden' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' as const }}>
+                  <thead>
+                    <tr style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
+                      {[
+                        { label: 'Produit', col: 'nom' },
+                        { label: 'Couleur', col: 'couleur' },
+                        { label: 'Millésime', col: 'millesime' },
+                        { label: 'Prix', col: 'prix_vente_ttc' },
+                        ...sitesUniques.map(s => ({ label: s, col: `stock_${s}` })),
+                        { label: 'Total', col: 'stock_total' },
+                        { label: 'Statut', col: 'actif' },
+                        { label: '', col: null },
+                      ].map(({ label, col }) => (
+                        <th key={label} onClick={col ? () => handleSort(col) : undefined} style={{
+                          padding: '12px 16px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5,
+                          color: col && sortCol === col ? '#c9a96e' : 'rgba(232,224,213,0.3)',
+                          textTransform: 'uppercase' as const, fontWeight: 400,
+                          cursor: col ? 'pointer' : 'default',
+                          userSelect: 'none' as const,
+                        }}>
+                          {label}{col ? sortIcon(col) : ''}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {produitsFiltres.map((p, i) => (
+                      <tr key={p.id} onClick={() => setSelectedProduit(p)} style={{ borderBottom: i < produitsFiltres.length - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none', opacity: p.actif ? 1 : 0.5, cursor: 'pointer' }}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                        <td style={{ padding: '14px 16px' }}>
+                          <div style={{ fontSize: 13, color: '#f0e8d8', marginBottom: 2 }}>{p.nom}</div>
+                          {p.domaine_nom && <div style={{ fontSize: 11, color: 'rgba(201,169,110,0.5)', marginBottom: 1 }}>{p.domaine_nom}</div>}
+                          {p.ia_generated && <span style={{ fontSize: 9, color: 'rgba(175,169,236,0.6)', letterSpacing: 1 }}>✦ IA</span>}
+                        </td>
+                        <td style={{ padding: '14px 16px' }}>
+                          <Badge label={COULEUR_STYLE[p.couleur]?.label || p.couleur} bg={COULEUR_STYLE[p.couleur]?.bg || '#333'} color={COULEUR_STYLE[p.couleur]?.color || '#fff'} />
+                        </td>
+                        <td style={{ padding: '14px 16px', fontSize: 13, color: 'rgba(232,224,213,0.6)' }}>{p.millesime || '—'}</td>
+                        <td style={{ padding: '14px 16px', fontSize: 14, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{p.prix_vente_ttc}€</td>
+                        {sitesUniques.map(site => {
+                          const ligne = stockParSite.find((s: any) => s.product_id === p.id && s.site === site)
+                          return (
+                            <td key={site} style={{ padding: '14px 16px' }}>
+                              <StockDot qty={ligne?.quantite || 0} />
+                            </td>
+                          )
+                        })}
+                        <td style={{ padding: '14px 16px' }}>
+                          <StockDot qty={stockParSite.filter((s: any) => s.product_id === p.id).reduce((acc: number, s: any) => acc + (s.quantite || 0), 0)} />
+                        </td>
+                        <td style={{ padding: '14px 16px' }}>
+                          <Badge label={p.actif ? 'Actif' : 'Inactif'} bg={p.actif ? '#1e2a1e' : '#2a2a2a'} color={p.actif ? '#6ec96e' : '#888'} />
+                        </td>
+                        <td style={{ padding: '14px 16px' }}>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button onClick={async (e) => {
+                              e.stopPropagation()
+                              await supabase.from('products').update({ actif: !p.actif }).eq('id', p.id)
+                              loadData()
+                            }} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 3, padding: '5px 10px', fontSize: 10, cursor: 'pointer' }}>
+                              {p.actif ? 'Désactiver' : 'Activer'}
+                            </button>
+                            <button onClick={(e) => { e.stopPropagation(); setDupliquerProduit(p) }} title="Dupliquer ce produit" style={{ background: 'transparent', border: '0.5px solid rgba(201,169,110,0.2)', color: 'rgba(201,169,110,0.5)', borderRadius: 3, padding: '5px 8px', fontSize: 11, cursor: 'pointer' }}>⧉</button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
         )}
-        {view === 'associer' && <VueAssocierFournisseurs />}
+
+        {/* ── STOCK ── */}
+        {section === 'stock' && (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 }}>
+              <div>
+                <h1 style={{ fontFamily: 'Georgia, serif', fontSize: 28, fontWeight: 300, color: '#f0e8d8', marginBottom: 4 }}>Stock multi-sites</h1>
+                <p style={{ fontSize: 12, color: 'rgba(232,224,213,0.35)' }}>{sites.map(s => s.nom).join(' · ')}</p>
+              </div>
+              <button onClick={() => setShowModalMouvement(true)} style={{ background: 'transparent', border: '0.5px solid rgba(201,169,110,0.4)', color: '#c9a96e', borderRadius: 4, padding: '10px 18px', fontSize: 11, letterSpacing: 1.5, cursor: 'pointer', textTransform: 'uppercase' as const }}>
+                + Mouvement de stock
+              </button>
+            </div>
+
+            {loading ? <Spinner /> : produits.length === 0 ? (
+              <Empty message="Aucun produit. Ajoutez d'abord des vins dans la section Catalogue." />
+            ) : (
+              <div style={{ background: '#18130e', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 6, overflow: 'hidden' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' as const }}>
+                  <thead>
+                    <tr style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
+                      <th style={{ padding: '12px 16px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', textTransform: 'uppercase' as const, fontWeight: 400 }}>Produit</th>
+                      {sitesUniques.map(s => (
+                        <th key={s} style={{ padding: '12px 16px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', textTransform: 'uppercase' as const, fontWeight: 400 }}>{s}</th>
+                      ))}
+                      <th style={{ padding: '12px 16px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', textTransform: 'uppercase' as const, fontWeight: 400 }}>Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {stockGroupé.map((row, i) => {
+                      const total = Object.values(row.parSite).reduce((a: any, b: any) => a + b, 0)
+                      return (
+                        <tr key={row.id} style={{ borderBottom: i < stockGroupé.length - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none' }}>
+                          <td style={{ padding: '13px 16px' }}>
+                            <div style={{ fontSize: 13 }}>{row.nom}</div>
+                            {row.millesime && <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)' }}>{row.millesime}</div>}
+                          </td>
+                          {sitesUniques.map(s => (
+                            <td key={s} style={{ padding: '13px 16px' }}><StockDot qty={row.parSite[s] || 0} /></td>
+                          ))}
+                          <td style={{ padding: '13px 16px' }}>
+                            <span style={{ fontSize: 14, color: total === 0 ? '#c96e6e' : '#e8e0d5', fontFamily: 'Georgia, serif' }}>{total}</span>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ── TRANSFERTS ── */}
+        {section === 'transferts' && (
+          <>
+            <h1 style={{ fontFamily: 'Georgia, serif', fontSize: 28, fontWeight: 300, color: '#f0e8d8', marginBottom: 28 }}>Transferts inter-sites</h1>
+            {sites.length < 2 ? (
+              <div style={{ background: '#18130e', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 6, padding: '32px', textAlign: 'center' as const }}>
+                <p style={{ color: 'rgba(232,224,213,0.4)', fontSize: 13 }}>Il faut au moins 2 sites actifs pour créer un transfert.</p>
+                <p style={{ color: 'rgba(232,224,213,0.3)', fontSize: 12, marginTop: 8 }}>Ajoutez vos sites dans Supabase → Table Editor → sites.</p>
+              </div>
+            ) : (
+              <div style={{ background: '#18130e', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 6, padding: '28px' }}>
+                <p style={{ color: 'rgba(232,224,213,0.4)', fontSize: 13, marginBottom: 20 }}>Créer un transfert de stock entre deux sites</p>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+                  <div>
+                    <label style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, display: 'block', marginBottom: 8 }}>Site source</label>
+                    <select style={{ width: '100%', ...inputStyle }}>
+                      {sites.map(s => <option key={s.id} value={s.id}>{s.nom}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, display: 'block', marginBottom: 8 }}>Site destination</label>
+                    <select style={{ width: '100%', ...inputStyle }}>
+                      {sites.map(s => <option key={s.id} value={s.id}>{s.nom}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <button style={{ background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '11px 24px', fontSize: 11, cursor: 'pointer', fontWeight: 500, letterSpacing: 1.5, textTransform: 'uppercase' as const }}>
+                  Créer le transfert
+                </button>
+              </div>
+            )}
+          </>
+        )}
+
       </main>
+
+      {/* Modals */}
+      {showModalProduit && sites.length > 0 && (
+        <ModalAjoutProduit sites={sites} onClose={() => setShowModalProduit(false)} onSaved={loadData} />
+      )}
+      {showModalMouvement && (
+        <ModalMouvement produits={produits} sites={sites} onClose={() => setShowModalMouvement(false)} onSaved={loadData} />
+      )}
+      {selectedProduit && (
+        <ModalEditProduit
+          produit={selectedProduit}
+          regions={regions}
+          appellations={appellations}
+          onClose={() => setSelectedProduit(null)}
+          onSaved={() => { loadData(); setSelectedProduit(null) }}
+        />
+      )}
+      {showNouveauProduit && (
+        <ModalNouveauProduitAdmin
+          regions={regions}
+          appellations={appellations}
+          onClose={() => setShowNouveauProduit(false)}
+          onSaved={() => { loadData(); setShowNouveauProduit(false) }}
+        />
+      )}
+      {dupliquerProduit && (
+        <ModalDupliquer
+          produit={dupliquerProduit}
+          onClose={() => setDupliquerProduit(null)}
+          onSaved={() => { loadData(); setDupliquerProduit(null) }}
+        />
+      )}
     </div>
   )
 }
