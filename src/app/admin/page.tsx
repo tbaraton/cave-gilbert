@@ -437,6 +437,7 @@ function ModalEditProduit({ produit, regions: regionsProp, appellations: appella
   }, [])
 
   const [form, setForm] = useState({
+    nomSurcharge: produit.nom || '',
     appellation_nom: '',
     nom_cuvee: produit.nom_cuvee || '',
     domaine_id: produit.domaine_id || '',
@@ -491,7 +492,7 @@ function ModalEditProduit({ produit, regions: regionsProp, appellations: appella
   }
 
   const handleSave = async () => {
-    const nomFinal = buildNom()
+    const nomFinal = form.nomSurcharge.trim() || buildNom()
     if (!nomFinal.trim()) { setError("Remplissez au moins l'appellation"); return }
     if (!form.prix_vente_ttc) { setError('Le prix TTC est obligatoire'); return }
     setSaving(true)
@@ -552,15 +553,18 @@ function ModalEditProduit({ produit, regions: regionsProp, appellations: appella
 
         {error && <div style={{ background: 'rgba(201,110,110,0.1)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 4, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: '#c96e6e' }}>{error}</div>}
 
-        {/* Aperçu nom en temps réel */}
-        <NomVinPreview
-          appellation={form.appellation_nom || appsFiltrees.find((a: any) => a.id === form.appellation_id)?.nom || ''}
-          cuvee={form.nom_cuvee}
-          couleur={form.couleur}
-          millesime={form.millesime}
-          contenance={form.contenance}
-          domaine={domaines.find(d => d.id === form.domaine_id)?.nom || ''}
-        />
+        <div style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 4, padding: '10px 14px', marginBottom: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <div style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', textTransform: 'uppercase' as const }}>Nom du produit</div>
+            <button onClick={() => setForm(f => ({ ...f, nomSurcharge: buildNom() }))} style={{ background: 'transparent', border: 'none', color: 'rgba(201,169,110,0.5)', fontSize: 10, cursor: 'pointer', padding: 0 }}>↺ Regénérer</button>
+          </div>
+          <input
+            value={form.nomSurcharge}
+            onChange={e => setForm(f => ({ ...f, nomSurcharge: e.target.value }))}
+            placeholder="Nom du produit..."
+            style={{ width: '100%', background: 'transparent', border: 'none', borderBottom: '0.5px solid rgba(201,169,110,0.4)', color: '#f0e8d8', fontSize: 15, fontFamily: 'Georgia, serif', padding: '4px 0', outline: 'none', boxSizing: 'border-box' as const }}
+          />
+        </div>
 
         {/* Identité */}
         <div style={{ fontSize: 10, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 10 }}>Identité</div>
@@ -721,6 +725,7 @@ function ModalNouveauProduitAdmin({ regions: regionsProp, appellations: appellat
   const [form, setForm] = useState({
     appellation_nom: '',
     nom_cuvee: '',
+    nomSurcharge: '',
     domaine_id: '',
     contenance: '75cl',
     millesime: '',
@@ -745,6 +750,7 @@ function ModalNouveauProduitAdmin({ regions: regionsProp, appellations: appellat
     : appellations
 
   const buildNom = () => {
+    if (form.nomSurcharge.trim()) return form.nomSurcharge.trim()
     const parts = []
     if (form.appellation_nom) parts.push(form.appellation_nom)
     if (form.nom_cuvee) parts.push(form.nom_cuvee)
@@ -832,14 +838,21 @@ function ModalNouveauProduitAdmin({ regions: regionsProp, appellations: appellat
 
         {error && <div style={{ background: 'rgba(201,110,110,0.1)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 4, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: '#c96e6e' }}>{error}</div>}
 
-        <NomVinPreview
-          appellation={form.appellation_nom}
-          cuvee={form.nom_cuvee}
-          couleur={form.couleur}
-          millesime={form.millesime}
-          contenance={form.contenance}
-          domaine={domaines.find(d => d.id === form.domaine_id)?.nom || ''}
-        />
+        <div style={{ background: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 4, padding: '10px 14px', marginBottom: 16 }}>
+          <div style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', textTransform: 'uppercase' as const, marginBottom: 6 }}>Nom du produit</div>
+          <input
+            value={form.nomSurcharge || buildNom()}
+            onChange={e => setForm(f => ({ ...f, nomSurcharge: e.target.value }))}
+            onFocus={e => { if (!form.nomSurcharge) setForm(f => ({ ...f, nomSurcharge: buildNom() })) }}
+            placeholder="Nom généré automatiquement..."
+            style={{ width: '100%', background: 'transparent', border: 'none', borderBottom: form.nomSurcharge ? '0.5px solid rgba(201,169,110,0.4)' : '0.5px solid transparent', color: '#f0e8d8', fontSize: 15, fontFamily: 'Georgia, serif', padding: '4px 0', outline: 'none', boxSizing: 'border-box' as const }}
+          />
+          {form.nomSurcharge && (
+            <button onClick={() => setForm(f => ({ ...f, nomSurcharge: '' }))} style={{ background: 'transparent', border: 'none', color: 'rgba(201,169,110,0.5)', fontSize: 10, cursor: 'pointer', padding: 0, marginTop: 4 }}>
+              ↺ Réinitialiser automatique
+            </button>
+          )}
+        </div>
 
         <div style={{ fontSize: 10, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 10 }}>Identité</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
@@ -972,6 +985,7 @@ function ModalDupliquer({ produit, onClose, onSaved }: {
 }) {
   const [millesime, setMillesime] = useState(produit.millesime ? String(produit.millesime + 1) : '')
   const [prixAchatHT, setPrixAchatHT] = useState(produit.prix_achat_ht ? String(produit.prix_achat_ht) : '')
+  const [nomSurcharge, setNomSurcharge] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -988,8 +1002,8 @@ function ModalDupliquer({ produit, onClose, onSaved }: {
     setSaving(true)
     setError('')
 
-    let newNom = produit.nom
-    if (produit.millesime && millesime) {
+    let newNom = nomSurcharge.trim() || produit.nom
+    if (!nomSurcharge.trim() && produit.millesime && millesime) {
       newNom = produit.nom.replace(String(produit.millesime), millesime)
     }
 
@@ -1154,10 +1168,15 @@ function ModalDupliquer({ produit, onClose, onSaved }: {
         {/* Aperçu du nouveau nom */}
         {millesime && produit.millesime && (
           <div style={{ background: 'rgba(201,169,110,0.06)', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 4, padding: '10px 14px', marginBottom: 20 }}>
-            <div style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', textTransform: 'uppercase' as const, marginBottom: 4 }}>Nouveau produit</div>
-            <div style={{ fontSize: 13, color: '#c9a96e' }}>
-              {produit.nom.replace(String(produit.millesime), millesime)}
+            <div style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', textTransform: 'uppercase' as const }}>Nouveau produit
+              {nomSurcharge && <button onClick={() => setNomSurcharge('')} style={{ background: 'transparent', border: 'none', color: 'rgba(201,169,110,0.5)', fontSize: 10, cursor: 'pointer', padding: '0 0 0 8px' }}>↺ Auto</button>}
             </div>
+            <input
+              value={nomSurcharge || buildNomDuplique()}
+              onChange={e => setNomSurcharge(e.target.value)}
+              onFocus={() => { if (!nomSurcharge) setNomSurcharge(buildNomDuplique()) }}
+              style={{ width: '100%', background: 'transparent', border: 'none', borderBottom: `0.5px solid ${nomSurcharge ? 'rgba(201,169,110,0.5)' : 'rgba(201,169,110,0.2)'}`, color: '#c9a96e', fontSize: 14, fontFamily: 'Georgia, serif', padding: '4px 0', outline: 'none', boxSizing: 'border-box' as const }}
+            />
             <div style={{ fontSize: 10, color: '#6ec96e', marginTop: 4 }}>✓ Sera créé actif</div>
           </div>
         )}
@@ -1788,7 +1807,10 @@ export default function AdminPage() {
                         onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
                         onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                         <td style={{ padding: '14px 16px' }}>
-                          <div style={{ fontSize: 13, color: '#f0e8d8', marginBottom: 2 }}>{p.nom}</div>
+                          <div style={{ fontSize: 13, color: '#f0e8d8', marginBottom: 2 }}>
+                            {p.nom}
+                            {p.bio && <span title="Bio" style={{ marginLeft: 6, fontSize: 12 }}>🌿</span>}
+                          </div>
                           {p.domaine_nom && <div style={{ fontSize: 11, color: 'rgba(201,169,110,0.5)', marginBottom: 1 }}>{p.domaine_nom}</div>}
                           {p.ia_generated && <span style={{ fontSize: 9, color: 'rgba(175,169,236,0.6)', letterSpacing: 1 }}>✦ IA</span>}
                         </td>
