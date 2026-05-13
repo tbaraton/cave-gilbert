@@ -1011,6 +1011,7 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
   const [showAjouterProduit, setShowAjouterProduit] = useState(false)
   const [searchAjout, setSearchAjout] = useState('')
   const [searchAjoutRes, setSearchAjoutRes] = useState<any[]>([])
+  const [gratuitesCmd, setGratuitesCmd] = useState<Record<string, number>>({})
 
   useEffect(() => {
     const load = async () => {
@@ -1067,7 +1068,12 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
     for (const item of items) {
       const qty = qtesRecues[item.id] ?? item.quantite_commandee
       if (qty <= 0) continue
-      await supabase.from('supplier_order_items').update({ quantite_recue: qty }).eq('id', item.id)
+      const gratuites = gratuitesCmd[item.id] ?? 0
+      const rawPrix = prixRecus[item.id] ?? parseFloat(item.prix_achat_ht || 0)
+      const prixFinal = gratuites > 0 && qty > 0
+        ? Math.round((rawPrix * qty) / (qty + gratuites) * 10000) / 10000
+        : rawPrix
+      await supabase.from('supplier_order_items').update({ quantite_recue: qty, prix_achat_ht: prixFinal }).eq('id', item.id)
       if (siteReception) {
         await supabase.rpc('move_stock', { p_product_id: item.product_id, p_site_id: siteReception, p_raison: 'achat', p_quantite: qty, p_note: `Réception ${commande.numero}`, p_order_id: null, p_transfer_id: null })
       }
@@ -1256,34 +1262,55 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
               </div>
             </div>
           )}
-          <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8, marginBottom: 14 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '2fr 100px 130px 90px', gap: 8, padding: '6px 0', borderBottom: '0.5px solid rgba(255,255,255,0.06)' }}>
-              {['Produit', 'Commandé', 'Prix achat HT', 'Reçu'].map(h => (
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 90px 110px 70px 80px 100px', gap: 8, padding: '6px 0', borderBottom: '0.5px solid rgba(255,255,255,0.06)' }}>
+              {['Produit', 'Commandé', 'Prix achat HT', 'Offertes', 'Reçu', 'Prix HT réel'].map(h => (
                 <div key={h} style={{ fontSize: 9, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', textTransform: 'uppercase' as const }}>{h}</div>
               ))}
             </div>
             {items.map(item => {
               const currentPrix = prixRecus[item.id] ?? parseFloat(item.prix_achat_ht || 0)
               const originalPrix = parseFloat(item.prix_achat_ht || 0)
-              const prixChanged = Math.abs(currentPrix - originalPrix) > 0.001
+              const prixChanged = Math.abs(currentPrix - originalPrix) > 0.0001
+              const gratuites = gratuitesCmd[item.id] ?? 0
+              const recu = qtesRecues[item.id] ?? item.quantite_commandee
+              const prixHTReel = gratuites > 0 && recu > 0
+                ? Math.round((currentPrix * recu) / (recu + gratuites) * 10000) / 10000
+                : currentPrix
               return (
-                <div key={item.id} style={{ display: 'grid', gridTemplateColumns: '2fr 100px 130px 90px', gap: 8, alignItems: 'center', padding: '6px 0', borderBottom: '0.5px solid rgba(255,255,255,0.04)' }}>
+                <div key={item.id} style={{ display: 'grid', gridTemplateColumns: '2fr 90px 110px 70px 80px 100px', gap: 8, alignItems: 'center', padding: '6px 0', borderBottom: '0.5px solid rgba(255,255,255,0.04)' }}>
                   <div>
                     <div style={{ fontSize: 13, color: '#e8e0d5' }}>{item.product_nom}</div>
                     {item.product_millesime && <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>{item.product_millesime}</div>}
                   </div>
                   <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>{item.quantite_commandee} btl</div>
                   <div>
-                    <input type="number" step="0.01" value={currentPrix}
-                      onChange={e => { const v = parseFloat(e.target.value) || 0; setPrixRecus(p => ({ ...p, [item.id]: v })); if (Math.abs(v - originalPrix) > 0.001) setPopupPrix({ item, newPrix: v }) }}
-                      style={{ width: '100%', background: prixChanged ? 'rgba(201,169,110,0.08)' : 'rgba(255,255,255,0.04)', border: `0.5px solid ${prixChanged ? 'rgba(201,169,110,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 3, color: prixChanged ? '#c9a96e' : '#e8e0d5', fontSize: 13, padding: '4px 8px', textAlign: 'center' as const }}
+                    <input type="number" step="0.0001" value={currentPrix}
+                      onChange={e => { const v = parseFloat(e.target.value) || 0; setPrixRecus(p => ({ ...p, [item.id]: v })) }}
+                      onBlur={e => { const v = parseFloat(e.target.value) || 0; if (Math.abs(v - originalPrix) > 0.0001) setPopupPrix({ item, newPrix: v }) }}
+                      style={{ width: '100%', background: prixChanged ? 'rgba(201,169,110,0.08)' : 'rgba(255,255,255,0.04)', border: `0.5px solid ${prixChanged ? 'rgba(201,169,110,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 3, color: prixChanged ? '#c9a96e' : '#e8e0d5', fontSize: 12, padding: '4px 6px', textAlign: 'center' as const }}
                     />
                     {prixChanged && <div style={{ fontSize: 9, color: '#c9a96e', textAlign: 'center' as const, marginTop: 2 }}>Modifié ✓</div>}
                   </div>
+                  <div>
+                    <input type="number" min={0} value={gratuites}
+                      onChange={e => setGratuitesCmd(g => ({ ...g, [item.id]: parseInt(e.target.value) || 0 }))}
+                      style={{ width: '100%', background: gratuites > 0 ? 'rgba(110,201,110,0.08)' : 'rgba(255,255,255,0.04)', border: `0.5px solid ${gratuites > 0 ? 'rgba(110,201,110,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 3, color: gratuites > 0 ? '#6ec96e' : '#e8e0d5', fontSize: 12, padding: '4px 6px', textAlign: 'center' as const }}
+                    />
+                    {gratuites > 0 && <div style={{ fontSize: 9, color: '#6ec96e', textAlign: 'center' as const, marginTop: 2 }}>+{gratuites}</div>}
+                  </div>
                   <input type="number" min={0} defaultValue={qtesRecues[item.id] ?? item.quantite_commandee}
                     onChange={e => setQtesRecues(q => ({ ...q, [item.id]: parseInt(e.target.value) || 0 }))}
-                    style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 3, color: '#e8e0d5', fontSize: 13, padding: '4px 8px', textAlign: 'center' as const }}
+                    style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 3, color: '#e8e0d5', fontSize: 12, padding: '4px 6px', textAlign: 'center' as const }}
                   />
+                  <div>
+                    {gratuites > 0 ? (
+                      <div>
+                        <div style={{ fontSize: 12, color: '#6ec96e', fontFamily: 'Georgia, serif', fontWeight: 600 }}>{prixHTReel.toFixed(4)}€</div>
+                        <div style={{ fontSize: 9, color: 'rgba(110,201,110,0.5)', marginTop: 1 }}>vs {currentPrix.toFixed(4)}€</div>
+                      </div>
+                    ) : <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.25)' }}>—</span>}
+                  </div>
                 </div>
               )
             })}
@@ -1302,7 +1329,7 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
           <table style={{ width: '100%', borderCollapse: 'collapse' as const }}>
             <thead>
               <tr style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
-                {[...['Produit', statutLocal === 'brouillon' ? 'Qté commandée' : 'Qté', statutLocal === 'brouillon' ? 'Prix achat HT' : 'Prix HT', 'Total HT', 'Reçu'], ...(statutLocal === 'brouillon' ? [''] : [])].map((h, idx) => (
+                {[...['Produit', statutLocal === 'brouillon' ? 'Qté commandée' : 'Qté', statutLocal === 'brouillon' ? 'Prix achat HT' : 'Prix HT', ...(statutLocal === 'brouillon' ? ['Gratuités', 'Prix HT réel'] : []), 'Total HT', 'Reçu'], ...(statutLocal === 'brouillon' ? [''] : [])].map((h, idx) => (
                   <th key={idx} style={{ padding: '10px 14px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', textTransform: 'uppercase' as const, fontWeight: 400 }}>{h}</th>
                 ))}
               </tr>
@@ -1342,15 +1369,42 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
                   <td style={{ padding: '11px 14px' }}>
                     {statutLocal === 'brouillon' ? (
                       <div>
-                        <input type="number" step="0.01" value={editPrix[item.id] ?? parseFloat(item.prix_achat_ht || 0)}
+                        <input type="number" step="0.0001" value={editPrix[item.id] ?? parseFloat(item.prix_achat_ht || 0)}
                           onChange={e => setEditPrix(prev => ({ ...prev, [item.id]: parseFloat(e.target.value) || 0 }))}
                           onBlur={() => saveItemEdit(item.id)}
                           style={{ width: 95, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 3, color: '#c9a96e', fontSize: 13, padding: '4px 8px', textAlign: 'center' as const }}
                         />
                         <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.3)' }}> €</span>
                       </div>
-                    ) : <span style={{ fontSize: 13, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{parseFloat(item.prix_achat_ht || 0).toFixed(2)}€</span>}
+                    ) : <span style={{ fontSize: 13, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{parseFloat(item.prix_achat_ht || 0).toFixed(4)}€</span>}
                   </td>
+                  {statutLocal === 'brouillon' && (() => {
+                    const gratuites = gratuitesCmd[item.id] ?? 0
+                    const qty = editQty[item.id] ?? item.quantite_commandee
+                    const prix = editPrix[item.id] ?? parseFloat(item.prix_achat_ht || 0)
+                    const prixReel = gratuites > 0 && qty > 0
+                      ? Math.round((prix * qty) / (qty + gratuites) * 10000) / 10000
+                      : prix
+                    return (
+                      <>
+                        <td style={{ padding: '11px 14px' }}>
+                          <input type="number" min={0} value={gratuites}
+                            onChange={e => setGratuitesCmd(g => ({ ...g, [item.id]: parseInt(e.target.value) || 0 }))}
+                            style={{ width: 60, background: gratuites > 0 ? 'rgba(110,201,110,0.08)' : 'rgba(255,255,255,0.04)', border: `0.5px solid ${gratuites > 0 ? 'rgba(110,201,110,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 3, color: gratuites > 0 ? '#6ec96e' : '#e8e0d5', fontSize: 13, padding: '4px 6px', textAlign: 'center' as const }}
+                          />
+                          {gratuites > 0 && <div style={{ fontSize: 9, color: '#6ec96e', textAlign: 'center' as const, marginTop: 2 }}>+{gratuites}</div>}
+                        </td>
+                        <td style={{ padding: '11px 14px' }}>
+                          {gratuites > 0 ? (
+                            <div>
+                              <div style={{ fontSize: 13, color: '#6ec96e', fontFamily: 'Georgia, serif', fontWeight: 600 }}>{prixReel.toFixed(4)}€</div>
+                              <div style={{ fontSize: 9, color: 'rgba(110,201,110,0.5)', marginTop: 1 }}>vs {prix.toFixed(4)}€</div>
+                            </div>
+                          ) : <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.25)' }}>—</span>}
+                        </td>
+                      </>
+                    )
+                  })()}
                   <td style={{ padding: '11px 14px', fontSize: 13, fontFamily: 'Georgia, serif' }}>
                     {((editPrix[item.id] ?? parseFloat(item.prix_achat_ht || 0)) * (editQty[item.id] ?? item.quantite_commandee)).toFixed(2)}€
                   </td>
@@ -1374,9 +1428,9 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
             </tbody>
             <tfoot>
               <tr style={{ borderTop: '0.5px solid rgba(255,255,255,0.1)' }}>
-                <td colSpan={3} style={{ padding: '12px 14px', textAlign: 'right' as const, fontSize: 11, color: 'rgba(232,224,213,0.4)', letterSpacing: 1 }}>TOTAL HT</td>
+                <td colSpan={statutLocal === 'brouillon' ? 5 : 3} style={{ padding: '12px 14px', textAlign: 'right' as const, fontSize: 11, color: 'rgba(232,224,213,0.4)', letterSpacing: 1 }}>TOTAL HT</td>
                 <td style={{ padding: '12px 14px', fontSize: 18, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{totalHT.toFixed(2)}€</td>
-                <td />{statutLocal === 'brouillon' && <td />}
+                <td />{statutLocal === 'brouillon' && <><td /><td /><td /></>}
               </tr>
             </tfoot>
           </table>
