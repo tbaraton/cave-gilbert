@@ -277,6 +277,7 @@ function VueSaisie({ inventaire, onBack }: { inventaire: Inventaire; onBack: () 
         .from('products')
         .select('id, nom, millesime, couleur, nom_cuvee, domaine_id, region_id')
         .eq('domaine_id', filterDomaine)
+        .eq('actif', true)
         .order('nom')
       if (!prods) return
       // IDs déjà dans l'inventaire
