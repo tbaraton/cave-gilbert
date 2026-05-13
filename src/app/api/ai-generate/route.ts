@@ -59,6 +59,7 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks, avec exacteme
         nom,
         millesime: millesime ? parseInt(millesime) : null,
         couleur,
+        categorie: ['rouge','blanc','rosé','champagne','effervescent'].includes(couleur) ? 'vin' : couleur === 'spiritueux' ? 'spiritueux' : 'vin',
         prix_vente_ttc: parseFloat(prix_vente_ttc),
         cepages: aiData.cepages || [],
         alcool: aiData.alcool || null,

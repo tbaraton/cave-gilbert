@@ -99,6 +99,18 @@ export async function POST(req: NextRequest) {
           ? row.cepages.split('|').map((c: string) => c.trim()).filter(Boolean)
           : []
 
+        // Gérer le domaine si fourni
+        let domaineId = null
+        if (row.domaine?.trim()) {
+          const { data: existing } = await supabase.from('domaines').select('id').eq('nom', row.domaine.trim()).single()
+          if (existing) {
+            domaineId = existing.id
+          } else {
+            const { data: newDomaine } = await supabase.from('domaines').insert({ nom: row.domaine.trim() }).select('id').single()
+            domaineId = newDomaine?.id
+          }
+        }
+
         try {
           // Insérer le produit
           const { data: product, error: errProd } = await supabase
@@ -107,6 +119,8 @@ export async function POST(req: NextRequest) {
               nom,
               millesime: parseMillesime(row.millesime),
               couleur,
+              categorie: ['rouge','blanc','rosé','champagne','effervescent'].includes(couleur) ? 'vin' : couleur === 'spiritueux' ? 'spiritueux' : 'vin',
+              domaine_id: domaineId,
               prix_vente_ttc: prix,
               prix_achat_ht: parsePrix(row.prix_achat_ht),
               cepages,
@@ -122,6 +136,17 @@ export async function POST(req: NextRequest) {
             results.erreurs++
             results.details.push({ nom, statut: 'erreur', message: errProd.message })
             continue
+          }
+
+          // Insérer dans product_suppliers si domaine
+          if (domaineId) {
+            await supabase.from('product_suppliers').upsert({
+              product_id: product.id,
+              domaine_id: domaineId,
+              prix_achat_ht: parsePrix(row.prix_achat_ht),
+              conditionnement: 6,
+              fournisseur_principal: true,
+            }, { onConflict: 'product_id,domaine_id' })
           }
 
           // Stock initial si fourni et site_id disponible
