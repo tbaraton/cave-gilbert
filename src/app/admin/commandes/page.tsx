@@ -1012,6 +1012,7 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
   const [searchAjout, setSearchAjout] = useState('')
   const [searchAjoutRes, setSearchAjoutRes] = useState<any[]>([])
   const [gratuitesCmd, setGratuitesCmd] = useState<Record<string, number>>({})
+  const [fraisPortCmd, setFraisPortCmd] = useState('')
 
   useEffect(() => {
     const load = async () => {
@@ -1315,6 +1316,47 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
               )
             })}
           </div>
+          {/* ── Récapitulatif réception ── */}
+          {(() => {
+            const totalHTBase = items.reduce((acc, item) => {
+              const gratuites = gratuitesCmd[item.id] ?? 0
+              const qty = qtesRecues[item.id] ?? item.quantite_commandee
+              const prix = prixRecus[item.id] ?? parseFloat(item.prix_achat_ht || 0)
+              const prixReel = gratuites > 0 && qty > 0 ? Math.round((prix * qty) / (qty + gratuites) * 10000) / 10000 : prix
+              return acc + prixReel * (qty + gratuites)
+            }, 0)
+            const fp = parseFloat(fraisPortCmd) || 0
+            const totalHTFinal = totalHTBase + fp
+            const totalTTC = totalHTFinal * 1.20
+            return (
+              <div style={{ background: 'rgba(201,169,110,0.06)', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 6, padding: '14px 16px', marginBottom: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                  <div style={{ fontSize: 10, letterSpacing: 1.5, color: '#c9a96e', textTransform: 'uppercase' as const }}>Récapitulatif</div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
+                  <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>Total HT marchandises</div>
+                  <div style={{ fontSize: 12, color: '#e8e0d5', textAlign: 'right' as const }}>{totalHTBase.toFixed(2)} €</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>Frais de port HT</span>
+                  </div>
+                  <div style={{ textAlign: 'right' as const }}>
+                    <input type="number" step="0.01" min={0} value={fraisPortCmd}
+                      onChange={e => setFraisPortCmd(e.target.value)}
+                      placeholder="0.00"
+                      style={{ width: 90, background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.15)', borderRadius: 3, color: '#e8e0d5', fontSize: 12, padding: '3px 6px', textAlign: 'right' as const }}
+                    />
+                    <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.3)', marginLeft: 4 }}>€</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)', paddingTop: 6, borderTop: '0.5px solid rgba(255,255,255,0.06)' }}>Total HT</div>
+                  <div style={{ fontSize: 14, color: '#c9a96e', fontFamily: 'Georgia, serif', fontWeight: 600, textAlign: 'right' as const, paddingTop: 6, borderTop: '0.5px solid rgba(255,255,255,0.06)' }}>{totalHTFinal.toFixed(2)} €</div>
+                  <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>TVA 20%</div>
+                  <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', textAlign: 'right' as const }}>{(totalHTFinal * 0.20).toFixed(2)} €</div>
+                  <div style={{ fontSize: 13, color: '#f0e8d8', fontWeight: 600 }}>Total TTC</div>
+                  <div style={{ fontSize: 16, color: '#f0e8d8', fontFamily: 'Georgia, serif', fontWeight: 700, textAlign: 'right' as const }}>{totalTTC.toFixed(2)} €</div>
+                </div>
+              </div>
+            )
+          })()}
           <div style={{ display: 'flex', gap: 10 }}>
             <button onClick={() => setShowReception(false)} style={{ flex: 1, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '10px', fontSize: 11, cursor: 'pointer' }}>Annuler</button>
             <button onClick={handleReception} disabled={processing} style={{ flex: 2, background: '#6ec96e', color: '#0a1a0a', border: 'none', borderRadius: 4, padding: '10px', fontSize: 11, cursor: 'pointer', fontWeight: 500, letterSpacing: 1.5, textTransform: 'uppercase' as const }}>
@@ -1551,6 +1593,7 @@ function VueReception({ onRefresh }: { onRefresh: () => void }) {
   const [qtesRecues, setQtesRecues] = useState<Record<string, number>>({})
   const [prixRecus, setPrixRecus] = useState<Record<string, number>>({})
   const [gratuitesRecues, setGratuitesRecues] = useState<Record<string, number>>({})
+  const [fraisPortRec, setFraisPortRec] = useState('')
   const [popupPrix, setPopupPrix] = useState<{ item: any; newPrix: number; ttcPart: number; ttcPro: number } | null>(null)
   const [prixVenteRecus, setPrixVenteRecus] = useState<Record<string, { ttcPart: number; ttcPro: number }>>({})
   const [searchProd, setSearchProd] = useState('')
@@ -1837,6 +1880,45 @@ function VueReception({ onRefresh }: { onRefresh: () => void }) {
               )}
             </div>
           </div>
+          {/* ── Récapitulatif réception ── */}
+          {(() => {
+            const totalHTBase = items.reduce((acc, item) => {
+              const gratuites = gratuitesRecues[item.id] ?? 0
+              const qty = qtesRecues[item.id] ?? item.quantite_commandee
+              const prix = prixRecus[item.id] ?? parseFloat(item.prix_achat_ht || 0)
+              const prixReel = gratuites > 0 && qty > 0 ? Math.round((prix * qty) / (qty + gratuites) * 10000) / 10000 : prix
+              return acc + prixReel * (qty + gratuites)
+            }, 0)
+            const fp = parseFloat(fraisPortRec) || 0
+            const totalHTFinal = totalHTBase + fp
+            const totalTTC = totalHTFinal * 1.20
+            return (
+              <div style={{ background: 'rgba(201,169,110,0.06)', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 6, padding: '14px 16px', marginBottom: 12 }}>
+                <div style={{ fontSize: 10, letterSpacing: 1.5, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 10 }}>Récapitulatif</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
+                  <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>Total HT marchandises</div>
+                  <div style={{ fontSize: 12, color: '#e8e0d5', textAlign: 'right' as const }}>{totalHTBase.toFixed(2)} €</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>Frais de port HT</span>
+                  </div>
+                  <div style={{ textAlign: 'right' as const }}>
+                    <input type="number" step="0.01" min={0} value={fraisPortRec}
+                      onChange={e => setFraisPortRec(e.target.value)}
+                      placeholder="0.00"
+                      style={{ width: 90, background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.15)', borderRadius: 3, color: '#e8e0d5', fontSize: 12, padding: '3px 6px', textAlign: 'right' as const }}
+                    />
+                    <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.3)', marginLeft: 4 }}>€</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)', paddingTop: 6, borderTop: '0.5px solid rgba(255,255,255,0.06)' }}>Total HT</div>
+                  <div style={{ fontSize: 14, color: '#c9a96e', fontFamily: 'Georgia, serif', fontWeight: 600, textAlign: 'right' as const, paddingTop: 6, borderTop: '0.5px solid rgba(255,255,255,0.06)' }}>{totalHTFinal.toFixed(2)} €</div>
+                  <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>TVA 20%</div>
+                  <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', textAlign: 'right' as const }}>{(totalHTFinal * 0.20).toFixed(2)} €</div>
+                  <div style={{ fontSize: 13, color: '#f0e8d8', fontWeight: 600 }}>Total TTC</div>
+                  <div style={{ fontSize: 16, color: '#f0e8d8', fontFamily: 'Georgia, serif', fontWeight: 700, textAlign: 'right' as const }}>{totalTTC.toFixed(2)} €</div>
+                </div>
+              </div>
+            )
+          })()}
           <div style={{ display: 'flex', gap: 12 }}>
             <button onClick={() => setSelectedCmd(null)} style={{ flex: 1, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '12px', fontSize: 11, cursor: 'pointer' }}>← Retour</button>
             <button onClick={handleReception} disabled={processing} style={{ flex: 3, background: '#6ec96e', color: '#0a1a0a', border: 'none', borderRadius: 4, padding: '12px', fontSize: 11, cursor: 'pointer', fontWeight: 500, letterSpacing: 1.5, textTransform: 'uppercase' as const, opacity: processing ? 0.7 : 1 }}>
