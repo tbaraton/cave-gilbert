@@ -16,6 +16,36 @@ const card = { background: '#18130e', border: '0.5px solid rgba(255,255,255,0.07
 const btnGold = { background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '10px 20px', fontSize: 11, letterSpacing: 1.5, cursor: 'pointer', fontWeight: 500, textTransform: 'uppercase' as const } as React.CSSProperties
 const btnGhost = { background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '10px 16px', fontSize: 11, cursor: 'pointer' } as React.CSSProperties
 
+// ── Select appellations groupé AOC / IGP ─────────────────────
+function AppellationSelect({ value, onChange, appellations, style, defaultLabel = '— Choisir —' }: {
+  value: string
+  onChange: (id: string, nom: string) => void
+  appellations: any[]
+  style?: React.CSSProperties
+  defaultLabel?: string
+}) {
+  const aoc = appellations.filter(a => !a.type || a.type === 'AOC')
+  const igp = appellations.filter(a => a.type === 'IGP')
+  return (
+    <select value={value} onChange={e => {
+      const app = appellations.find(a => a.id === e.target.value)
+      onChange(e.target.value, app?.nom || '')
+    }} style={style}>
+      <option value="">{defaultLabel}</option>
+      {aoc.length > 0 && (
+        <optgroup label="── AOC / AOP ──">
+          {aoc.map(a => <option key={a.id} value={a.id}>{a.nom}</option>)}
+        </optgroup>
+      )}
+      {igp.length > 0 && (
+        <optgroup label="── IGP ──">
+          {igp.map(a => <option key={a.id} value={a.id}>{a.nom}</option>)}
+        </optgroup>
+      )}
+    </select>
+  )
+}
+
 function Spinner() {
   return (
     <div style={{ display: 'flex', justifyContent: 'center', padding: 48 }}>
@@ -338,7 +368,8 @@ function ModalNouveauProduitComptage({ regions, appellations, domaines, onCreate
             <label style={lbl}>Appellation</label>
             <select value={form.appellation_id} onChange={e => { const a = appsFiltrees.find(x => x.id === e.target.value); setForm(f => ({ ...f, appellation_id: e.target.value, appellation_nom: a?.nom || '' })) }} style={{ ...sel, width: '100%' }}>
               <option value="">— Choisir —</option>
-              {appsFiltrees.map(a => <option key={a.id} value={a.id}>{a.nom}</option>)}
+              {appsFiltrees.filter(a => !a.type || a.type === 'AOC').length > 0 && <optgroup label="── AOC / AOP ──">{appsFiltrees.filter(a => !a.type || a.type === 'AOC').map(a => <option key={a.id} value={a.id}>{a.nom}</option>)}</optgroup>}
+              {appsFiltrees.filter(a => a.type === 'IGP').length > 0 && <optgroup label="── IGP ──">{appsFiltrees.filter(a => a.type === 'IGP').map(a => <option key={a.id} value={a.id}>{a.nom}</option>)}</optgroup>}
             </select>
           </div>
           <div>
@@ -420,7 +451,7 @@ function ModalNouveauComptage({ onCreated, onClose }: { onCreated: (c: any) => v
       supabase.from('sites').select('id, nom').eq('actif', true).order('nom'),
       supabase.from('domaines').select('id, nom').order('nom'),
       supabase.from('regions').select('id, nom').order('nom'),
-      supabase.from('appellations').select('id, nom, region_id').order('nom'),
+      supabase.from('appellations').select('id, nom, region_id, type').order('nom'),
     ]).then(([{ data: p }, { data: s }, { data: d }, { data: r }, { data: a }]) => {
       setProduits(p || [])
       setSites(s || [])
