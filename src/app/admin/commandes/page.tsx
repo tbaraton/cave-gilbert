@@ -1345,7 +1345,7 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
                         <input type="number" step="0.01" value={editPrix[item.id] ?? parseFloat(item.prix_achat_ht || 0)}
                           onChange={e => setEditPrix(prev => ({ ...prev, [item.id]: parseFloat(e.target.value) || 0 }))}
                           onBlur={() => saveItemEdit(item.id)}
-                          style={{ width: 85, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 3, color: '#c9a96e', fontSize: 13, padding: '4px 8px', textAlign: 'center' as const }}
+                          style={{ width: 95, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 3, color: '#c9a96e', fontSize: 13, padding: '4px 8px', textAlign: 'center' as const }}
                         />
                         <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.3)' }}> €</span>
                       </div>
@@ -1496,6 +1496,7 @@ function VueReception({ onRefresh }: { onRefresh: () => void }) {
   const [siteReception, setSiteReception] = useState('')
   const [qtesRecues, setQtesRecues] = useState<Record<string, number>>({})
   const [prixRecus, setPrixRecus] = useState<Record<string, number>>({})
+  const [gratuitesRecues, setGratuitesRecues] = useState<Record<string, number>>({})
   const [popupPrix, setPopupPrix] = useState<{ item: any; newPrix: number; ttcPart: number; ttcPro: number } | null>(null)
   const [prixVenteRecus, setPrixVenteRecus] = useState<Record<string, { ttcPart: number; ttcPro: number }>>({})
   const [searchProd, setSearchProd] = useState('')
@@ -1562,7 +1563,12 @@ function VueReception({ onRefresh }: { onRefresh: () => void }) {
     setProcessing(true); setError(''); let hasError = false
     for (const item of items) {
       const qty = qtesRecues[item.id] ?? 0
-      const newPrix = prixRecus[item.id] ?? parseFloat(item.prix_achat_ht || 0)
+      const gratuites = gratuitesRecues[item.id] ?? 0
+      const rawPrix = prixRecus[item.id] ?? parseFloat(item.prix_achat_ht || 0)
+      // Prix HT réel = prix unitaire ajusté avec les gratuités
+      const newPrix = gratuites > 0 && qty > 0
+        ? Math.round((rawPrix * qty) / (qty + gratuites) * 10000) / 10000
+        : rawPrix
       const oldPrix = parseFloat(item.prix_achat_ht || 0)
       await supabase.from('supplier_order_items').update({ quantite_recue: qty, prix_achat_ht: newPrix }).eq('id', item.id)
       if (Math.abs(newPrix - oldPrix) > 0.001 && item.product_id) {
@@ -1660,7 +1666,7 @@ function VueReception({ onRefresh }: { onRefresh: () => void }) {
             <table style={{ width: '100%', borderCollapse: 'collapse' as const }}>
               <thead>
                 <tr style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
-                  {['Produit', 'Commandé', 'Prix achat HT', 'Reçu', 'Différence'].map(h => (
+                  {['Produit', 'Commandé', 'Prix achat HT', 'Offertes', 'Reçu', 'Prix HT réel', 'Différence'].map(h => (
                     <th key={h} style={{ padding: '8px 12px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', fontWeight: 400 }}>{h}</th>
                   ))}
                 </tr>
@@ -1668,7 +1674,7 @@ function VueReception({ onRefresh }: { onRefresh: () => void }) {
               <tbody>
                 {popupPrix && (
                   <tr>
-                    <td colSpan={5} style={{ padding: 0 }}>
+                    <td colSpan={7} style={{ padding: 0 }}>
                       <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 }}>
                         <div style={{ background: '#18130e', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 8, padding: '24px 28px', maxWidth: 440, width: '100%' }}>
                           <h3 style={{ fontFamily: 'Georgia, serif', fontSize: 16, fontWeight: 300, color: '#f0e8d8', marginBottom: 4 }}>Mise à jour des prix</h3>
@@ -1701,10 +1707,16 @@ function VueReception({ onRefresh }: { onRefresh: () => void }) {
                 )}
                 {items.map((item, i) => {
                   const recu = qtesRecues[item.id] ?? item.quantite_commandee
+                  const gratuites = gratuitesRecues[item.id] ?? 0
                   const diff = recu - item.quantite_commandee
                   const currentPrix = prixRecus[item.id] ?? parseFloat(item.prix_achat_ht || 0)
                   const originalPrix = parseFloat(item.prix_achat_ht || 0)
-                  const prixChanged = Math.abs(currentPrix - originalPrix) > 0.001
+                  const prixChanged = Math.abs(currentPrix - originalPrix) > 0.0001
+                  // Prix HT réel = (prix unitaire × qté payée) / (qté payée + gratuites)
+                  const totalPaye = recu
+                  const prixHTReel = gratuites > 0 && totalPaye > 0
+                    ? (currentPrix * totalPaye) / (totalPaye + gratuites)
+                    : currentPrix
                   return (
                     <tr key={item.id} style={{ borderBottom: i < items.length - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none' }}>
                       <td style={{ padding: '10px 12px' }}>
@@ -1714,17 +1726,34 @@ function VueReception({ onRefresh }: { onRefresh: () => void }) {
                       </td>
                       <td style={{ padding: '10px 12px', fontSize: 13, color: 'rgba(232,224,213,0.5)' }}>{item.quantite_commandee > 0 ? `${item.quantite_commandee} btl` : '—'}</td>
                       <td style={{ padding: '10px 12px' }}>
-                        <input type="number" step="0.01" value={currentPrix}
+                        <input type="number" step="0.0001" value={currentPrix}
                           onChange={e => setPrixRecus(p => ({ ...p, [item.id]: parseFloat(e.target.value) || 0 }))}
-                          onBlur={e => { const v = parseFloat(e.target.value) || 0; if (Math.abs(v - originalPrix) > 0.001) setPopupPrix({ item, newPrix: v, ttcPart: Math.ceil(v * 2 * 2) / 2, ttcPro: Math.round(v * 1.70 * 100) / 100 }) }}
-                          style={{ width: 90, background: prixChanged ? 'rgba(201,169,110,0.08)' : 'rgba(255,255,255,0.04)', border: `0.5px solid ${prixChanged ? 'rgba(201,169,110,0.5)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 3, color: prixChanged ? '#c9a96e' : '#e8e0d5', fontSize: 13, padding: '5px 8px', textAlign: 'center' as const }}
+                          onBlur={e => { const v = parseFloat(e.target.value) || 0; if (Math.abs(v - originalPrix) > 0.0001) setPopupPrix({ item, newPrix: prixHTReel > 0 ? prixHTReel : v, ttcPart: Math.ceil((prixHTReel || v) * 2 * 2) / 2, ttcPro: Math.round((prixHTReel || v) * 1.70 * 100) / 100 }) }}
+                          style={{ width: 100, background: prixChanged ? 'rgba(201,169,110,0.08)' : 'rgba(255,255,255,0.04)', border: `0.5px solid ${prixChanged ? 'rgba(201,169,110,0.5)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 3, color: prixChanged ? '#c9a96e' : '#e8e0d5', fontSize: 13, padding: '5px 8px', textAlign: 'center' as const }}
                         />
                         {prixChanged && <div style={{ fontSize: 9, color: '#c9a96e', textAlign: 'center' as const, marginTop: 2 }}>Modifié ✓</div>}
                       </td>
                       <td style={{ padding: '10px 12px' }}>
-                        <input type="number" min={0} value={recu} onChange={e => setQtesRecues(q => ({ ...q, [item.id]: parseInt(e.target.value) || 0 }))}
-                          style={{ width: 80, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 3, color: '#e8e0d5', fontSize: 13, padding: '5px 8px', textAlign: 'center' as const }}
+                        <input type="number" min={0} value={gratuites}
+                          onChange={e => setGratuitesRecues(g => ({ ...g, [item.id]: parseInt(e.target.value) || 0 }))}
+                          style={{ width: 60, background: gratuites > 0 ? 'rgba(110,201,110,0.08)' : 'rgba(255,255,255,0.04)', border: `0.5px solid ${gratuites > 0 ? 'rgba(110,201,110,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 3, color: gratuites > 0 ? '#6ec96e' : '#e8e0d5', fontSize: 13, padding: '5px 8px', textAlign: 'center' as const }}
                         />
+                        {gratuites > 0 && <div style={{ fontSize: 9, color: '#6ec96e', textAlign: 'center' as const, marginTop: 2 }}>+{gratuites} offert{gratuites > 1 ? 's' : ''}</div>}
+                      </td>
+                      <td style={{ padding: '10px 12px' }}>
+                        <input type="number" min={0} value={recu} onChange={e => setQtesRecues(q => ({ ...q, [item.id]: parseInt(e.target.value) || 0 }))}
+                          style={{ width: 70, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 3, color: '#e8e0d5', fontSize: 13, padding: '5px 8px', textAlign: 'center' as const }}
+                        />
+                      </td>
+                      <td style={{ padding: '10px 12px' }}>
+                        {gratuites > 0 ? (
+                          <div>
+                            <div style={{ fontSize: 13, color: '#6ec96e', fontFamily: 'Georgia, serif', fontWeight: 600 }}>{prixHTReel.toFixed(4)}€</div>
+                            <div style={{ fontSize: 9, color: 'rgba(110,201,110,0.6)', marginTop: 2 }}>vs {currentPrix.toFixed(4)}€</div>
+                          </div>
+                        ) : (
+                          <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.3)' }}>—</span>
+                        )}
                       </td>
                       <td style={{ padding: '10px 12px', fontSize: 13, color: diff === 0 ? '#6ec96e' : diff > 0 ? '#c9b06e' : '#c96e6e', fontWeight: 500 }}>
                         {item.quantite_commandee > 0 ? (diff === 0 ? '✓ Complet' : diff > 0 ? `+${diff}` : `${diff}`) : '—'}
