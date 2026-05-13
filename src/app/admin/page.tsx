@@ -1261,7 +1261,7 @@ export default function AdminPage() {
         { data: sitesData },
       ] = await Promise.all([
         supabase.from('products').select('id, nom, nom_cuvee, contenance, millesime, couleur, categorie, prix_vente_ttc, prix_vente_pro, prix_achat_ht, actif, bio, vegan, casher, naturel, biodynamique, ia_generated, domaine_id, slug, region_id, appellation_id, description_courte, image_url').order('nom').limit(5000),
-        supabase.from('v_stock_agrege').select('*').limit(10000),
+        supabase.from('v_stock_agrege').select('*').range(0, 9999),
         supabase.from('sites').select('*').eq('actif', true).order('nom'),
       ])
 
@@ -1329,8 +1329,8 @@ export default function AdminPage() {
 
   const stats = {
     references: produits.filter(p => p.actif).length,
-    stockTotal: stockParSite.reduce((acc: number, s: any) => acc + (s.quantite || 0), 0),
-    ruptures: stockParSite.filter((s: any) => s.stock_statut === 'rupture').length,
+    stockTotal: stockParSite.reduce((acc: number, s: any) => acc + (s.stock_total || 0), 0),
+    ruptures: stockParSite.filter((s: any) => s.stock_total === 0).length,
   }
 
   // ── Regroupement stock par produit et site ───────────────
