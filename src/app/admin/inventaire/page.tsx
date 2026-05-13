@@ -266,7 +266,40 @@ function VueSaisie({ inventaire, onBack }: { inventaire: Inventaire; onBack: () 
     onBack()
   }
 
-  const lignesFiltrees = lignes
+  const [missingLignes, setMissingLignes] = useState<any[]>([])
+
+  // Quand un fournisseur est sélectionné, charger ses produits manquants dans l'inventaire
+  useEffect(() => {
+    if (!filterDomaine) { setMissingLignes([]); return }
+    const loadMissing = async () => {
+      // Produits du domaine
+      const { data: prods } = await supabase
+        .from('products')
+        .select('id, nom, millesime, couleur, nom_cuvee, domaine_id, region_id')
+        .eq('domaine_id', filterDomaine)
+        .order('nom')
+      if (!prods) return
+      // IDs déjà dans l'inventaire
+      const existingIds = new Set(lignes.map(l => l.product_id))
+      // Produits manquants → créer des lignes virtuelles (pas en base)
+      const missing = prods
+        .filter(p => !existingIds.has(p.id))
+        .map(p => ({
+          id: `virtual_${p.id}`,
+          inventaire_id: inventaire.id,
+          product_id: p.id,
+          stock_theorique: 0,
+          stock_compte: null,
+          product: p,
+          _virtual: true, // marqueur pour ne pas les valider
+        }))
+      setMissingLignes(missing)
+    }
+    loadMissing()
+  }, [filterDomaine, lignes, inventaire.id])
+
+  const lignesAvecManquantes = filterDomaine ? [...lignes, ...missingLignes] : lignes
+  const lignesFiltrees = lignesAvecManquantes
     .filter(l =>
       (!search || l.product?.nom?.toLowerCase().includes(search.toLowerCase())) &&
       (!filterCouleur || l.product?.couleur === filterCouleur) &&
@@ -400,14 +433,16 @@ function VueSaisie({ inventaire, onBack }: { inventaire: Inventaire; onBack: () 
                 const compte = ligne.stock_compte
                 const compteNull = compte === null
                 const ecart = ligne.ecart
+                const isVirtual = (ligne as any)._virtual === true
                 return (
                   <tr key={ligne.id} style={{
                     borderBottom: idx < lignesFiltrees.length - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none',
-                    background: compteNull ? 'transparent' : ecart !== 0 ? 'rgba(201,176,110,0.04)' : 'rgba(110,201,110,0.03)',
+                    background: isVirtual ? 'rgba(110,158,201,0.04)' : compteNull ? 'transparent' : ecart !== 0 ? 'rgba(201,176,110,0.04)' : 'rgba(110,201,110,0.03)',
                   }}>
                     <td style={{ padding: '10px 14px' }}>
-                      <div style={{ fontSize: 13, color: compteNull ? 'rgba(232,224,213,0.5)' : '#f0e8d8' }}>
+                      <div style={{ fontSize: 13, color: isVirtual ? '#6e9ec9' : compteNull ? 'rgba(232,224,213,0.5)' : '#f0e8d8' }}>
                         {ligne.product?.nom}
+                        {isVirtual && <span style={{ fontSize: 9, marginLeft: 8, color: '#6e9ec9', letterSpacing: 1, textTransform: 'uppercase' as const }}>Hors inventaire</span>}
                       </div>
                       {ligne.product?.nom_cuvee && (
                         <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.3)', fontStyle: 'italic' }}>{ligne.product.nom_cuvee}</div>
