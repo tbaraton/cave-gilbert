@@ -1269,7 +1269,7 @@ export default function AdminPage() {
         { data: sitesData },
       ] = await Promise.all([
         supabase.from('products').select('id, nom, nom_cuvee, contenance, millesime, couleur, categorie, prix_vente_ttc, prix_vente_pro, prix_achat_ht, actif, bio, vegan, casher, naturel, biodynamique, ia_generated, domaine_id, slug, region_id, appellation_id, description_courte, image_url').order('nom').limit(5000),
-        supabase.from('v_stock_par_site').select('*'),
+        supabase.from('v_stock_par_site').select('*').limit(10000),
         supabase.from('sites').select('*').eq('actif', true).order('nom'),
       ])
 
