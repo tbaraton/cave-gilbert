@@ -898,7 +898,7 @@ function ModalDupliquerCommande({ produit, commandeId, onCreated, onClose }: {
     return nom
   }
 
-  const handleDupliquer = async () => {
+  const handleDupliquer = async (archiverOriginal = false) => {
     setSaving(true); setError('')
     const nomFinal = buildNomDuplique()
     const slug = nomFinal.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + Math.random().toString(36).substring(2, 7)
@@ -916,6 +916,9 @@ function ModalDupliquerCommande({ produit, commandeId, onCreated, onClose }: {
       await supabase.from('product_suppliers').upsert({ product_id: newProd.id, domaine_id: produit.domaine_id, prix_achat_ht: prixAchatHT ? parseFloat(prixAchatHT) : produit.prix_achat_ht, conditionnement: 6, fournisseur_principal: true }, { onConflict: 'product_id,domaine_id' })
     }
     await supabase.from('supplier_order_items').insert({ order_id: commandeId, product_id: newProd.id, product_nom: newProd.nom, product_millesime: newProd.millesime, quantite_commandee: 6, prix_achat_ht: prixAchatHT ? parseFloat(prixAchatHT) : produit.prix_achat_ht })
+    if (archiverOriginal) {
+      await supabase.from('products').update({ actif: false }).eq('id', produit.id)
+    }
     setSaving(false); onCreated()
   }
 
@@ -964,10 +967,13 @@ function ModalDupliquerCommande({ produit, commandeId, onCreated, onClose }: {
             <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.3)', marginTop: 4 }}>Sera ajouté à la commande · Qté: 6 btl</div>
           </div>
         )}
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button onClick={onClose} style={{ flex: 1, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '11px', fontSize: 11, cursor: 'pointer' }}>Annuler</button>
-          <button onClick={handleDupliquer} disabled={saving} style={{ flex: 2, background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '11px', fontSize: 11, letterSpacing: 2, cursor: 'pointer', fontWeight: 500, textTransform: 'uppercase' as const, opacity: saving ? 0.7 : 1 }}>
-            {saving ? '⟳ Création...' : 'Dupliquer et ajouter'}
+        <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
+          <button onClick={onClose} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '11px', fontSize: 11, cursor: 'pointer' }}>Annuler</button>
+          <button onClick={() => handleDupliquer(false)} disabled={saving} style={{ background: 'rgba(201,169,110,0.1)', border: '0.5px solid rgba(201,169,110,0.3)', color: '#c9a96e', borderRadius: 4, padding: '11px', fontSize: 11, letterSpacing: 1, cursor: 'pointer', fontWeight: 500, opacity: saving ? 0.7 : 1 }}>
+            {saving ? '⟳ Création...' : 'Dupliquer'}
+          </button>
+          <button onClick={() => handleDupliquer(true)} disabled={saving} style={{ background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '11px', fontSize: 11, letterSpacing: 1, cursor: 'pointer', fontWeight: 500, opacity: saving ? 0.7 : 1 }}>
+            {saving ? '⟳ Création...' : 'Dupliquer & archiver original'}
           </button>
         </div>
       </div>
