@@ -1145,8 +1145,8 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
     }
     // Fallback si RPC pas disponible
     const [{ data: byNom }, { data: byCuvee }] = await Promise.all([
-      supabase.from('products').select('id, nom, nom_cuvee, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id').or(`nom.ilike.%${q}%,millesime::text.ilike.%${q}%`).eq('actif', true).limit(20),
-      supabase.from('products').select('id, nom, nom_cuvee, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id').eq('actif', true).not('nom_cuvee', 'is', null).ilike('nom_cuvee', `%${q}%`).limit(20),
+      supabase.from('products').select('id, nom, nom_cuvee, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id, bio').or(`nom.ilike.%${q}%,millesime::text.ilike.%${q}%`).eq('actif', true).limit(20),
+      supabase.from('products').select('id, nom, nom_cuvee, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id, bio').eq('actif', true).not('nom_cuvee', 'is', null).ilike('nom_cuvee', `%${q}%`).limit(20),
     ])
     const cuveeIds = new Set((byCuvee || []).map((p: any) => p.id))
     const merged = [...(byCuvee || []), ...(byNom || []).filter((p: any) => !cuveeIds.has(p.id))].slice(0, 20)
@@ -1548,7 +1548,7 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
                   <button key={p.id} onClick={() => addProduit(p)} style={{ width: '100%', background: 'transparent', border: 'none', borderBottom: '0.5px solid rgba(255,255,255,0.05)', color: '#e8e0d5', padding: '14px 16px', cursor: 'pointer', textAlign: 'left' as const, display: 'flex', justifyContent: 'space-between', alignItems: 'center', touchAction: 'manipulation' }}>
                     <div>
                       <span style={{ color: COULEURS[p.couleur] || '#888', marginRight: 8 }}>●</span>
-                      <span style={{ fontSize: 15 }}>{p.nom}</span>
+                      <span style={{ fontSize: 15 }}>{p.nom}</span>{p.bio && <span title="Bio" style={{ marginLeft: 5, fontSize: 12 }}>🌿</span>}
                       {p.millesime && <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', marginLeft: 8 }}>{p.millesime}</span>}
                       <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)', marginTop: 2 }}>
                         {p.nom_cuvee && <span style={{ color: '#c9a96e' }}>{p.nom_cuvee}</span>}
@@ -2081,8 +2081,8 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
     }
     // Fallback si RPC pas disponible
     const [{ data: byNom }, { data: byCuvee }] = await Promise.all([
-      supabase.from('products').select('id, nom, nom_cuvee, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id').or(`nom.ilike.%${q}%,millesime::text.ilike.%${q}%`).eq('actif', true).limit(20),
-      supabase.from('products').select('id, nom, nom_cuvee, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id').eq('actif', true).not('nom_cuvee', 'is', null).ilike('nom_cuvee', `%${q}%`).limit(20),
+      supabase.from('products').select('id, nom, nom_cuvee, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id, bio').or(`nom.ilike.%${q}%,millesime::text.ilike.%${q}%`).eq('actif', true).limit(20),
+      supabase.from('products').select('id, nom, nom_cuvee, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id, bio').eq('actif', true).not('nom_cuvee', 'is', null).ilike('nom_cuvee', `%${q}%`).limit(20),
     ])
     const cuveeIds = new Set((byCuvee || []).map((p: any) => p.id))
     const merged = [...(byCuvee || []), ...(byNom || []).filter((p: any) => !cuveeIds.has(p.id))].slice(0, 20)
@@ -2223,7 +2223,7 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
                 <button key={p.id} onClick={()=>addProduit(p)} style={{width:'100%',background:'transparent',border:'none',borderBottom:'0.5px solid rgba(255,255,255,0.05)',color:'#e8e0d5',padding:'11px 16px',cursor:'pointer',textAlign:'left' as const,display:'flex',justifyContent:'space-between',alignItems:'center'}} onMouseEnter={e=>(e.currentTarget.style.background='rgba(201,169,110,0.07)')} onMouseLeave={e=>(e.currentTarget.style.background='transparent')}>
                   <div>
                     <span style={{color:COULEURS[p.couleur]||'#888',marginRight:8}}>●</span>
-                    <span>{p.nom}{p.millesime?` ${p.millesime}`:''}</span>
+                    <span>{p.nom}{p.millesime?` ${p.millesime}`:''}</span>{p.bio&&<span title="Bio" style={{marginLeft:5,fontSize:12}}>🌿</span>}
                     <div style={{fontSize:11,color:'rgba(232,224,213,0.35)',marginTop:2}}>
                       {p.nom_cuvee&&<span style={{color:'rgba(201,169,110,0.7)'}}>{p.nom_cuvee}</span>}
                       {p.nom_cuvee&&p.domaine_nom&&<span> · </span>}
