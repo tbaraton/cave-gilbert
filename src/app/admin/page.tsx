@@ -1246,6 +1246,12 @@ export default function AdminPage() {
   const [produits, setProduits] = useState<any[]>([])
   const [stockParSite, setStockParSite] = useState<any[]>([])
   const [sites, setSites] = useState<any[]>([])
+  const [dashKpis, setDashKpis] = useState<{
+    valeurStock: number
+    caParSite: Record<string, number>
+    caTotal: number
+    nbVentesParSite: Record<string, number>
+  }>({ valeurStock: 0, caParSite: {}, caTotal: 0, nbVentesParSite: {} })
 
   const [alertes, setAlertes] = useState<any[]>([])
   const [regions, setRegions] = useState<any[]>([])
@@ -1309,6 +1315,39 @@ export default function AdminPage() {
       }
       setStockParSite(stock || [])
       setSites(sitesData || [])
+
+      // ── KPIs dashboard ─────────────────────────────────────
+      const now = new Date()
+      const debutMois = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+      const finMois = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString()
+
+      const { data: ventesData } = await supabase
+        .from('ventes')
+        .select('total_ttc, site_id')
+        .eq('statut', 'validee')
+        .neq('statut_paiement', 'non_regle')
+        .gte('created_at', debutMois)
+        .lte('created_at', finMois)
+
+      const caParSite: Record<string, number> = {}
+      const nbVentesParSite: Record<string, number> = {}
+      ;(ventesData || []).forEach((v: any) => {
+        caParSite[v.site_id] = (caParSite[v.site_id] || 0) + parseFloat(v.total_ttc || 0)
+        nbVentesParSite[v.site_id] = (nbVentesParSite[v.site_id] || 0) + 1
+      })
+      const caTotal = Object.values(caParSite).reduce((a, b) => a + b, 0)
+
+      // Valeur stock = stock_total × prix_achat_ht par produit
+      const { data: stockValeur } = await supabase
+        .from('v_stock_agrege')
+        .select('product_id, stock_total')
+        .range(0, 9999)
+      const prixMap = Object.fromEntries((prods || []).map((p: any) => [p.id, parseFloat(p.prix_achat_ht || 0)]))
+      const valeurStock = (stockValeur || []).reduce((acc: number, s: any) => {
+        return acc + (s.stock_total || 0) * (prixMap[s.product_id] || 0)
+      }, 0)
+
+      setDashKpis({ valeurStock, caParSite, caTotal, nbVentesParSite })
 
       // Alertes : grouper par produit et sommer tous les sites (vins uniquement)
       const couleursVin = new Set(['rouge', 'blanc', 'rosé', 'champagne', 'effervescent'])
@@ -1560,18 +1599,41 @@ export default function AdminPage() {
 
             {loading ? <Spinner /> : (
               <>
-                {/* KPIs */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 32 }}>
-                  {[
-                    { label: 'Références actives', value: stats.references, color: '#c9a96e' },
-                    { label: 'Stock total', value: stats.stockTotal, color: '#6ec9a0' },
-                    { label: 'En rupture', value: stats.ruptures, color: '#c96e6e' },
-                  ].map(({ label, value, color }) => (
+                {/* KPIs ligne 1 — stock */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 16 }}>
+                  {([
+                    { label: 'Références actives', value: stats.references.toLocaleString('fr-FR'), color: '#c9a96e' },
+                    { label: 'Stock total (btl)', value: stats.stockTotal.toLocaleString('fr-FR'), color: '#6ec9a0' },
+                    { label: 'Valeur stock HT', value: dashKpis.valeurStock.toLocaleString('fr-FR', { maximumFractionDigits: 0 }) + ' €', color: '#6e9ec9' },
+                  ] as { label: string; value: string; color: string }[]).map(({ label, value, color }) => (
                     <div key={label} style={{ background: '#18130e', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 6, padding: '20px 22px' }}>
                       <div style={{ fontSize: 10, letterSpacing: 2, color: 'rgba(232,224,213,0.35)', textTransform: 'uppercase' as const, marginBottom: 10 }}>{label}</div>
-                      <div style={{ fontSize: 36, color, fontFamily: 'Georgia, serif', fontWeight: 300 }}>{value}</div>
+                      <div style={{ fontSize: 32, color, fontFamily: 'Georgia, serif', fontWeight: 300 }}>{value}</div>
                     </div>
                   ))}
+                </div>
+
+                {/* KPIs ligne 2 — CA mois en cours */}
+                <div style={{ marginBottom: 28 }}>
+                  <div style={{ fontSize: 10, letterSpacing: 2, color: 'rgba(232,224,213,0.35)', textTransform: 'uppercase' as const, marginBottom: 12 }}>
+                    CA {new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(sites.length + 1, 4)}, 1fr)`, gap: 12 }}>
+                    {([
+                      { label: 'Total', siteId: null as string | null, color: '#c9a96e' },
+                      ...sites.map((s: any) => ({ label: s.nom, siteId: s.id as string | null, color: '#6ec9a0' })),
+                    ]).map(({ label, siteId, color }) => {
+                      const ca = siteId ? (dashKpis.caParSite[siteId] || 0) : dashKpis.caTotal
+                      const nb = siteId ? (dashKpis.nbVentesParSite[siteId] || 0) : Object.values(dashKpis.nbVentesParSite).reduce((a: number, b: number) => a + b, 0)
+                      return (
+                        <div key={label} style={{ background: '#18130e', border: `0.5px solid ${!siteId ? 'rgba(201,169,110,0.25)' : 'rgba(255,255,255,0.07)'}`, borderRadius: 6, padding: '16px 20px' }}>
+                          <div style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.35)', textTransform: 'uppercase' as const, marginBottom: 8 }}>{label}</div>
+                          <div style={{ fontSize: 26, color, fontFamily: 'Georgia, serif', fontWeight: 300 }}>{ca.toLocaleString('fr-FR', { maximumFractionDigits: 0 })} €</div>
+                          <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.3)', marginTop: 4 }}>{nb} vente{nb > 1 ? 's' : ''}</div>
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
 
                 {/* Alertes */}
