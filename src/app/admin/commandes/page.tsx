@@ -24,6 +24,36 @@ function Badge({ statut }: { statut: string }) {
   return <span style={{ background: s.bg, color: s.color, fontSize: 10, fontWeight: 500, padding: '3px 9px', borderRadius: 3, letterSpacing: 1, textTransform: 'uppercase' as const }}>{s.label}</span>
 }
 
+// ── Select appellations groupé AOC / IGP ─────────────────────
+function AppellationSelect({ value, onChange, appellations, style, defaultLabel = '— Choisir —' }: {
+  value: string
+  onChange: (id: string, nom: string) => void
+  appellations: any[]
+  style?: React.CSSProperties
+  defaultLabel?: string
+}) {
+  const aoc = appellations.filter(a => !a.type || a.type === 'AOC')
+  const igp = appellations.filter(a => a.type === 'IGP')
+  return (
+    <select value={value} onChange={e => {
+      const app = appellations.find(a => a.id === e.target.value)
+      onChange(e.target.value, app?.nom || '')
+    }} style={style}>
+      <option value="">{defaultLabel}</option>
+      {aoc.length > 0 && (
+        <optgroup label="── AOC / AOP ──">
+          {aoc.map(a => <option key={a.id} value={a.id}>{a.nom}</option>)}
+        </optgroup>
+      )}
+      {igp.length > 0 && (
+        <optgroup label="── IGP ──">
+          {igp.map(a => <option key={a.id} value={a.id}>{a.nom}</option>)}
+        </optgroup>
+      )}
+    </select>
+  )
+}
+
 function Spinner() {
   return (
     <div style={{ display: 'flex', justifyContent: 'center', padding: '48px 0' }}>
@@ -40,13 +70,6 @@ const lbl = { fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.35)',
 
 function arrondir50(prix: number): number {
   return Math.ceil(prix * 2) / 2
-}
-
-function getCategorieFromCouleur(couleur: string | null | undefined): string {
-  const couleursVin = ['rouge', 'blanc', 'rosé', 'champagne', 'effervescent']
-  if (couleur && couleursVin.includes(couleur)) return 'vin'
-  if (couleur === 'spiritueux') return 'spiritueux'
-  return 'vin'
 }
 
 function ModalNouveauProduit({ domaines, regions, appellations, onCreated, onClose }: {
@@ -114,9 +137,8 @@ function ModalNouveauProduit({ domaines, regions, appellations, onCreated, onClo
     const slug = nomFinal.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + Math.random().toString(36).substring(2, 7)
     const { data: product, error: err } = await supabase.from('products').insert({
       nom: nomFinal, slug, nom_cuvee: form.nom_cuvee || null, contenance: form.contenance || '75cl',
-      millesime: form.millesime ? parseInt(form.millesime) : null,
-      couleur: form.couleur,
-      categorie: getCategorieFromCouleur(form.couleur),
+      millesime: form.millesime ? parseInt(form.millesime) : null, couleur: form.couleur,
+      categorie: ['rouge','blanc','rosé','champagne','effervescent'].includes(form.couleur) ? 'vin' : form.couleur === 'spiritueux' ? 'spiritueux' : 'vin',
       region_id: form.region_id || null, appellation_id: form.appellation_id || null, domaine_id: form.domaine_id || null,
       prix_achat_ht: form.prix_achat_ht ? parseFloat(form.prix_achat_ht) : null, prix_vente_ttc: prixNum,
       prix_vente_pro: form.prix_vente_pro ? parseFloat(form.prix_vente_pro) : null,
@@ -184,7 +206,8 @@ function ModalNouveauProduit({ domaines, regions, appellations, onCreated, onClo
               setForm(f => ({ ...f, appellation_id: e.target.value, appellation_nom: app?.nom || '' }))
             }} style={sel}>
               <option value="">— Choisir —</option>
-              {appsFiltrees.map(a => <option key={a.id} value={a.id}>{a.nom}</option>)}
+              {appsFiltrees.filter(a => !a.type || a.type === 'AOC').length > 0 && <optgroup label="── AOC / AOP ──">{appsFiltrees.filter(a => !a.type || a.type === 'AOC').map(a => <option key={a.id} value={a.id}>{a.nom}</option>)}</optgroup>}
+              {appsFiltrees.filter(a => a.type === 'IGP').length > 0 && <optgroup label="── IGP ──">{appsFiltrees.filter(a => a.type === 'IGP').map(a => <option key={a.id} value={a.id}>{a.nom}</option>)}</optgroup>}
             </select>
           </div>
           <div>
@@ -381,7 +404,7 @@ function VueBesoins({ onRefresh }: { onRefresh: () => void }) {
     loadBesoins()
     supabase.from('domaines').select('id, nom').order('nom').then(({ data }) => setDomaines(data || []))
     supabase.from('regions').select('id, nom').order('nom').then(({ data }) => setRegions(data || []))
-    supabase.from('appellations').select('id, nom, region_id').order('nom').then(({ data }) => setAppellations(data || []))
+    supabase.from('appellations').select('id, nom, region_id, type').order('nom').then(({ data }) => setAppellations(data || []))
   }, [])
 
   const searchProducts = async (q: string) => {
@@ -1043,7 +1066,7 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
         supabase.from('supplier_order_items').select('*, product:products(id, nom, millesime)').eq('order_id', commande.id),
         supabase.from('sites').select('*').eq('actif', true).order('type'),
         supabase.from('regions').select('id, nom').order('nom'),
-        supabase.from('appellations').select('id, nom, region_id').order('nom'),
+        supabase.from('appellations').select('id, nom, region_id, type').order('nom'),
         supabase.from('domaines').select('id, nom').order('nom'),
       ])
       setItems(itemsData || [])
@@ -1157,28 +1180,6 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
               <button onClick={() => { setShowSupprimer(false); setConfirmSuppr('') }} style={{ flex: 1, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '11px', fontSize: 11, cursor: 'pointer' }}>Annuler</button>
               <button disabled={confirmSuppr !== 'SUPPRIMER' || actionLoading} onClick={async () => {
                 setActionLoading(true)
-                if (statutLocal === 'reçue') {
-                  for (const item of items) {
-                    const qty = item.quantite_recue ?? item.quantite_commandee
-                    if (qty > 0 && siteReception) {
-                      const { error: rollbackErr } = await supabase.rpc('move_stock', {
-                        p_product_id: item.product_id,
-                        p_site_id: siteReception,
-                        p_raison: 'achat',
-                        p_quantite: -qty,
-                        p_note: `Annulation réception ${commande.numero}`,
-                        p_order_id: null,
-                        p_transfer_id: null,
-                      })
-                      if (rollbackErr) {
-                        console.error(rollbackErr)
-                        window.alert('Impossible de retirer le stock de la commande reçue. La suppression a été interrompue.')
-                        setActionLoading(false)
-                        return
-                      }
-                    }
-                  }
-                }
                 await supabase.from('supplier_order_items').delete().eq('order_id', commande.id)
                 await supabase.from('supplier_orders').delete().eq('id', commande.id)
                 setActionLoading(false); setShowSupprimer(false); setConfirmSuppr(''); onRefresh(); onBack()
@@ -1661,7 +1662,7 @@ function VueReception({ onRefresh }: { onRefresh: () => void }) {
         supabase.from('sites').select('*').eq('actif', true).order('type'),
         supabase.from('domaines').select('id, nom').order('nom'),
         supabase.from('regions').select('id, nom').order('nom'),
-        supabase.from('appellations').select('id, nom, region_id').order('nom'),
+        supabase.from('appellations').select('id, nom, region_id, type').order('nom'),
       ])
       setCommandesEnvoyees(cmds || []); setSites(sitesData || []); setDomaines(domainesData || [])
       setRegions(regionsData || []); setAppellations(appellationsData || [])
