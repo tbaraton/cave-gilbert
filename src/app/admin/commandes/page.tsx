@@ -1119,15 +1119,15 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
   }
 
   const totalHTBrouillon = items.reduce((acc, item) => {
-  const gratuites = gratuitesCmd[item.id] ?? 0
-  const qty = editQty[item.id] ?? item.quantite_commandee
-  const prix = editPrix[item.id] ?? parseFloat(item.prix_achat_ht || 0)
-  const prixReel = gratuites > 0 && qty > 0 ? Math.round((prix * (qty - gratuites)) / qty * 10000) / 10000 : prix
-  return acc + prixReel * qty
+    const gratuites = gratuitesCmd[item.id] ?? 0
+    const qty = editQty[item.id] ?? item.quantite_commandee
+    const prix = editPrix[item.id] ?? parseFloat(item.prix_achat_ht || 0)
+    const prixReel = gratuites > 0 && qty > 0 ? Math.round((prix * (qty - gratuites)) / qty * 10000) / 10000 : prix
+    return acc + prixReel * qty
   }, 0)
   const remiseBrouillonVal = remiseBrouillon
-  ? (remiseBrouillonType === 'pct' ? totalHTBrouillon * parseFloat(remiseBrouillon) / 100 : parseFloat(remiseBrouillon))
-  : 0
+    ? (remiseBrouillonType === 'pct' ? totalHTBrouillon * parseFloat(remiseBrouillon) / 100 : parseFloat(remiseBrouillon))
+    : 0
   const totalHT = Math.max(0, totalHTBrouillon - remiseBrouillonVal)
 
   const handleSendEmail = async () => {
