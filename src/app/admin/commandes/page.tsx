@@ -902,20 +902,25 @@ function ModalDupliquerCommande({ produit, commandeId, onCreated, onClose }: {
     setSaving(true); setError('')
     const nomFinal = buildNomDuplique()
     const slug = nomFinal.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + Math.random().toString(36).substring(2, 7)
+    const prixHT = prixAchatHT && parseFloat(prixAchatHT) > 0 ? parseFloat(prixAchatHT) : (produit.prix_achat_ht || null)
+    const mil = millesime && millesime.trim() !== '' ? parseInt(millesime) : (produit.millesime || null)
+    const ttc = prixHT ? arrondir50(prixHT * 2) : (produit.prix_vente_ttc || null)
+    const pro = prixHT ? Math.round(prixHT * 1.70 * 100) / 100 : (produit.prix_vente_pro || null)
     const { data: newProd, error: err } = await supabase.from('products').insert({
       nom: nomFinal, slug, nom_cuvee: produit.nom_cuvee || null, contenance: produit.contenance || '75cl',
-      millesime: millesime ? parseInt(millesime) : null, couleur: produit.couleur,
+      millesime: mil, couleur: produit.couleur,
       region_id: produit.region_id || null, appellation_id: produit.appellation_id || null, domaine_id: produit.domaine_id || null,
-      prix_achat_ht: prixAchatHT ? parseFloat(prixAchatHT) : produit.prix_achat_ht,
-      prix_vente_ttc: prixTTC, prix_vente_pro: prixPro, image_url: produit.image_url || null,
+      prix_achat_ht: prixHT, prix_vente_ttc: ttc, prix_vente_pro: pro,
+      image_url: produit.image_url || null,
       bio: produit.bio || false, vegan: produit.vegan || false, casher: produit.casher || false,
       naturel: produit.naturel || false, biodynamique: produit.biodynamique || false, actif: true,
     }).select('id, nom, millesime').single()
-    if (err) { setError(err.message); setSaving(false); return }
-    if (produit.domaine_id && newProd?.id) {
-      await supabase.from('product_suppliers').upsert({ product_id: newProd.id, domaine_id: produit.domaine_id, prix_achat_ht: prixAchatHT ? parseFloat(prixAchatHT) : produit.prix_achat_ht, conditionnement: 6, fournisseur_principal: true }, { onConflict: 'product_id,domaine_id' })
+    if (err) { setError('Erreur création produit: ' + err.message); setSaving(false); return }
+    if (!newProd?.id) { setError('Produit non créé — vérifiez les données'); setSaving(false); return }
+    if (produit.domaine_id && newProd.id) {
+      await supabase.from('product_suppliers').upsert({ product_id: newProd.id, domaine_id: produit.domaine_id, prix_achat_ht: prixHT, conditionnement: 6, fournisseur_principal: true }, { onConflict: 'product_id,domaine_id' })
     }
-    await supabase.from('supplier_order_items').insert({ order_id: commandeId, product_id: newProd.id, product_nom: newProd.nom, product_millesime: newProd.millesime, quantite_commandee: 6, prix_achat_ht: prixAchatHT ? parseFloat(prixAchatHT) : produit.prix_achat_ht })
+    await supabase.from('supplier_order_items').insert({ order_id: commandeId, product_id: newProd.id, product_nom: newProd.nom, product_millesime: newProd.millesime, quantite_commandee: 6, prix_achat_ht: prixHT })
     if (archiverOriginal) {
       await supabase.from('products').update({ actif: false }).eq('id', produit.id)
     }
@@ -1072,7 +1077,7 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
       const gratuites = gratuitesCmd[item.id] ?? 0
       const rawPrix = prixRecus[item.id] ?? parseFloat(item.prix_achat_ht || 0)
       const prixFinal = gratuites > 0 && qty > 0
-        ? Math.round((rawPrix * qty) / (qty + gratuites) * 10000) / 10000
+        ? Math.round((rawPrix * (qty - gratuites)) / qty * 10000) / 10000
         : rawPrix
       await supabase.from('supplier_order_items').update({ quantite_recue: qty, prix_achat_ht: prixFinal }).eq('id', item.id)
       if (siteReception) {
@@ -1276,7 +1281,7 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
               const gratuites = gratuitesCmd[item.id] ?? 0
               const recu = qtesRecues[item.id] ?? item.quantite_commandee
               const prixHTReel = gratuites > 0 && recu > 0
-                ? Math.round((currentPrix * recu) / (recu + gratuites) * 10000) / 10000
+                ? Math.round((currentPrix * (recu - gratuites)) / recu * 10000) / 10000
                 : currentPrix
               return (
                 <div key={item.id} style={{ display: 'grid', gridTemplateColumns: '2fr 90px 110px 70px 80px 100px', gap: 8, alignItems: 'center', padding: '6px 0', borderBottom: '0.5px solid rgba(255,255,255,0.04)' }}>
@@ -1322,8 +1327,8 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
               const gratuites = gratuitesCmd[item.id] ?? 0
               const qty = qtesRecues[item.id] ?? item.quantite_commandee
               const prix = prixRecus[item.id] ?? parseFloat(item.prix_achat_ht || 0)
-              const prixReel = gratuites > 0 && qty > 0 ? Math.round((prix * qty) / (qty + gratuites) * 10000) / 10000 : prix
-              return acc + prixReel * (qty + gratuites)
+              const prixReel = gratuites > 0 && qty > 0 ? Math.round((prix * (qty - gratuites)) / qty * 10000) / 10000 : prix
+              return acc + prixReel * qty
             }, 0)
             const fp = parseFloat(fraisPortCmd) || 0
             const totalHTFinal = totalHTBase + fp
@@ -1425,7 +1430,7 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
                     const qty = editQty[item.id] ?? item.quantite_commandee
                     const prix = editPrix[item.id] ?? parseFloat(item.prix_achat_ht || 0)
                     const prixReel = gratuites > 0 && qty > 0
-                      ? Math.round((prix * qty) / (qty + gratuites) * 10000) / 10000
+                      ? Math.round((prix * (qty - gratuites)) / qty * 10000) / 10000
                       : prix
                     return (
                       <>
@@ -1664,7 +1669,7 @@ function VueReception({ onRefresh }: { onRefresh: () => void }) {
       const rawPrix = prixRecus[item.id] ?? parseFloat(item.prix_achat_ht || 0)
       // Prix HT réel = prix unitaire ajusté avec les gratuités
       const newPrix = gratuites > 0 && qty > 0
-        ? Math.round((rawPrix * qty) / (qty + gratuites) * 10000) / 10000
+        ? Math.round((rawPrix * (qty - gratuites)) / qty * 10000) / 10000
         : rawPrix
       const oldPrix = parseFloat(item.prix_achat_ht || 0)
       await supabase.from('supplier_order_items').update({ quantite_recue: qty, prix_achat_ht: newPrix }).eq('id', item.id)
@@ -1812,7 +1817,7 @@ function VueReception({ onRefresh }: { onRefresh: () => void }) {
                   // Prix HT réel = (prix unitaire × qté payée) / (qté payée + gratuites)
                   const totalPaye = recu
                   const prixHTReel = gratuites > 0 && totalPaye > 0
-                    ? (currentPrix * totalPaye) / (totalPaye + gratuites)
+                    ? (currentPrix * (totalPaye - gratuites)) / totalPaye
                     : currentPrix
                   return (
                     <tr key={item.id} style={{ borderBottom: i < items.length - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none' }}>
@@ -1886,8 +1891,8 @@ function VueReception({ onRefresh }: { onRefresh: () => void }) {
               const gratuites = gratuitesRecues[item.id] ?? 0
               const qty = qtesRecues[item.id] ?? item.quantite_commandee
               const prix = prixRecus[item.id] ?? parseFloat(item.prix_achat_ht || 0)
-              const prixReel = gratuites > 0 && qty > 0 ? Math.round((prix * qty) / (qty + gratuites) * 10000) / 10000 : prix
-              return acc + prixReel * (qty + gratuites)
+              const prixReel = gratuites > 0 && qty > 0 ? Math.round((prix * (qty - gratuites)) / qty * 10000) / 10000 : prix
+              return acc + prixReel * qty
             }, 0)
             const fp = parseFloat(fraisPortRec) || 0
             const totalHTFinal = totalHTBase + fp
