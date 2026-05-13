@@ -1157,6 +1157,28 @@ function DetailCommande({ commande, onBack, onRefresh }: { commande: any; onBack
               <button onClick={() => { setShowSupprimer(false); setConfirmSuppr('') }} style={{ flex: 1, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '11px', fontSize: 11, cursor: 'pointer' }}>Annuler</button>
               <button disabled={confirmSuppr !== 'SUPPRIMER' || actionLoading} onClick={async () => {
                 setActionLoading(true)
+                if (statutLocal === 'reçue') {
+                  for (const item of items) {
+                    const qty = item.quantite_recue ?? item.quantite_commandee
+                    if (qty > 0 && siteReception) {
+                      const { error: rollbackErr } = await supabase.rpc('move_stock', {
+                        p_product_id: item.product_id,
+                        p_site_id: siteReception,
+                        p_raison: 'achat',
+                        p_quantite: -qty,
+                        p_note: `Annulation réception ${commande.numero}`,
+                        p_order_id: null,
+                        p_transfer_id: null,
+                      })
+                      if (rollbackErr) {
+                        console.error(rollbackErr)
+                        window.alert('Impossible de retirer le stock de la commande reçue. La suppression a été interrompue.')
+                        setActionLoading(false)
+                        return
+                      }
+                    }
+                  }
+                }
                 await supabase.from('supplier_order_items').delete().eq('order_id', commande.id)
                 await supabase.from('supplier_orders').delete().eq('id', commande.id)
                 setActionLoading(false); setShowSupprimer(false); setConfirmSuppr(''); onRefresh(); onBack()
