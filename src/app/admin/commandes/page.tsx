@@ -42,6 +42,13 @@ function arrondir50(prix: number): number {
   return Math.ceil(prix * 2) / 2
 }
 
+function getCategorieFromCouleur(couleur: string | null | undefined): string {
+  const couleursVin = ['rouge', 'blanc', 'rosé', 'champagne', 'effervescent']
+  if (couleur && couleursVin.includes(couleur)) return 'vin'
+  if (couleur === 'spiritueux') return 'spiritueux'
+  return 'vin'
+}
+
 function ModalNouveauProduit({ domaines, regions, appellations, onCreated, onClose }: {
   domaines: any[]
   regions: any[]
@@ -107,8 +114,9 @@ function ModalNouveauProduit({ domaines, regions, appellations, onCreated, onClo
     const slug = nomFinal.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + Math.random().toString(36).substring(2, 7)
     const { data: product, error: err } = await supabase.from('products').insert({
       nom: nomFinal, slug, nom_cuvee: form.nom_cuvee || null, contenance: form.contenance || '75cl',
-      millesime: form.millesime ? parseInt(form.millesime) : null, couleur: form.couleur,
-      categorie: ['rouge','blanc','rosé','champagne','effervescent'].includes(form.couleur) ? 'vin' : form.couleur === 'spiritueux' ? 'spiritueux' : 'vin',
+      millesime: form.millesime ? parseInt(form.millesime) : null,
+      couleur: form.couleur,
+      categorie: getCategorieFromCouleur(form.couleur),
       region_id: form.region_id || null, appellation_id: form.appellation_id || null, domaine_id: form.domaine_id || null,
       prix_achat_ht: form.prix_achat_ht ? parseFloat(form.prix_achat_ht) : null, prix_vente_ttc: prixNum,
       prix_vente_pro: form.prix_vente_pro ? parseFloat(form.prix_vente_pro) : null,

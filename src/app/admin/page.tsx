@@ -379,6 +379,13 @@ function arrondir50(prix: number): number {
   return Math.ceil(prix * 2) / 2
 }
 
+function getCategorieFromCouleur(couleur: string | null | undefined): string {
+  const couleursVin = ['rouge', 'blanc', 'rosé', 'champagne', 'effervescent']
+  if (couleur && couleursVin.includes(couleur)) return 'vin'
+  if (couleur === 'spiritueux') return 'spiritueux'
+  return 'vin'
+}
+
 // Prévisualisation du nom du vin
 function NomVinPreview({ appellation, cuvee, couleur, millesime, contenance, domaine }: {
   appellation: string, cuvee: string, couleur: string,
@@ -790,6 +797,7 @@ function ModalNouveauProduitAdmin({ regions: regionsProp, appellations: appellat
       contenance: form.contenance || '75cl',
       millesime: form.millesime ? parseInt(form.millesime) : null,
       couleur: form.couleur,
+      categorie: getCategorieFromCouleur(form.couleur),
       region_id: form.region_id || null,
       appellation_id: form.appellation_id || null,
       domaine_id: form.domaine_id || null,
@@ -1019,6 +1027,7 @@ function ModalDupliquer({ produit, onClose, onSaved }: {
       contenance: produit.contenance || '75cl',
       millesime: millesime ? parseInt(millesime) : null,
       couleur: produit.couleur,
+      categorie: getCategorieFromCouleur(produit.couleur),
       region_id: produit.region_id || null,
       appellation_id: produit.appellation_id || null,
       domaine_id: produit.domaine_id || null,
@@ -1074,6 +1083,7 @@ function ModalDupliquer({ produit, onClose, onSaved }: {
       contenance: produit.contenance || '75cl',
       millesime: millesime ? parseInt(millesime) : null,
       couleur: produit.couleur,
+      categorie: getCategorieFromCouleur(produit.couleur),
       region_id: produit.region_id || null,
       appellation_id: produit.appellation_id || null,
       domaine_id: produit.domaine_id || null,
@@ -1356,7 +1366,7 @@ export default function AdminPage() {
   const produitsFiltres = produits
     .filter(p =>
       p.nom?.toLowerCase().includes(search.toLowerCase()) &&
-      (categorieActive ? p.categorie === categorieActive : !CATEGORIES.map(c => c.cat).includes(p.categorie)) &&
+      (categorieActive ? p.categorie === categorieActive : true) &&
       (filterRegion === '' || p.region_id === filterRegion) &&
       (filterAppellation === '' || p.appellation_id === filterAppellation) &&
       (filterCouleur === '' || p.couleur === filterCouleur) &&
