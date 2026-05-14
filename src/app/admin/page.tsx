@@ -1252,37 +1252,44 @@ function genNumero(prefix: string) {
 }
 
 // ── Modal Nouveau Transfert (Étape 1 — Demande) ───────────────
-function ModalNouveauTransfert({ sites, onCreated, onClose }: {
-  sites: any[]; onCreated: () => void; onClose: () => void
+function ModalNouveauTransfert({ sites, onCreated, onClose, transfertExistant = null }: {
+  sites: any[]; onCreated: () => void; onClose: () => void; transfertExistant?: any
 }) {
   const inp = { background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#e8e0d5', fontSize: 13, padding: '9px 12px', boxSizing: 'border-box' as const }
   const lbl = { fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, display: 'block', marginBottom: 6 }
   const sel = { ...inp, background: '#1a1408', border: '0.5px solid rgba(201,169,110,0.2)', cursor: 'pointer' }
 
-  // Étapes
-  const [step, setStep] = useState<'config' | 'produits'>('config')
-  const [siteSourceId, setSiteSourceId] = useState(sites[0]?.id || '')
-  const [siteDestId, setSiteDestId] = useState(sites[1]?.id || '')
-  const [notes, setNotes] = useState('')
+  // Mode ajout à un transfert existant
+  const modeAjout = !!transfertExistant
 
-  // Catalogue produits
+  // Étapes : 'config' | 'selection' | 'quantites'
+  const [step, setStep] = useState<'config' | 'selection' | 'quantites'>(modeAjout ? 'selection' : 'config')
+  const [siteSourceId, setSiteSourceId] = useState(transfertExistant?.site_source_id || sites[0]?.id || '')
+  const [siteDestId, setSiteDestId] = useState(transfertExistant?.site_destination_id || sites[1]?.id || '')
+  const [notes, setNotes] = useState(transfertExistant?.notes || '')
+
+  // Catalogue
   const [produits, setProduits] = useState<any[]>([])
   const [stockAgrege, setStockAgrege] = useState<any[]>([])
   const [regions, setRegions] = useState<any[]>([])
   const [domaines, setDomaines] = useState<any[]>([])
-  const [appellations, setAppellations] = useState<any[]>([])
   const [loadingProduits, setLoadingProduits] = useState(false)
 
-  // Filtres
+  // Filtres + tri
   const [search, setSearch] = useState('')
   const [filterRegion, setFilterRegion] = useState('')
   const [filterDomaine, setFilterDomaine] = useState('')
   const [filterCouleur, setFilterCouleur] = useState('')
   const [sortCol, setSortCol] = useState('nom')
   const [sortDir, setSortDir] = useState<'asc'|'desc'>('asc')
+  const [pageProduits, setPageProduits] = useState(0)
+  const PAGE_SIZE_T = 50
 
-  // Sélection
-  const [selected, setSelected] = useState<Record<string, number>>({}) // product_id → quantité
+  // Sélection : Set de product_id cochés
+  const [coches, setCoches] = useState<Set<string>>(new Set())
+  // Quantités : product_id → quantité
+  const [quantites, setQuantites] = useState<Record<string, number>>({})
+
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -1294,15 +1301,16 @@ function ModalNouveauTransfert({ sites, onCreated, onClose }: {
       setSiteDestId(sitesDestDispos[0].id)
   }, [siteSourceId])
 
+  useEffect(() => {
+    if (step === 'selection' || step === 'quantites') loadCatalogue()
+  }, [step])
+
+  useEffect(() => { setPageProduits(0) }, [search, filterRegion, filterDomaine, filterCouleur, sortCol, sortDir])
+
   const loadCatalogue = async () => {
     setLoadingProduits(true)
-    const [
-      { data: prods },
-      { data: stock },
-      { data: regs },
-      { data: doms },
-    ] = await Promise.all([
-      supabase.from('products').select('id, nom, millesime, couleur, prix_achat_ht, prix_vente_ttc, domaine_id, region_id, actif').eq('actif', true).order('nom').limit(5000),
+    const [{ data: prods }, { data: stock }, { data: regs }, { data: doms }] = await Promise.all([
+      supabase.from('products').select('id, nom, millesime, couleur, prix_achat_ht, prix_vente_ttc, domaine_id, region_id').eq('actif', true).order('nom').limit(5000),
       supabase.from('v_stock_agrege').select('product_id, stock_marcy, stock_entrepot, stock_arbresle, stock_total').range(0, 9999),
       supabase.from('regions').select('id, nom').order('nom'),
       supabase.from('domaines').select('id, nom').order('nom'),
@@ -1314,26 +1322,15 @@ function ModalNouveauTransfert({ sites, onCreated, onClose }: {
     setLoadingProduits(false)
   }
 
-  useEffect(() => {
-    if (step === 'produits') loadCatalogue()
-  }, [step])
-
-  const COULEURS_LABEL: Record<string, string> = { rouge: 'Rouge', blanc: 'Blanc', rosé: 'Rosé', champagne: 'Champagne', effervescent: 'Effervescent', spiritueux: 'Spiritueux', autre: 'Autre' }
-  const COULEURS_DOT: Record<string, string> = { rouge: '#e07070', blanc: '#c9b06e', rosé: '#e8a0b0', champagne: '#d4c88a', effervescent: '#a0b0e0', spiritueux: '#8ec98e', autre: '#888' }
-
-  // Site source stock column
-  const siteCol = (siteId: string): 'stock_marcy' | 'stock_entrepot' | 'stock_arbresle' => {
-    if (siteId === 'ee3afa96-0c45-407f-87fc-e503fbada6c4') return 'stock_marcy'
-    if (siteId === 'e12d7e47-23dc-4011-95fc-e9e975fc4307') return 'stock_entrepot'
+  const siteCol = (id: string): string => {
+    if (id === 'ee3afa96-0c45-407f-87fc-e503fbada6c4') return 'stock_marcy'
+    if (id === 'e12d7e47-23dc-4011-95fc-e9e975fc4307') return 'stock_entrepot'
     return 'stock_arbresle'
   }
+  const getStock = (pid: string, col: string) => (stockAgrege.find(x => x.product_id === pid)?.[col] || 0)
 
-  const getStock = (productId: string, col: string) => {
-    const s = stockAgrege.find(x => x.product_id === productId)
-    return s ? (s[col] || 0) : 0
-  }
-
-  useEffect(() => { setPageProduits(0) }, [search, filterRegion, filterDomaine, filterCouleur, sortCol, sortDir])
+  const CLABEL: Record<string, string> = { rouge: 'Rouge', blanc: 'Blanc', rosé: 'Rosé', champagne: 'Champagne', effervescent: 'Effervescent', spiritueux: 'Spiritueux', autre: 'Autre' }
+  const CDOT: Record<string, string> = { rouge: '#e07070', blanc: '#c9b06e', rosé: '#e8a0b0', champagne: '#d4c88a', effervescent: '#a0b0e0', spiritueux: '#8ec98e', autre: '#888' }
 
   const produitsFiltres = produits
     .filter(p =>
@@ -1344,19 +1341,10 @@ function ModalNouveauTransfert({ sites, onCreated, onClose }: {
     )
     .sort((a, b) => {
       let va: any, vb: any
-      if (sortCol === 'stock_source') {
-        va = getStock(a.id, siteCol(siteSourceId))
-        vb = getStock(b.id, siteCol(siteSourceId))
-      } else if (sortCol === 'stock_total') {
-        va = getStock(a.id, 'stock_total')
-        vb = getStock(b.id, 'stock_total')
-      } else if (sortCol === 'prix_achat_ht' || sortCol === 'prix_vente_ttc') {
-        va = parseFloat(a[sortCol] || 0)
-        vb = parseFloat(b[sortCol] || 0)
-      } else {
-        va = (a[sortCol] || '').toString().toLowerCase()
-        vb = (b[sortCol] || '').toString().toLowerCase()
-      }
+      if (sortCol === 'stock_source') { va = getStock(a.id, siteCol(siteSourceId)); vb = getStock(b.id, siteCol(siteSourceId)) }
+      else if (sortCol === 'stock_total') { va = getStock(a.id, 'stock_total'); vb = getStock(b.id, 'stock_total') }
+      else if (sortCol === 'prix_achat_ht' || sortCol === 'prix_vente_ttc') { va = parseFloat(a[sortCol] || 0); vb = parseFloat(b[sortCol] || 0) }
+      else { va = (a[sortCol] || '').toString().toLowerCase(); vb = (b[sortCol] || '').toString().toLowerCase() }
       return sortDir === 'asc' ? (va < vb ? -1 : va > vb ? 1 : 0) : (va > vb ? -1 : va < vb ? 1 : 0)
     })
 
@@ -1364,58 +1352,71 @@ function ModalNouveauTransfert({ sites, onCreated, onClose }: {
     if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
     else { setSortCol(col); setSortDir('asc') }
   }
-  const sortIcon = (col: string) => sortCol === col ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''
+  const si = (col: string) => sortCol === col ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''
 
-  const toggleSelect = (productId: string) => {
-    setSelected(prev => {
-      if (prev[productId] !== undefined) {
-        const n = { ...prev }; delete n[productId]; return n
-      }
-      return { ...prev, [productId]: 1 }
+  const toggleCoche = (pid: string) => {
+    setCoches(prev => {
+      const n = new Set(prev)
+      if (n.has(pid)) { n.delete(pid); const q = { ...quantites }; delete q[pid]; setQuantites(q) }
+      else { n.add(pid); setQuantites(q => ({ ...q, [pid]: 1 })) }
+      return n
     })
   }
 
-  const updateQte = (productId: string, qte: number) => {
-    setSelected(prev => ({ ...prev, [productId]: Math.max(1, qte) }))
+  const toggleAll = () => {
+    const page = produitsFiltres.slice(pageProduits * PAGE_SIZE_T, (pageProduits + 1) * PAGE_SIZE_T)
+    const allChecked = page.every(p => coches.has(p.id))
+    setCoches(prev => {
+      const n = new Set(prev)
+      if (allChecked) { page.forEach(p => { n.delete(p.id); }) }
+      else { page.forEach(p => { n.add(p.id); if (!quantites[p.id]) setQuantites(q => ({ ...q, [p.id]: 1 })) }) }
+      return n
+    })
   }
 
-  const [pageProduits, setPageProduits] = useState(0)
-  const PAGE_SIZE_TRANSFERT = 50
-  const nbSelected = Object.keys(selected).length
+  const produitsCochesData = produits.filter(p => coches.has(p.id))
+
+  const handleConfirmerSelection = () => {
+    if (coches.size === 0) { setError('Sélectionnez au moins un produit'); return }
+    setError('')
+    setStep('quantites')
+  }
 
   const handleCreate = async () => {
-    if (siteSourceId === siteDestId) { setError('Source et destination identiques'); return }
-    if (nbSelected === 0) { setError('Sélectionnez au moins un produit'); return }
+    if (coches.size === 0) { setError('Aucun produit sélectionné'); return }
     setSaving(true); setError('')
 
-    const { data: transfer, error: errT } = await supabase.from('stock_transfers').insert({
-      numero: genNumero('TRF'), site_source_id: siteSourceId, site_destination_id: siteDestId,
-      statut: 'demande', notes: notes || null,
-    }).select('id').single()
-    if (errT || !transfer) { setError(errT?.message || 'Erreur création'); setSaving(false); return }
+    let transferId = transfertExistant?.id
 
-    const lignesInsert = Object.entries(selected).map(([productId, qte]) => {
-      const p = produits.find(x => x.id === productId)
-      const prixAchatHT = p?.prix_achat_ht ? parseFloat(p.prix_achat_ht) : null
-      const prixTransfert = isInterSociete && prixAchatHT ? Math.round(prixAchatHT * MARGE_INTERSOCIETE * 10000) / 10000 : null
-      return {
-        transfer_id: transfer.id, product_id: productId,
-        quantite: qte, quantite_demandee: qte,
-        prix_achat_ht: prixAchatHT,
-        prix_transfert_ht: prixTransfert,
-      }
+    if (!modeAjout) {
+      const { data: transfer, error: errT } = await supabase.from('stock_transfers').insert({
+        numero: genNumero('TRF'), site_source_id: siteSourceId, site_destination_id: siteDestId,
+        statut: 'demande', notes: notes || null,
+      }).select('id').single()
+      if (errT || !transfer) { setError(errT?.message || 'Erreur création'); setSaving(false); return }
+      transferId = transfer.id
+    }
+
+    const lignes = produitsCochesData.map(p => {
+      const prixAchat = p.prix_achat_ht ? parseFloat(p.prix_achat_ht) : null
+      const prixTransfert = isInterSociete && prixAchat ? Math.round(prixAchat * MARGE_INTERSOCIETE * 10000) / 10000 : null
+      const qte = quantites[p.id] || 1
+      return { transfer_id: transferId, product_id: p.id, quantite: qte, quantite_demandee: qte, prix_achat_ht: prixAchat, prix_transfert_ht: prixTransfert }
     })
 
-    for (let i = 0; i < lignesInsert.length; i += 200)
-      await supabase.from('stock_transfer_lignes').insert(lignesInsert.slice(i, i + 200))
+    for (let i = 0; i < lignes.length; i += 200)
+      await supabase.from('stock_transfer_lignes').insert(lignes.slice(i, i + 200))
 
     setSaving(false); onCreated()
   }
 
+  const thS = { padding: '9px 12px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', fontWeight: 400, cursor: 'pointer', userSelect: 'none' as const, whiteSpace: 'nowrap' as const }
   const srcCol = siteCol(siteSourceId)
-  const thStyle = { padding: '9px 12px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', fontWeight: 400, cursor: 'pointer', userSelect: 'none' as const, whiteSpace: 'nowrap' as const }
+  const pageData = produitsFiltres.slice(pageProduits * PAGE_SIZE_T, (pageProduits + 1) * PAGE_SIZE_T)
+  const nbPages = Math.ceil(produitsFiltres.length / PAGE_SIZE_T)
+  const allPageChecked = pageData.length > 0 && pageData.every(p => coches.has(p.id))
 
-  // ── Étape 1 : Configuration ──
+  // ── ÉTAPE 1 : Config ─────────────────────────────────────────
   if (step === 'config') return (
     <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }} onClick={onClose}>
       <div style={{ background: '#18130e', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 8, width: '100%', maxWidth: 520, padding: '28px 32px' }} onClick={e => e.stopPropagation()}>
@@ -1426,9 +1427,7 @@ function ModalNouveauTransfert({ sites, onCreated, onClose }: {
           </div>
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.4)', fontSize: 20, cursor: 'pointer' }}>✕</button>
         </div>
-
         {error && <div style={{ background: 'rgba(201,110,110,0.1)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 4, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: '#c96e6e' }}>{error}</div>}
-
         <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 12, alignItems: 'end', marginBottom: 20 }}>
           <div>
             <label style={lbl}>Site source</label>
@@ -1444,25 +1443,22 @@ function ModalNouveauTransfert({ sites, onCreated, onClose }: {
             </select>
           </div>
         </div>
-
         {isInterSociete && (
-          <div style={{ background: 'rgba(201,110,110,0.08)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 4, padding: '10px 16px', marginBottom: 16, display: 'flex', gap: 10, alignItems: 'center' }}>
+          <div style={{ background: 'rgba(201,110,110,0.08)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 4, padding: '10px 16px', marginBottom: 16, display: 'flex', gap: 10 }}>
             <span>⚠</span>
             <div>
               <div style={{ fontSize: 12, color: '#c96e6e', fontWeight: 600 }}>Transfert inter-société</div>
-              <div style={{ fontSize: 11, color: 'rgba(201,110,110,0.7)', marginTop: 2 }}>Facture générée à l'expédition au prix d'achat HT × 1,05</div>
+              <div style={{ fontSize: 11, color: 'rgba(201,110,110,0.7)', marginTop: 2 }}>Facture générée à l'expédition — prix achat HT × 1,05</div>
             </div>
           </div>
         )}
-
         <div style={{ marginBottom: 20 }}>
           <label style={lbl}>Notes (optionnel)</label>
           <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Raison du transfert..." style={{ ...inp, width: '100%' }} />
         </div>
-
         <div style={{ display: 'flex', gap: 10 }}>
           <button onClick={onClose} style={{ flex: 1, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '11px', fontSize: 12, cursor: 'pointer' }}>Annuler</button>
-          <button onClick={() => { if (siteSourceId === siteDestId) { setError('Source et destination identiques'); return } setError(''); setStep('produits') }}
+          <button onClick={() => { if (siteSourceId === siteDestId) { setError('Source et destination identiques'); return } setError(''); setStep('selection') }}
             style={{ flex: 2, background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '11px', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>
             Sélectionner les produits →
           </button>
@@ -1471,27 +1467,33 @@ function ModalNouveauTransfert({ sites, onCreated, onClose }: {
     </div>
   )
 
-  // ── Étape 2 : Sélection produits (plein écran) ──
-  return (
+  // ── ÉTAPE 2 : Sélection (plein écran, coches uniquement) ─────
+  if (step === 'selection') return (
     <div style={{ position: 'fixed' as const, inset: 0, background: '#0d0a08', zIndex: 1000, display: 'flex', flexDirection: 'column' as const }}>
       {/* Header */}
       <div style={{ padding: '14px 20px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', gap: 16, background: '#100d0a' }}>
-        <button onClick={() => setStep('config')} style={{ background: 'transparent', border: 'none', color: '#c9a96e', fontSize: 18, cursor: 'pointer' }}>←</button>
+        {!modeAjout && <button onClick={() => setStep('config')} style={{ background: 'transparent', border: 'none', color: '#c9a96e', fontSize: 18, cursor: 'pointer' }}>←</button>}
+        {modeAjout && <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: '#c9a96e', fontSize: 18, cursor: 'pointer' }}>←</button>}
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 13, color: '#f0e8d8' }}>{sites.find(s => s.id === siteSourceId)?.nom} → {sites.find(s => s.id === siteDestId)?.nom}</div>
-          <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>{nbSelected} produit{nbSelected > 1 ? 's' : ''} sélectionné{nbSelected > 1 ? 's' : ''}</div>
+          <div style={{ fontSize: 13, color: '#f0e8d8' }}>
+            {modeAjout ? `Ajouter des produits — ${transfertExistant?.numero}` : `${sites.find(s => s.id === siteSourceId)?.nom} → ${sites.find(s => s.id === siteDestId)?.nom}`}
+          </div>
+          <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>
+            {modeAjout ? 'Étape 2 — Cochez les produits à ajouter' : 'Étape 2 — Cochez les produits à transférer'}
+            {coches.size > 0 && <span style={{ color: '#c9a96e', marginLeft: 8 }}>{coches.size} produit{coches.size > 1 ? 's' : ''} coché{coches.size > 1 ? 's' : ''}</span>}
+          </div>
         </div>
         {error && <div style={{ fontSize: 12, color: '#c96e6e' }}>{error}</div>}
-        <button onClick={handleCreate} disabled={saving || nbSelected === 0}
-          style={{ background: nbSelected > 0 ? '#c9a96e' : '#2a2a1e', color: nbSelected > 0 ? '#0d0a08' : '#555', border: 'none', borderRadius: 4, padding: '10px 20px', fontSize: 13, cursor: 'pointer', fontWeight: 600, opacity: saving ? 0.7 : 1, whiteSpace: 'nowrap' as const }}>
-          {saving ? '⟳' : `✓ Créer la demande (${nbSelected})`}
+        <button onClick={handleConfirmerSelection} disabled={coches.size === 0}
+          style={{ background: coches.size > 0 ? '#c9a96e' : '#2a2a1e', color: coches.size > 0 ? '#0d0a08' : '#555', border: 'none', borderRadius: 4, padding: '10px 20px', fontSize: 13, cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap' as const }}>
+          Ajuster les quantités ({coches.size}) →
         </button>
         <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.4)', fontSize: 18, cursor: 'pointer' }}>✕</button>
       </div>
 
       {/* Filtres */}
-      <div style={{ padding: '12px 20px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', display: 'flex', gap: 10, flexWrap: 'wrap' as const, alignItems: 'center', background: '#100d0a' }}>
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Rechercher..." style={{ ...inp, flex: '1 1 180px', fontSize: 12, padding: '7px 10px' }} />
+      <div style={{ padding: '10px 20px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', display: 'flex', gap: 10, flexWrap: 'wrap' as const, alignItems: 'center', background: '#100d0a' }}>
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Rechercher..." style={{ ...inp, flex: '1 1 160px', fontSize: 12, padding: '7px 10px' }} />
         <select value={filterRegion} onChange={e => setFilterRegion(e.target.value)} style={{ ...sel, fontSize: 12, padding: '7px 10px' }}>
           <option value="">Toutes les régions</option>
           {regions.map(r => <option key={r.id} value={r.id}>{r.nom}</option>)}
@@ -1500,13 +1502,11 @@ function ModalNouveauTransfert({ sites, onCreated, onClose }: {
           <option value="">Tous les domaines</option>
           {domaines.map(d => <option key={d.id} value={d.id}>{d.nom}</option>)}
         </select>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
-          {['', 'rouge', 'blanc', 'rosé', 'champagne', 'effervescent', 'spiritueux'].map(c => (
-            <button key={c} onClick={() => setFilterCouleur(c)} style={{ background: filterCouleur === c ? 'rgba(201,169,110,0.15)' : 'rgba(255,255,255,0.04)', border: `0.5px solid ${filterCouleur === c ? 'rgba(201,169,110,0.4)' : 'rgba(255,255,255,0.1)'}`, color: filterCouleur === c ? '#c9a96e' : 'rgba(232,224,213,0.4)', borderRadius: 20, padding: '4px 10px', fontSize: 11, cursor: 'pointer' }}>
-              {c ? (COULEURS_LABEL[c] || c) : 'Toutes'}
-            </button>
-          ))}
-        </div>
+        {['', 'rouge', 'blanc', 'rosé', 'champagne', 'effervescent', 'spiritueux'].map(c => (
+          <button key={c} onClick={() => setFilterCouleur(c)} style={{ background: filterCouleur === c ? 'rgba(201,169,110,0.15)' : 'rgba(255,255,255,0.04)', border: `0.5px solid ${filterCouleur === c ? 'rgba(201,169,110,0.4)' : 'rgba(255,255,255,0.1)'}`, color: filterCouleur === c ? '#c9a96e' : 'rgba(232,224,213,0.4)', borderRadius: 20, padding: '4px 10px', fontSize: 11, cursor: 'pointer' }}>
+            {c ? (CLABEL[c] || c) : 'Toutes'}
+          </button>
+        ))}
         <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)', marginLeft: 'auto' }}>{produitsFiltres.length} produits</span>
       </div>
 
@@ -1518,109 +1518,149 @@ function ModalNouveauTransfert({ sites, onCreated, onClose }: {
           <table style={{ width: '100%', borderCollapse: 'collapse' as const }}>
             <thead style={{ position: 'sticky' as const, top: 0, background: '#100d0a', zIndex: 1 }}>
               <tr style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
-                <th style={{ ...thStyle, width: 40 }}>
-                  <div style={{ width: 14, height: 14, borderRadius: 3, border: '0.5px solid rgba(255,255,255,0.2)', background: 'transparent', cursor: 'pointer' }}
-                    onClick={() => {
-                      if (nbSelected === produitsFiltres.length) setSelected({})
-                      else setSelected(Object.fromEntries(produitsFiltres.map(p => [p.id, selected[p.id] || 1])))
-                    }}>
+                <th style={{ ...thS, width: 40 }}>
+                  <div onClick={toggleAll} style={{ width: 15, height: 15, borderRadius: 3, border: `1.5px solid ${allPageChecked ? '#c9a96e' : 'rgba(255,255,255,0.2)'}`, background: allPageChecked ? '#c9a96e' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                    {allPageChecked && <span style={{ fontSize: 9, color: '#0d0a08', fontWeight: 700 }}>✓</span>}
                   </div>
                 </th>
-                <th style={thStyle} onClick={() => toggleSort('nom')}>Produit{sortIcon('nom')}</th>
-                <th style={thStyle} onClick={() => toggleSort('couleur')}>Couleur{sortIcon('couleur')}</th>
-                <th style={thStyle} onClick={() => toggleSort('millesime')}>Mill.{sortIcon('millesime')}</th>
-                <th style={thStyle} onClick={() => toggleSort('prix_achat_ht')}>PA HT{sortIcon('prix_achat_ht')}</th>
-                <th style={thStyle} onClick={() => toggleSort('prix_vente_ttc')}>PV TTC{sortIcon('prix_vente_ttc')}</th>
-                <th style={{ ...thStyle, color: '#6e9ec9' }} onClick={() => toggleSort('stock_source')}>Stk {sites.find(s => s.id === siteSourceId)?.nom?.split(' ')[0]}{sortIcon('stock_source')}</th>
-                <th style={thStyle} onClick={() => toggleSort('stock_total')}>Total{sortIcon('stock_total')}</th>
-                {isInterSociete && <th style={{ ...thStyle, color: '#c96e6e' }}>Prix transf. HT</th>}
-                <th style={{ ...thStyle, width: 80 }}>Quantité</th>
+                <th style={thS} onClick={() => toggleSort('nom')}>Produit{si('nom')}</th>
+                <th style={thS} onClick={() => toggleSort('couleur')}>Couleur{si('couleur')}</th>
+                <th style={thS} onClick={() => toggleSort('millesime')}>Mill.{si('millesime')}</th>
+                <th style={thS} onClick={() => toggleSort('prix_achat_ht')}>PA HT{si('prix_achat_ht')}</th>
+                <th style={thS} onClick={() => toggleSort('prix_vente_ttc')}>PV TTC{si('prix_vente_ttc')}</th>
+                <th style={{ ...thS, color: '#6e9ec9' }} onClick={() => toggleSort('stock_source')}>Stk {sites.find(s => s.id === siteSourceId)?.nom?.split(' ')[0]}{si('stock_source')}</th>
+                <th style={thS} onClick={() => toggleSort('stock_total')}>Total{si('stock_total')}</th>
               </tr>
             </thead>
             <tbody>
-              {produitsFiltres.slice(pageProduits * PAGE_SIZE_TRANSFERT, (pageProduits + 1) * PAGE_SIZE_TRANSFERT).map((p, i) => {
-                const isSelected = selected[p.id] !== undefined
+              {pageData.map((p, i) => {
+                const isC = coches.has(p.id)
                 const stockSrc = getStock(p.id, srcCol)
                 const stockTotal = getStock(p.id, 'stock_total')
-                const prixAchat = p.prix_achat_ht ? parseFloat(p.prix_achat_ht) : null
-                const prixTransfert = isInterSociete && prixAchat ? Math.round(prixAchat * MARGE_INTERSOCIETE * 10000) / 10000 : null
                 return (
-                  <tr key={p.id}
-                    style={{ borderBottom: i < produitsFiltres.length - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none', background: isSelected ? 'rgba(201,169,110,0.05)' : 'transparent', cursor: 'pointer' }}
-                    onClick={() => toggleSelect(p.id)}
-                    onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'rgba(255,255,255,0.02)' }}
-                    onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent' }}>
+                  <tr key={p.id} onClick={() => toggleCoche(p.id)}
+                    style={{ borderBottom: i < pageData.length - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none', background: isC ? 'rgba(201,169,110,0.06)' : 'transparent', cursor: 'pointer' }}
+                    onMouseEnter={e => { if (!isC) e.currentTarget.style.background = 'rgba(255,255,255,0.02)' }}
+                    onMouseLeave={e => { if (!isC) e.currentTarget.style.background = 'transparent' }}>
                     <td style={{ padding: '9px 12px' }}>
-                      <div style={{ width: 14, height: 14, borderRadius: 3, border: `1.5px solid ${isSelected ? '#c9a96e' : 'rgba(255,255,255,0.2)'}`, background: isSelected ? '#c9a96e' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        {isSelected && <span style={{ fontSize: 9, color: '#0d0a08', fontWeight: 700 }}>✓</span>}
+                      <div style={{ width: 15, height: 15, borderRadius: 3, border: `1.5px solid ${isC ? '#c9a96e' : 'rgba(255,255,255,0.2)'}`, background: isC ? '#c9a96e' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {isC && <span style={{ fontSize: 9, color: '#0d0a08', fontWeight: 700 }}>✓</span>}
                       </div>
                     </td>
-                    <td style={{ padding: '9px 12px', fontSize: 13, color: '#f0e8d8' }}>{p.nom}</td>
-                    <td style={{ padding: '9px 12px' }}>
-                      <span style={{ color: COULEURS_DOT[p.couleur] || '#888', fontSize: 11 }}>● {COULEURS_LABEL[p.couleur] || p.couleur}</span>
-                    </td>
+                    <td style={{ padding: '9px 12px', fontSize: 13, color: '#f0e8d8' }}>{p.nom}{p.millesime ? ` ${p.millesime}` : ''}</td>
+                    <td style={{ padding: '9px 12px' }}><span style={{ color: CDOT[p.couleur] || '#888', fontSize: 11 }}>● {CLABEL[p.couleur] || p.couleur}</span></td>
                     <td style={{ padding: '9px 12px', fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>{p.millesime || '—'}</td>
-                    <td style={{ padding: '9px 12px', fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>{prixAchat ? `${prixAchat.toFixed(2)} €` : '—'}</td>
+                    <td style={{ padding: '9px 12px', fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>{p.prix_achat_ht ? `${parseFloat(p.prix_achat_ht).toFixed(2)} €` : '—'}</td>
                     <td style={{ padding: '9px 12px', fontSize: 12, color: '#c9a96e' }}>{p.prix_vente_ttc ? `${parseFloat(p.prix_vente_ttc).toFixed(2)} €` : '—'}</td>
-                    <td style={{ padding: '9px 12px' }}>
-                      <span style={{ fontSize: 13, color: stockSrc === 0 ? '#c96e6e' : stockSrc <= 3 ? '#c9b06e' : '#6ec96e', fontFamily: 'Georgia, serif' }}>{stockSrc}</span>
-                    </td>
+                    <td style={{ padding: '9px 12px' }}><span style={{ fontSize: 13, color: stockSrc === 0 ? '#c96e6e' : stockSrc <= 3 ? '#c9b06e' : '#6ec96e', fontFamily: 'Georgia, serif' }}>{stockSrc}</span></td>
                     <td style={{ padding: '9px 12px', fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>{stockTotal}</td>
-                    {isInterSociete && <td style={{ padding: '9px 12px', fontSize: 12, color: '#c96e6e' }}>{prixTransfert ? `${prixTransfert.toFixed(4)} €` : '—'}</td>}
-                    <td style={{ padding: '9px 12px' }} onClick={e => e.stopPropagation()}>
-                      {isSelected && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                          <button onClick={() => updateQte(p.id, (selected[p.id] || 1) - 1)} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: '#e8e0d5', width: 22, height: 22, borderRadius: 3, cursor: 'pointer', fontSize: 13 }}>−</button>
-                          <input type="number" min={1} value={selected[p.id] || 1}
-                            onChange={e => updateQte(p.id, parseInt(e.target.value) || 1)}
-                            style={{ width: 44, background: 'rgba(201,169,110,0.08)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 3, color: '#c9a96e', fontSize: 13, padding: '2px 4px', textAlign: 'center' as const }} />
-                          <button onClick={() => updateQte(p.id, (selected[p.id] || 1) + 1)} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: '#e8e0d5', width: 22, height: 22, borderRadius: 3, cursor: 'pointer', fontSize: 13 }}>+</button>
-                        </div>
-                      )}
-                    </td>
                   </tr>
                 )
               })}
             </tbody>
           </table>
         )}
+
         {/* Pagination */}
-        {produitsFiltres.length > PAGE_SIZE_TRANSFERT && (
+        {nbPages > 1 && (
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 20px', borderTop: '0.5px solid rgba(255,255,255,0.06)', background: '#0d0a08' }}>
-            <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>
-              {pageProduits * PAGE_SIZE_TRANSFERT + 1}–{Math.min((pageProduits + 1) * PAGE_SIZE_TRANSFERT, produitsFiltres.length)} sur {produitsFiltres.length}
-            </span>
+            <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>{pageProduits * PAGE_SIZE_T + 1}–{Math.min((pageProduits + 1) * PAGE_SIZE_T, produitsFiltres.length)} sur {produitsFiltres.length}</span>
             <div style={{ display: 'flex', gap: 6 }}>
-              <button onClick={() => setPageProduits(0)} disabled={pageProduits === 0} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: pageProduits === 0 ? 'rgba(232,224,213,0.2)' : 'rgba(232,224,213,0.5)', borderRadius: 4, padding: '5px 10px', fontSize: 11, cursor: pageProduits === 0 ? 'default' : 'pointer' }}>«</button>
-              <button onClick={() => setPageProduits(p => Math.max(0, p - 1))} disabled={pageProduits === 0} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: pageProduits === 0 ? 'rgba(232,224,213,0.2)' : 'rgba(232,224,213,0.5)', borderRadius: 4, padding: '5px 12px', fontSize: 11, cursor: pageProduits === 0 ? 'default' : 'pointer' }}>‹</button>
-              {Array.from({ length: Math.ceil(produitsFiltres.length / PAGE_SIZE_TRANSFERT) }, (_, i) => i).map(i => (
+              {[['«', 0], ['‹', pageProduits - 1]].map(([label, target]) => (
+                <button key={label} onClick={() => setPageProduits(Number(target))} disabled={pageProduits === 0}
+                  style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: pageProduits === 0 ? 'rgba(232,224,213,0.2)' : 'rgba(232,224,213,0.5)', borderRadius: 4, padding: '5px 10px', fontSize: 12, cursor: pageProduits === 0 ? 'default' : 'pointer' }}>{label}</button>
+              ))}
+              {Array.from({ length: nbPages }, (_, i) => i).map(i => (
                 <button key={i} onClick={() => setPageProduits(i)} style={{ background: pageProduits === i ? '#c9a96e' : 'transparent', color: pageProduits === i ? '#0d0a08' : 'rgba(232,224,213,0.4)', border: `0.5px solid ${pageProduits === i ? '#c9a96e' : 'rgba(255,255,255,0.1)'}`, borderRadius: 4, padding: '5px 10px', fontSize: 11, cursor: 'pointer', fontWeight: pageProduits === i ? 600 : 400 }}>{i + 1}</button>
               ))}
-              <button onClick={() => setPageProduits(p => Math.min(Math.ceil(produitsFiltres.length / PAGE_SIZE_TRANSFERT) - 1, p + 1))} disabled={pageProduits >= Math.ceil(produitsFiltres.length / PAGE_SIZE_TRANSFERT) - 1} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: pageProduits >= Math.ceil(produitsFiltres.length / PAGE_SIZE_TRANSFERT) - 1 ? 'rgba(232,224,213,0.2)' : 'rgba(232,224,213,0.5)', borderRadius: 4, padding: '5px 12px', fontSize: 11, cursor: pageProduits >= Math.ceil(produitsFiltres.length / PAGE_SIZE_TRANSFERT) - 1 ? 'default' : 'pointer' }}>›</button>
-              <button onClick={() => setPageProduits(Math.ceil(produitsFiltres.length / PAGE_SIZE_TRANSFERT) - 1)} disabled={pageProduits >= Math.ceil(produitsFiltres.length / PAGE_SIZE_TRANSFERT) - 1} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: pageProduits >= Math.ceil(produitsFiltres.length / PAGE_SIZE_TRANSFERT) - 1 ? 'rgba(232,224,213,0.2)' : 'rgba(232,224,213,0.5)', borderRadius: 4, padding: '5px 10px', fontSize: 11, cursor: pageProduits >= Math.ceil(produitsFiltres.length / PAGE_SIZE_TRANSFERT) - 1 ? 'default' : 'pointer' }}>»</button>
+              {[['›', pageProduits + 1], ['»', nbPages - 1]].map(([label, target]) => (
+                <button key={label} onClick={() => setPageProduits(Number(target))} disabled={pageProduits >= nbPages - 1}
+                  style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: pageProduits >= nbPages - 1 ? 'rgba(232,224,213,0.2)' : 'rgba(232,224,213,0.5)', borderRadius: 4, padding: '5px 10px', fontSize: 12, cursor: pageProduits >= nbPages - 1 ? 'default' : 'pointer' }}>{label}</button>
+              ))}
             </div>
           </div>
         )}
       </div>
+    </div>
+  )
 
-      {/* Footer récap */}
-      {nbSelected > 0 && (
-        <div style={{ padding: '12px 20px', borderTop: '0.5px solid rgba(255,255,255,0.07)', background: '#100d0a', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' as const }}>
-          <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>
-            {Object.entries(selected).map(([pid, qte]) => {
-              const p = produits.find(x => x.id === pid)
-              return p ? <span key={pid} style={{ marginRight: 12 }}>{p.nom}{p.millesime ? ` ${p.millesime}` : ''} × {qte}</span> : null
-            })}
+  // ── ÉTAPE 3 : Ajustement des quantités ───────────────────────
+  return (
+    <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}>
+      <div style={{ background: '#18130e', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 8, width: '100%', maxWidth: 680, maxHeight: '90vh', display: 'flex', flexDirection: 'column' as const }}>
+        {/* Header */}
+        <div style={{ padding: '20px 24px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', gap: 14 }}>
+          <button onClick={() => setStep('selection')} style={{ background: 'transparent', border: 'none', color: '#c9a96e', fontSize: 18, cursor: 'pointer' }}>←</button>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 10, letterSpacing: 1.5, color: '#c9a96e', marginBottom: 3 }}>ÉTAPE 3 / 3 — QUANTITÉS</div>
+            <div style={{ fontSize: 14, color: '#f0e8d8' }}>{coches.size} produit{coches.size > 1 ? 's' : ''} sélectionné{coches.size > 1 ? 's' : ''}</div>
           </div>
-          <button onClick={handleCreate} disabled={saving}
-            style={{ marginLeft: 'auto', background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '10px 24px', fontSize: 13, cursor: 'pointer', fontWeight: 600, opacity: saving ? 0.7 : 1 }}>
-            {saving ? '⟳ Création...' : `✓ Créer la demande (${nbSelected} produit${nbSelected > 1 ? 's' : ''})`}
+          <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.4)', fontSize: 18, cursor: 'pointer' }}>✕</button>
+        </div>
+
+        {error && <div style={{ margin: '12px 24px 0', background: 'rgba(201,110,110,0.1)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 4, padding: '10px 14px', fontSize: 12, color: '#c96e6e' }}>{error}</div>}
+
+        {/* Liste des produits avec quantités */}
+        <div style={{ flex: 1, overflowY: 'auto' as const, padding: '16px 24px' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' as const }}>
+            <thead>
+              <tr style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
+                {['Produit', 'Stk source', isInterSociete ? 'Prix transf. HT' : 'PA HT', 'Quantité demandée', ''].map(h => (
+                  <th key={h} style={{ padding: '8px 10px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', fontWeight: 400 }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {produitsCochesData.map((p, i) => {
+                const stockSrc = getStock(p.id, srcCol)
+                const prixAchat = p.prix_achat_ht ? parseFloat(p.prix_achat_ht) : null
+                const prixTransfert = isInterSociete && prixAchat ? Math.round(prixAchat * MARGE_INTERSOCIETE * 10000) / 10000 : null
+                const qte = quantites[p.id] || 1
+                const depasse = qte > stockSrc && stockSrc > 0
+                return (
+                  <tr key={p.id} style={{ borderBottom: i < produitsCochesData.length - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none' }}>
+                    <td style={{ padding: '10px 10px' }}>
+                      <div style={{ fontSize: 13, color: '#f0e8d8' }}>{p.nom}{p.millesime ? ` ${p.millesime}` : ''}</div>
+                      <div style={{ fontSize: 11, color: CDOT[p.couleur] || '#888', marginTop: 2 }}>● {CLABEL[p.couleur] || p.couleur}</div>
+                    </td>
+                    <td style={{ padding: '10px 10px', fontSize: 13, color: stockSrc === 0 ? '#c96e6e' : stockSrc <= 3 ? '#c9b06e' : '#6ec96e', fontFamily: 'Georgia, serif' }}>{stockSrc}</td>
+                    <td style={{ padding: '10px 10px', fontSize: 12, color: isInterSociete ? '#c96e6e' : 'rgba(232,224,213,0.5)' }}>
+                      {isInterSociete ? (prixTransfert ? `${prixTransfert.toFixed(4)} €` : '—') : (prixAchat ? `${prixAchat.toFixed(2)} €` : '—')}
+                    </td>
+                    <td style={{ padding: '10px 10px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <button onClick={() => setQuantites(q => ({ ...q, [p.id]: Math.max(1, (q[p.id] || 1) - 1) }))} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: '#e8e0d5', width: 28, height: 28, borderRadius: 3, cursor: 'pointer', fontSize: 16 }}>−</button>
+                        <input type="number" min={1} value={qte}
+                          onChange={e => setQuantites(q => ({ ...q, [p.id]: parseInt(e.target.value) || 1 }))}
+                          style={{ width: 60, background: depasse ? 'rgba(201,176,110,0.08)' : 'rgba(255,255,255,0.06)', border: `0.5px solid ${depasse ? 'rgba(201,176,110,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 3, color: depasse ? '#c9b06e' : '#e8e0d5', fontSize: 15, padding: '4px 6px', textAlign: 'center' as const }} />
+                        <button onClick={() => setQuantites(q => ({ ...q, [p.id]: (q[p.id] || 1) + 1 }))} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: '#e8e0d5', width: 28, height: 28, borderRadius: 3, cursor: 'pointer', fontSize: 16 }}>+</button>
+                      </div>
+                      {depasse && <div style={{ fontSize: 10, color: '#c9b06e', marginTop: 3 }}>⚠ Dépasse le stock affiché</div>}
+                    </td>
+                    <td style={{ padding: '10px 10px' }}>
+                      <button onClick={() => { setCoches(prev => { const n = new Set(prev); n.delete(p.id); return n }); setQuantites(q => { const n = { ...q }; delete n[p.id]; return n }) }}
+                        style={{ background: 'transparent', border: 'none', color: '#c96e6e', cursor: 'pointer', fontSize: 16 }}>✕</button>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: '16px 24px', borderTop: '0.5px solid rgba(255,255,255,0.07)', display: 'flex', gap: 10 }}>
+          <button onClick={() => setStep('selection')} style={{ flex: 1, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '11px', fontSize: 12, cursor: 'pointer' }}>← Modifier la sélection</button>
+          <button onClick={handleCreate} disabled={saving || coches.size === 0}
+            style={{ flex: 2, background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '11px', fontSize: 13, cursor: 'pointer', fontWeight: 600, opacity: saving ? 0.7 : 1 }}>
+            {saving ? '⟳ Création...' : modeAjout ? `✓ Ajouter ${coches.size} produit${coches.size > 1 ? 's' : ''} au transfert` : `✓ Créer la demande (${coches.size} produit${coches.size > 1 ? 's' : ''})`}
           </button>
         </div>
-      )}
+      </div>
     </div>
   )
 }
+
 
 
 // ── Vue détail transfert (3 étapes) ──────────────────────────
@@ -1633,6 +1673,7 @@ function VueDetailTransfert({ transfert, sites, onBack, onRefresh }: {
   const [loading, setLoading] = useState(true)
   const [processing, setProcessing] = useState(false)
   const [error, setError] = useState('')
+  const [showAjoutProduits, setShowAjoutProduits] = useState(false)
   const [qteExpediees, setQteExpediees] = useState<Record<string, number>>({})
   const [qteRecues, setQteRecues] = useState<Record<string, number>>({})
 
@@ -1853,7 +1894,22 @@ function VueDetailTransfert({ transfert, sites, onBack, onRefresh }: {
         <span style={{ background: `${statutColor[transfert.statut]}22`, color: statutColor[transfert.statut], fontSize: 11, padding: '4px 12px', borderRadius: 3, letterSpacing: 1, textTransform: 'uppercase' as const }}>
           {statutLabel[transfert.statut]}
         </span>
+        {transfert.statut === 'demande' && (
+          <button onClick={() => setShowAjoutProduits(true)}
+            style={{ background: 'rgba(201,169,110,0.1)', border: '0.5px solid rgba(201,169,110,0.3)', color: '#c9a96e', borderRadius: 4, padding: '8px 14px', fontSize: 11, cursor: 'pointer' }}>
+            + Ajouter des produits
+          </button>
+        )}
       </div>
+
+      {showAjoutProduits && (
+        <ModalNouveauTransfert
+          sites={sites}
+          transfertExistant={transfert}
+          onCreated={() => { setShowAjoutProduits(false); load() }}
+          onClose={() => setShowAjoutProduits(false)}
+        />
+      )}
 
       {/* Stepper */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 0, marginBottom: 28 }}>
