@@ -2469,6 +2469,7 @@ function AdminPage() {
     { label: 'Import',        href: '/admin/import',        icon: '↑',  groupe: 'gestion' },
     { label: 'Congés',        href: '/admin/conges',        icon: '🏖', groupe: 'rh' },
     { label: 'Planning',      href: '/admin/rh/planning',   icon: '📅', groupe: 'rh' },
+    { label: 'Documents RH',  href: '/admin/rh/documents',  icon: '📂', groupe: 'rh' },
   ]
 
   const inputStyle = {
