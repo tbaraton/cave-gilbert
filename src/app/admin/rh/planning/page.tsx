@@ -49,7 +49,7 @@ function calcHeures(s: Shift, profil: Profil): number {
   return (toMin(mFin) - toMin(mDeb) + toMin(aFin) - toMin(aDeb)) / 60
 }
 function fmtH(h: number) { return h > 0 ? `${Math.floor(h)}h${h % 1 ? '30' : ''}` : '—' }
-function isoDate(d: Date) { return d.toISOString().split('T')[0] }
+function isoDate(d: Date) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` }
 function getMonday(d: Date) { const dd = new Date(d); const dow = dd.getDay(); const diff = (dow === 0 ? -6 : 1 - dow); dd.setDate(dd.getDate() + diff); dd.setHours(0,0,0,0); return dd }
 
 // ── Login PIN ────────────────────────────────────────────────
@@ -407,7 +407,7 @@ function PlanningAdmin({ admin }: { admin: User }) {
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 10, alignItems: 'center' }}>
           {copyWeekMsg && <span style={{ fontSize: 12, color: '#6ec96e' }}>{copyWeekMsg}</span>}
           {vue === 'semaine' && <button onClick={copierSemainePrecedente} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.15)', color: 'rgba(232,224,213,0.5)', borderRadius: 4, padding: '7px 14px', fontSize: 11, cursor: 'pointer' }}>↻ Copier sem. précédente</button>}
-          <a href="/admin" style={{ fontSize: 11, color: 'rgba(232,224,213,0.3)', textDecoration: 'none' }}>← Admin</a>
+          <a href="/admin" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'rgba(232,224,213,0.6)', textDecoration: 'none', background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 6, padding: '8px 14px' }}>← Retour admin</a>
         </div>
       </div>
 
@@ -577,22 +577,39 @@ function PlanningAdmin({ admin }: { admin: User }) {
 
 // ── Vue employé planning ──────────────────────────────────────
 function PlanningEmploye({ user }: { user: User }) {
+  const [vue, setVue] = useState<'semaine' | 'mois'>('semaine')
   const [profil, setProfil] = useState<Profil | null>(null)
   const [shifts, setShifts] = useState<Shift[]>([])
   const [semaine, setSemaine] = useState(getMonday(new Date()))
+  const [moisRef, setMoisRef] = useState({ y: new Date().getFullYear(), m: new Date().getMonth() })
   const [loading, setLoading] = useState(true)
-  const joursSemaine = Array.from({ length: 7 }, (_, i) => { const d = new Date(semaine); d.setDate(d.getDate() + i); return d })
   const today = isoDate(new Date())
+
+  const joursSemaine = Array.from({ length: 7 }, (_, i) => { const d = new Date(semaine); d.setDate(d.getDate() + i); return d })
 
   useEffect(() => {
     (async () => {
       const { data: p } = await supabase.from('employe_profils').select('*').eq('user_id', user.id).maybeSingle()
       setProfil(p)
-      const debut = isoDate(semaine); const fin = isoDate(joursSemaine[6])
-      const { data: s } = await supabase.from('planning_shifts').select('*').eq('user_id', user.id).gte('date', debut).lte('date', fin)
-      setShifts(s || []); setLoading(false)
+      setLoading(false)
     })()
-  }, [semaine])
+  }, [user.id])
+
+  // Charger les shifts selon la vue
+  useEffect(() => {
+    (async () => {
+      let debut: string, fin: string
+      if (vue === 'semaine') {
+        debut = isoDate(semaine); fin = isoDate(joursSemaine[6])
+      } else {
+        const first = new Date(moisRef.y, moisRef.m, 1)
+        const last = new Date(moisRef.y, moisRef.m + 1, 0)
+        debut = isoDate(first); fin = isoDate(last)
+      }
+      const { data: s } = await supabase.from('planning_shifts').select('*').eq('user_id', user.id).gte('date', debut).lte('date', fin)
+      setShifts(s || [])
+    })()
+  }, [vue, semaine, moisRef.y, moisRef.m, user.id])
 
   const getShift = (date: string) => shifts.find(s => s.date === date)
   const getDefaultType = (date: string): string => {
@@ -604,75 +621,161 @@ function PlanningEmploye({ user }: { user: User }) {
     return 'travail'
   }
 
-  const totalSemaine = joursSemaine.reduce((acc, d) => {
-    const date = isoDate(d); const shift = getShift(date)
+  const calcDayHeures = (date: string, shift?: Shift): number => {
     const type = shift?.type || getDefaultType(date)
-    if (type !== 'travail') return acc
-    const s = shift || { user_id: user.id, date, type: 'travail', matin_debut: profil?.horaire_matin_debut, matin_fin: profil?.horaire_matin_fin, aprem_debut: profil?.horaire_aprem_debut, aprem_fin: profil?.horaire_aprem_fin }
-    return acc + calcHeures(s as Shift, profil as Profil)
-  }, 0)
+    if (type !== 'travail') return 0
+    const h = getHorairesJour(profil as Profil, date)
+    const s = shift || { user_id: user.id, date, type: 'travail', matin_debut: h.matin_debut, matin_fin: h.matin_fin, aprem_debut: h.aprem_debut, aprem_fin: h.aprem_fin }
+    return calcHeures(s as Shift, profil as Profil)
+  }
+
+  const totalSemaine = joursSemaine.reduce((acc, d) => acc + calcDayHeures(isoDate(d), getShift(isoDate(d))), 0)
+
+  // Pour la vue mois
+  const moisJours = (() => {
+    const first = new Date(moisRef.y, moisRef.m, 1)
+    const last = new Date(moisRef.y, moisRef.m + 1, 0)
+    const startDow = (first.getDay() + 6) % 7 // lundi=0
+    const days = Array.from({ length: last.getDate() }, (_, i) => i + 1)
+    const pad = Array.from({ length: startDow })
+    return { days, pad, first, last }
+  })()
+  const totalMois = (() => {
+    let total = 0
+    for (let day = 1; day <= moisJours.last.getDate(); day++) {
+      const date = `${moisRef.y}-${String(moisRef.m+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`
+      total += calcDayHeures(date, getShift(date))
+    }
+    return total
+  })()
 
   if (loading) return <div style={{ minHeight: '100vh', background: '#0d0a08', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(232,224,213,0.3)' }}>⟳ Chargement...</div>
 
+  const btnNav = { background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)', color: '#e8e0d5', borderRadius: 4, padding: '7px 12px', fontSize: 13, cursor: 'pointer' }
+
   return (
     <div style={{ minHeight: '100vh', background: '#0d0a08', fontFamily: "'DM Sans', system-ui, sans-serif", color: '#e8e0d5' }}>
-      <div style={{ padding: '16px 20px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', background: '#100d0a', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      {/* Header */}
+      <div style={{ padding: '16px 20px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', background: '#100d0a', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' as const, gap: 12 }}>
         <div>
           <div style={{ fontFamily: 'Georgia, serif', fontSize: 18, color: '#c9a96e' }}>Mon planning — {user.prenom}</div>
           <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)' }}>{SITE_NOMS[profil?.site_id || '']}</div>
         </div>
-        <a href="/admin/conges" style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', textDecoration: 'none' }}>Mes congés →</a>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <a href="/admin/conges" style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', textDecoration: 'none' }}>Mes congés →</a>
+          <a href="/admin" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'rgba(232,224,213,0.6)', textDecoration: 'none', background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 6, padding: '8px 14px' }}>← Retour</a>
+        </div>
       </div>
 
-      <div style={{ padding: '20px' }}>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 20, justifyContent: 'center' }}>
-          <button onClick={() => setSemaine(d => { const nd = new Date(d); nd.setDate(nd.getDate()-7); return nd })} style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)', color: '#e8e0d5', borderRadius: 4, padding: '7px 14px', fontSize: 14, cursor: 'pointer' }}>‹</button>
-          <span style={{ fontSize: 13, color: '#f0e8d8' }}>
-            {joursSemaine[0].toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })} — {joursSemaine[6].toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}
-          </span>
-          <button onClick={() => setSemaine(d => { const nd = new Date(d); nd.setDate(nd.getDate()+7); return nd })} style={{ background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)', color: '#e8e0d5', borderRadius: 4, padding: '7px 14px', fontSize: 14, cursor: 'pointer' }}>›</button>
+      <div style={{ padding: '20px', maxWidth: 1000, margin: '0 auto' }}>
+        {/* Toggle vue + Navigation */}
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap' as const }}>
+          <div style={{ display: 'flex', background: 'rgba(255,255,255,0.04)', borderRadius: 6, border: '0.5px solid rgba(255,255,255,0.1)', overflow: 'hidden' }}>
+            {[['semaine','Semaine'],['mois','Mois']].map(([v,l]) => (
+              <button key={v} onClick={() => setVue(v as any)} style={{ background: vue === v ? 'rgba(201,169,110,0.15)' : 'transparent', border: 'none', color: vue === v ? '#c9a96e' : 'rgba(232,224,213,0.4)', padding: '7px 18px', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>{l}</button>
+            ))}
+          </div>
+
+          {vue === 'semaine' ? (
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <button onClick={() => setSemaine(d => { const nd = new Date(d); nd.setDate(nd.getDate()-7); return nd })} style={btnNav}>‹</button>
+              <button onClick={() => setSemaine(getMonday(new Date()))} style={{ ...btnNav, fontSize: 11, color: '#c9a96e', borderColor: 'rgba(201,169,110,0.3)' }}>Aujourd'hui</button>
+              <span style={{ fontSize: 13, color: '#f0e8d8', minWidth: 200, textAlign: 'center' as const }}>
+                {joursSemaine[0].toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })} — {joursSemaine[6].toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}
+              </span>
+              <button onClick={() => setSemaine(d => { const nd = new Date(d); nd.setDate(nd.getDate()+7); return nd })} style={btnNav}>›</button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <button onClick={() => setMoisRef(r => r.m === 0 ? { y: r.y-1, m: 11 } : { y: r.y, m: r.m-1 })} style={btnNav}>‹</button>
+              <span style={{ fontSize: 13, color: '#f0e8d8', minWidth: 160, textAlign: 'center' as const, textTransform: 'capitalize' as const }}>
+                {new Date(moisRef.y, moisRef.m).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
+              </span>
+              <button onClick={() => setMoisRef(r => r.m === 11 ? { y: r.y+1, m: 0 } : { y: r.y, m: r.m+1 })} style={btnNav}>›</button>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>Total :</div>
+            <div style={{ fontSize: 18, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{fmtH(vue === 'semaine' ? totalSemaine : totalMois)}</div>
+          </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 10, marginBottom: 16, justifyContent: 'flex-end', alignItems: 'center' }}>
-          <div style={{ fontSize: 13, color: 'rgba(232,224,213,0.5)' }}>Total semaine :</div>
-          <div style={{ fontSize: 20, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{fmtH(totalSemaine)}</div>
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
-          {joursSemaine.map((d, i) => {
-            const date = isoDate(d); const shift = getShift(date)
-            const type = shift?.type || getDefaultType(date)
-            const { color, bg, icon, label } = TYPES_SHIFT[type] || TYPES_SHIFT.repos
-            const isToday = date === today
-            const dow = d.getDay(); const isWE = dow === 0 || dow === 1
-            const h = type === 'travail' ? calcHeures(shift || { user_id: user.id, date, type: 'travail', matin_debut: profil?.horaire_matin_debut, matin_fin: profil?.horaire_matin_fin, aprem_debut: profil?.horaire_aprem_debut, aprem_fin: profil?.horaire_aprem_fin }, profil as Profil) : 0
-            return (
-              <div key={i} style={{ background: isWE && type === 'repos' ? 'rgba(255,255,255,0.01)' : bg, border: `0.5px solid ${isToday ? '#c9a96e' : type !== 'repos' ? color + '40' : 'rgba(255,255,255,0.05)'}`, borderRadius: 8, padding: '14px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', opacity: isWE ? 0.5 : 1 }}>
-                <div>
-                  <div style={{ fontSize: 13, color: isToday ? '#c9a96e' : '#f0e8d8', fontWeight: isToday ? 700 : 400 }}>
-                    {JOURS_LONG[d.getDay()]} {d.getDate()}
-                    {isToday && <span style={{ fontSize: 10, background: 'rgba(201,169,110,0.2)', color: '#c9a96e', borderRadius: 3, padding: '2px 6px', marginLeft: 8 }}>Aujourd'hui</span>}
-                  </div>
-                  {type === 'travail' && (
-                    <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)', marginTop: 4 }}>
-                      {shift?.matin_debut || profil?.horaire_matin_debut} – {shift?.matin_fin || profil?.horaire_matin_fin} &nbsp;·&nbsp; {shift?.aprem_debut || profil?.horaire_aprem_debut} – {shift?.aprem_fin || profil?.horaire_aprem_fin}
+        {/* ── VUE SEMAINE ── */}
+        {vue === 'semaine' && (
+          <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
+            {joursSemaine.map((d, i) => {
+              const date = isoDate(d); const shift = getShift(date)
+              const type = shift?.type || getDefaultType(date)
+              const { color, bg, icon, label } = TYPES_SHIFT[type] || TYPES_SHIFT.repos
+              const isToday = date === today
+              const dow = d.getDay(); const isWE = dow === 0 || dow === 1
+              const h = calcDayHeures(date, shift)
+              const horaires = getHorairesJour(profil as Profil, date)
+              return (
+                <div key={i} style={{ background: isWE && type === 'repos' ? 'rgba(255,255,255,0.01)' : bg, border: `0.5px solid ${isToday ? '#c9a96e' : type !== 'repos' ? color + '40' : 'rgba(255,255,255,0.05)'}`, borderRadius: 8, padding: '14px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', opacity: isWE ? 0.5 : 1 }}>
+                  <div>
+                    <div style={{ fontSize: 13, color: isToday ? '#c9a96e' : '#f0e8d8', fontWeight: isToday ? 700 : 400 }}>
+                      {JOURS_LONG[d.getDay()]} {d.getDate()}
+                      {isToday && <span style={{ fontSize: 10, background: 'rgba(201,169,110,0.2)', color: '#c9a96e', borderRadius: 3, padding: '2px 6px', marginLeft: 8 }}>Aujourd'hui</span>}
                     </div>
-                  )}
-                  {shift?.note && <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', marginTop: 2 }}>{shift.note}</div>}
+                    {type === 'travail' && (
+                      <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)', marginTop: 4 }}>
+                        {shift?.matin_debut || horaires.matin_debut} – {shift?.matin_fin || horaires.matin_fin} &nbsp;·&nbsp; {shift?.aprem_debut || horaires.aprem_debut} – {shift?.aprem_fin || horaires.aprem_fin}
+                      </div>
+                    )}
+                    {shift?.note && <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', marginTop: 2 }}>{shift.note}</div>}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    {type === 'travail' && <div style={{ fontSize: 18, color, fontFamily: 'Georgia, serif' }}>{fmtH(h)}</div>}
+                    <div style={{ fontSize: 18, color }}>{icon}</div>
+                    {type !== 'travail' && <div style={{ fontSize: 12, color }}>{label}</div>}
+                  </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  {type === 'travail' && <div style={{ fontSize: 18, color, fontFamily: 'Georgia, serif' }}>{fmtH(h)}</div>}
-                  <div style={{ fontSize: 18, color }}>{icon}</div>
-                  {type !== 'travail' && <div style={{ fontSize: 12, color }}>{label}</div>}
-                </div>
-              </div>
-            )
-          })}
-        </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* ── VUE MOIS ── */}
+        {vue === 'mois' && (
+          <div style={{ background: '#18130e', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 8, padding: '20px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 6, marginBottom: 12 }}>
+              {['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'].map(j => <div key={j} style={{ fontSize: 10, color: 'rgba(232,224,213,0.35)', textAlign: 'center' as const, padding: '6px 0', letterSpacing: 1.5 }}>{j}</div>)}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 6 }}>
+              {moisJours.pad.map((_,i) => <div key={`p${i}`} />)}
+              {moisJours.days.map(day => {
+                const date = `${moisRef.y}-${String(moisRef.m+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`
+                const shift = getShift(date)
+                const type = shift?.type || getDefaultType(date)
+                const { color, bg, icon } = TYPES_SHIFT[type] || TYPES_SHIFT.repos
+                const isToday = date === today
+                const dow = new Date(date + 'T12:00:00').getDay()
+                const isWE = dow === 0 || dow === 1
+                const h = calcDayHeures(date, shift)
+                return (
+                  <div key={day} style={{
+                    background: isToday ? 'rgba(201,169,110,0.15)' : type !== 'repos' ? bg : isWE ? 'rgba(255,255,255,0.01)' : 'rgba(255,255,255,0.02)',
+                    border: `0.5px solid ${isToday ? '#c9a96e' : type !== 'repos' ? color + '30' : 'rgba(255,255,255,0.04)'}`,
+                    borderRadius: 6, padding: '8px 4px', minHeight: 64,
+                    textAlign: 'center' as const,
+                    opacity: isWE && type === 'repos' ? 0.35 : 1,
+                  }}>
+                    <div style={{ fontSize: 11, color: isToday ? '#c9a96e' : 'rgba(232,224,213,0.5)', marginBottom: 4, fontWeight: isToday ? 700 : 400 }}>{day}</div>
+                    <div style={{ fontSize: 13, color }}>{icon}</div>
+                    {type === 'travail' && <div style={{ fontSize: 9, color: 'rgba(232,224,213,0.5)', marginTop: 2 }}>{fmtH(h)}</div>}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
 }
+
 
 // ── Page principale ───────────────────────────────────────────
 export default function PlanningPage() {

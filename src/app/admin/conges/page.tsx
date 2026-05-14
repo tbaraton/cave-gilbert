@@ -17,7 +17,7 @@ const inpSmall = { background: 'rgba(255,255,255,0.04)', border: '0.5px solid rg
 
 // ── Jours fériés français ─────────────────────────────────────
 function getJoursFeries(year: number): Set<string> {
-  const fmt = (d: Date) => d.toISOString().split('T')[0]
+  const fmt = (d: Date) => d.toLocaleDateString('sv-SE')
   const fixed = [
     `${year}-01-01`, `${year}-05-01`, `${year}-05-08`,
     `${year}-07-14`, `${year}-08-15`, `${year}-11-01`,
@@ -40,13 +40,14 @@ function getJoursFeries(year: number): Set<string> {
 
 // Jours ouvrés Mardi→Samedi (planning Corentin & Hugo)
 function countJoursOuvres(debut: string, fin: string): number {
-  const feriesSet = new Set([...getJoursFeries(new Date(debut).getFullYear()), ...getJoursFeries(new Date(fin).getFullYear())])
+  // Parse dates as local noon to avoid UTC timezone shifting
+  const d = new Date(debut + 'T12:00:00')
+  const f = new Date(fin + 'T12:00:00')
+  const feriesSet = new Set([...getJoursFeries(d.getFullYear()), ...getJoursFeries(f.getFullYear())])
   let count = 0
-  const d = new Date(debut)
-  const f = new Date(fin)
   while (d <= f) {
     const day = d.getDay() // 0=dim,1=lun,...,6=sam
-    const iso = d.toISOString().split('T')[0]
+    const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
     if (day >= 2 && day <= 6 && !feriesSet.has(iso)) count++
     d.setDate(d.getDate() + 1)
   }
@@ -163,7 +164,7 @@ function CalendrierMois({ year, month, demandes, samedisOfferts, utilisateur, is
           const lundi = dow === 0
           const demandesJour = getDemandesForDay(day)
           const samediOff = dow === 5 && isSamediOffert(day)
-          const today = new Date().toISOString().split('T')[0] === iso
+          const _today = new Date(); const todayStr = `${_today.getFullYear()}-${String(_today.getMonth()+1).padStart(2,'0')}-${String(_today.getDate()).padStart(2,'0')}`; const today = todayStr === iso
 
           return (
             <div key={day} style={{
@@ -267,7 +268,7 @@ function VueAdmin({ admin }: { admin: User }) {
               {demandesEnAttente.length} demande{demandesEnAttente.length > 1 ? 's' : ''} en attente
             </div>
           )}
-          <a href="/admin" style={{ fontSize: 12, color: 'rgba(232,224,213,0.3)', textDecoration: 'none' }}>← Admin</a>
+          <a href="/admin" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'rgba(232,224,213,0.6)', textDecoration: 'none', background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 6, padding: '8px 14px' }}>← Retour admin</a>
         </div>
       </div>
 
@@ -460,7 +461,7 @@ function VueAdmin({ admin }: { admin: User }) {
 
                 {/* Compteurs par mois en cours */}
                 {salaries.filter(s => s.profil?.samedi_offert_par_mois > 0).map(s => {
-                  const moisCourant = new Date().toISOString().slice(0, 7)
+                  const _now = new Date(); const moisCourant = `${_now.getFullYear()}-${String(_now.getMonth()+1).padStart(2,'0')}`
                   const hDues = (s.profil?.heures_dues_par_samedi_offert || 7)
                   const hUtilisees = evenements.filter(e => e.user_id === s.id && e.mois_reference === moisCourant).reduce((acc, e) => acc + e.heures, 0)
                   const hRestantes = hDues - hUtilisees
@@ -523,7 +524,7 @@ function VueAdmin({ admin }: { admin: User }) {
 
 // ── Modal Nouvel événement ────────────────────────────────────
 function ModalNouvelEvenement({ salaries, onCreated, onClose }: { salaries: any[]; onCreated: () => void; onClose: () => void }) {
-  const [form, setForm] = useState({ user_id: salaries[0]?.id || '', date_evenement: new Date().toISOString().split('T')[0], heures: '', description: '', mois_reference: new Date().toISOString().slice(0, 7) })
+  const [form, setForm] = useState({ user_id: salaries[0]?.id || '', date_evenement: new Date().toLocaleDateString('sv-SE'), heures: '', description: '', mois_reference: (() => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}` })() })
   const [saving, setSaving] = useState(false)
 
   const handleSave = async () => {
@@ -629,7 +630,7 @@ function VueEmploye({ user }: { user: User }) {
   const pris = profil?.conges_pris || 0
   const restants = Math.max(0, acquis - pris)
 
-  const moisCourant = new Date().toISOString().slice(0, 7)
+  const _now = new Date(); const moisCourant = `${_now.getFullYear()}-${String(_now.getMonth()+1).padStart(2,'0')}`
   const hDues = profil?.heures_dues_par_samedi_offert || 7
   const hUtilisees = evenements.filter(e => e.mois_reference === moisCourant).reduce((acc, e) => acc + e.heures, 0)
   const hRestantes = hDues - hUtilisees
@@ -644,9 +645,12 @@ function VueEmploye({ user }: { user: User }) {
   return (
     <div style={{ minHeight: '100vh', background: '#0d0a08', fontFamily: "'DM Sans', system-ui, sans-serif", color: '#e8e0d5' }}>
       {/* Header */}
-      <div style={{ padding: '16px 20px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', background: '#100d0a' }}>
-        <div style={{ fontFamily: 'Georgia, serif', fontSize: 18, color: '#c9a96e' }}>Bonjour {user.prenom} 👋</div>
-        <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>Espace personnel · Congés & Planning</div>
+      <div style={{ padding: '16px 20px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', background: '#100d0a', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <div>
+          <div style={{ fontFamily: 'Georgia, serif', fontSize: 18, color: '#c9a96e' }}>Bonjour {user.prenom} 👋</div>
+          <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>Espace personnel · Congés</div>
+        </div>
+        <a href="/admin" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'rgba(232,224,213,0.6)', textDecoration: 'none', background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 6, padding: '8px 14px' }}>← Retour</a>
       </div>
 
       {/* Onglets */}
