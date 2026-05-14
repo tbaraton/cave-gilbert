@@ -1,14 +1,14 @@
 'use client'
 
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { createClient } from '@supabase/supabase-js'
+import { createBrowserClient } from '@supabase/ssr'
 
 // ============================================================
 // CAVE DE GILBERT — Interface Admin connectée à Supabase
 // src/app/admin/page.tsx
 // ============================================================
 
-const supabase = createClient(
+const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
@@ -2690,9 +2690,7 @@ function AdminPage() {
               )}
             </div>
           ))}
-          <div style={{ height: '0.5px', background: 'rgba(255,255,255,0.06)', margin: '10px 0' }} />
-          <div style={{ fontSize: 9, letterSpacing: 2, color: 'rgba(232,224,213,0.25)', padding: '4px 20px 8px', textTransform: 'uppercase' as const }}>Gestion</div>
-                    <NavGroup title="Gestion" items={navLinks.filter(l => l.groupe === 'gestion')} />
+          <NavGroup title="Gestion" items={navLinks.filter(l => l.groupe === 'gestion')} />
           <NavGroup title="Ressources Humaines" items={navLinks.filter(l => l.groupe === 'rh')} />
         </nav>
         <div style={{ padding: '16px 20px', borderTop: '0.5px solid rgba(255,255,255,0.06)' }}>
