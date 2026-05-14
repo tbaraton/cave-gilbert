@@ -6,7 +6,7 @@ const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env
 
 // ── Types ────────────────────────────────────────────────────
 type User = { id: string; prenom: string; nom: string; role: string; pin: string }
-type Profil = { user_id: string; horaire_matin_debut: string; horaire_matin_fin: string; horaire_aprem_debut: string; horaire_aprem_fin: string; jours_travail: number[]; samedi_offert_par_mois: number; site_id: string }
+type Profil = { user_id: string; horaire_matin_debut: string; horaire_matin_fin: string; horaire_aprem_debut: string; horaire_aprem_fin: string; jours_travail: number[]; samedi_offert_par_mois: number; site_id: string; horaires_speciaux?: Record<string, any> }
 type Shift = { id?: string; user_id: string; date: string; type: string; matin_debut?: string; matin_fin?: string; aprem_debut?: string; aprem_fin?: string; note?: string }
 type Demande = { user_id: string; date_debut: string; date_fin: string; statut: string; type: string }
 type SamediOffert = { user_id: string; date_samedi: string; statut: string }
@@ -29,12 +29,23 @@ const SITE_NOMS: Record<string, string> = {
 }
 
 function toMin(t: string) { const [h, m] = t.split(':').map(Number); return h * 60 + m }
+function getHorairesJour(profil: Profil, date: string) {
+  const dow = new Date(date + 'T12:00:00').getDay()
+  const sp = profil?.horaires_speciaux?.[String(dow)]
+  return {
+    matin_debut: sp?.matin_debut || profil?.horaire_matin_debut || '09:30',
+    matin_fin:   sp?.matin_fin   || profil?.horaire_matin_fin   || '13:00',
+    aprem_debut: sp?.aprem_debut || profil?.horaire_aprem_debut || '15:30',
+    aprem_fin:   sp?.aprem_fin   || profil?.horaire_aprem_fin   || '19:00',
+  }
+}
 function calcHeures(s: Shift, profil: Profil): number {
   if (s.type !== 'travail') return 0
-  const mDeb = s.matin_debut || profil.horaire_matin_debut || '09:30'
-  const mFin = s.matin_fin  || profil.horaire_matin_fin  || '13:00'
-  const aDeb = s.aprem_debut || profil.horaire_aprem_debut || '15:30'
-  const aFin = s.aprem_fin  || profil.horaire_aprem_fin  || '19:00'
+  const h = getHorairesJour(profil, s.date)
+  const mDeb = s.matin_debut || h.matin_debut
+  const mFin = s.matin_fin   || h.matin_fin
+  const aDeb = s.aprem_debut || h.aprem_debut
+  const aFin = s.aprem_fin   || h.aprem_fin
   return (toMin(mFin) - toMin(mDeb) + toMin(aFin) - toMin(aDeb)) / 60
 }
 function fmtH(h: number) { return h > 0 ? `${Math.floor(h)}h${h % 1 ? '30' : ''}` : '—' }
@@ -153,6 +164,92 @@ function ModalShift({ shift, profil, user, date, onSave, onClose }: {
   )
 }
 
+
+// ── Carte employé éditable ────────────────────────────────────
+function CarteEmploye({ emp, onSaved }: { emp: any; onSaved: () => void }) {
+  const [editing, setEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [form, setForm] = useState({
+    horaire_matin_debut:  emp.profil?.horaire_matin_debut  || '09:30',
+    horaire_matin_fin:    emp.profil?.horaire_matin_fin    || '13:00',
+    horaire_aprem_debut:  emp.profil?.horaire_aprem_debut  || '15:30',
+    horaire_aprem_fin:    emp.profil?.horaire_aprem_fin    || '19:00',
+    sam_matin_debut:  emp.profil?.horaires_speciaux?.['6']?.matin_debut  || '',
+    sam_matin_fin:    emp.profil?.horaires_speciaux?.['6']?.matin_fin    || '',
+    sam_aprem_debut:  emp.profil?.horaires_speciaux?.['6']?.aprem_debut  || '',
+    sam_aprem_fin:    emp.profil?.horaires_speciaux?.['6']?.aprem_fin    || '',
+    has_sam_special:  !!emp.profil?.horaires_speciaux?.['6'],
+  })
+  const inpS: any = { background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#e8e0d5', fontSize: 12, padding: '6px 8px', width: '100%', boxSizing: 'border-box' }
+  const lbl: any = { fontSize: 9, color: 'rgba(232,224,213,0.35)', display: 'block', marginBottom: 3 }
+
+  const handleSave = async () => {
+    setSaving(true)
+    const hs: any = {}
+    if (form.has_sam_special && form.sam_matin_debut) {
+      hs['6'] = { matin_debut: form.sam_matin_debut, matin_fin: form.sam_matin_fin, aprem_debut: form.sam_aprem_debut, aprem_fin: form.sam_aprem_fin }
+    }
+    await supabase.from('employe_profils').update({
+      horaire_matin_debut: form.horaire_matin_debut, horaire_matin_fin: form.horaire_matin_fin,
+      horaire_aprem_debut: form.horaire_aprem_debut, horaire_aprem_fin: form.horaire_aprem_fin,
+      horaires_speciaux: Object.keys(hs).length > 0 ? hs : {},
+    }).eq('user_id', emp.id)
+    setSaving(false); setEditing(false); onSaved()
+  }
+
+  return (
+    <div style={{ background: '#18130e', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 6, padding: '14px 18px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <div>
+          <div style={{ fontSize: 14, color: '#f0e8d8', fontWeight: 600 }}>{emp.prenom} {emp.nom}</div>
+          <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)', marginTop: 2 }}>{SITE_NOMS[emp.profil?.site_id] || ''}</div>
+        </div>
+        <button onClick={() => setEditing(e => !e)} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.12)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '4px 10px', fontSize: 10, cursor: 'pointer' }}>
+          {editing ? '✕ Fermer' : '✏ Modifier'}
+        </button>
+      </div>
+      {!editing ? (
+        <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', lineHeight: 1.9 }}>
+          <div>🌅 Mar–Ven : {emp.profil?.horaire_matin_debut}–{emp.profil?.horaire_matin_fin} / {emp.profil?.horaire_aprem_debut}–{emp.profil?.horaire_aprem_fin}</div>
+          {emp.profil?.horaires_speciaux?.['6']
+            ? <div>📅 Sam : {emp.profil.horaires_speciaux['6'].matin_debut}–{emp.profil.horaires_speciaux['6'].matin_fin} / {emp.profil.horaires_speciaux['6'].aprem_debut}–{emp.profil.horaires_speciaux['6'].aprem_fin}</div>
+            : <div>📅 Sam : mêmes horaires</div>}
+        </div>
+      ) : (
+        <div>
+          <div style={{ fontSize: 10, color: '#c9a96e', marginBottom: 8, letterSpacing: 1 }}>MAR–VEN</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
+            <div><label style={lbl}>Matin début</label><input type="time" value={form.horaire_matin_debut} onChange={e => setForm(f=>({...f,horaire_matin_debut:e.target.value}))} style={inpS}/></div>
+            <div><label style={lbl}>Matin fin</label><input type="time" value={form.horaire_matin_fin} onChange={e => setForm(f=>({...f,horaire_matin_fin:e.target.value}))} style={inpS}/></div>
+            <div><label style={lbl}>A-midi début</label><input type="time" value={form.horaire_aprem_debut} onChange={e => setForm(f=>({...f,horaire_aprem_debut:e.target.value}))} style={inpS}/></div>
+            <div><label style={lbl}>A-midi fin</label><input type="time" value={form.horaire_aprem_fin} onChange={e => setForm(f=>({...f,horaire_aprem_fin:e.target.value}))} style={inpS}/></div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, cursor: 'pointer' }} onClick={() => setForm(f=>({...f,has_sam_special:!f.has_sam_special}))}>
+            <div style={{ width: 14, height: 14, borderRadius: 3, border: `1.5px solid ${form.has_sam_special ? '#c9a96e' : 'rgba(255,255,255,0.2)'}`, background: form.has_sam_special ? '#c9a96e' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {form.has_sam_special && <span style={{ fontSize: 9, color: '#0d0a08', fontWeight: 700 }}>✓</span>}
+            </div>
+            <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.5)' }}>Horaires différents le samedi</span>
+          </div>
+          {form.has_sam_special && (
+            <>
+              <div style={{ fontSize: 10, color: '#c9a96e', marginBottom: 8, letterSpacing: 1 }}>SAMEDI</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
+                <div><label style={lbl}>Matin début</label><input type="time" value={form.sam_matin_debut} onChange={e => setForm(f=>({...f,sam_matin_debut:e.target.value}))} style={inpS}/></div>
+                <div><label style={lbl}>Matin fin</label><input type="time" value={form.sam_matin_fin} onChange={e => setForm(f=>({...f,sam_matin_fin:e.target.value}))} style={inpS}/></div>
+                <div><label style={lbl}>A-midi début</label><input type="time" value={form.sam_aprem_debut} onChange={e => setForm(f=>({...f,sam_aprem_debut:e.target.value}))} style={inpS}/></div>
+                <div><label style={lbl}>A-midi fin</label><input type="time" value={form.sam_aprem_fin} onChange={e => setForm(f=>({...f,sam_aprem_fin:e.target.value}))} style={inpS}/></div>
+              </div>
+            </>
+          )}
+          <button onClick={handleSave} disabled={saving} style={{ width: '100%', background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 6, padding: '10px', fontSize: 12, cursor: 'pointer', fontWeight: 600, opacity: saving ? 0.7 : 1 }}>
+            {saving ? '⟳' : '✓ Sauvegarder'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Planning principal ────────────────────────────────────────
 function PlanningAdmin({ admin }: { admin: User }) {
   const [vue, setVue] = useState<'semaine' | 'mois'>('semaine')
@@ -201,8 +298,10 @@ function PlanningAdmin({ admin }: { admin: User }) {
 
   const getDefaultType = (userId: string, date: string, profil: Profil): string => {
     const dow = new Date(date + 'T12:00:00').getDay()
+    if (dow === 0 || dow === 1) return 'repos' // Dimanche et Lundi toujours repos
     if (isConge(userId, date)) return 'conge'
-    const jours = profil?.jours_travail || [2,3,4,5,6]
+    const jours: number[] = Array.isArray(profil?.jours_travail) && profil.jours_travail.length > 0
+      ? profil.jours_travail : [2,3,4,5,6]
     if (!jours.includes(dow)) return 'repos'
     if (dow === 6 && isSamediOffert(userId, date)) return 'repos'
     return 'travail'
@@ -377,8 +476,8 @@ function PlanningAdmin({ admin }: { admin: User }) {
                                 </div>
                                 {type === 'travail' && (
                                   <div style={{ fontSize: 9, color: 'rgba(232,224,213,0.4)', lineHeight: 1.6 }}>
-                                    <div>{shift?.matin_debut || emp.profil?.horaire_matin_debut}–{shift?.matin_fin || emp.profil?.horaire_matin_fin}</div>
-                                    <div>{shift?.aprem_debut || emp.profil?.horaire_aprem_debut}–{shift?.aprem_fin || emp.profil?.horaire_aprem_fin}</div>
+                                    <div>{shift?.matin_debut || getHorairesJour(emp.profil, date).matin_debut}–{shift?.matin_fin || getHorairesJour(emp.profil, date).matin_fin}</div>
+                                    <div>{shift?.aprem_debut || getHorairesJour(emp.profil, date).aprem_debut}–{shift?.aprem_fin || getHorairesJour(emp.profil, date).aprem_fin}</div>
                                   </div>
                                 )}
                                 {isSamOff && <div style={{ fontSize: 8, color: '#c9b06e', marginTop: 2 }}>☀ Sam. offert</div>}
@@ -422,19 +521,7 @@ function PlanningAdmin({ admin }: { admin: User }) {
             {/* Infos employés */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12, marginTop: 20 }}>
               {employes.map(emp => (
-                <div key={emp.id} style={{ background: '#18130e', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 6, padding: '14px 18px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-                    <div>
-                      <div style={{ fontSize: 14, color: '#f0e8d8', fontWeight: 600 }}>{emp.prenom} {emp.nom}</div>
-                      <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)', marginTop: 2 }}>{SITE_NOMS[emp.profil?.site_id] || ''}</div>
-                    </div>
-                    <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>Mar→Sam</div>
-                  </div>
-                  <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', lineHeight: 1.8 }}>
-                    <div>🌅 Matin : {emp.profil?.horaire_matin_debut} – {emp.profil?.horaire_matin_fin}</div>
-                    <div>🌇 A-midi : {emp.profil?.horaire_aprem_debut} – {emp.profil?.horaire_aprem_fin}</div>
-                  </div>
-                </div>
+                <CarteEmploye key={emp.id} emp={emp} onSaved={load} />
               ))}
             </div>
           </>
@@ -510,7 +597,9 @@ function PlanningEmploye({ user }: { user: User }) {
   const getShift = (date: string) => shifts.find(s => s.date === date)
   const getDefaultType = (date: string): string => {
     const dow = new Date(date + 'T12:00:00').getDay()
-    const jours = profil?.jours_travail || [2,3,4,5,6]
+    if (dow === 0 || dow === 1) return 'repos'
+    const jours: number[] = Array.isArray(profil?.jours_travail) && profil.jours_travail.length > 0
+      ? profil.jours_travail : [2,3,4,5,6]
     if (!jours.includes(dow)) return 'repos'
     return 'travail'
   }

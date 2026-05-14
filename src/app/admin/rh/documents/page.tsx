@@ -69,43 +69,6 @@ function EcranLogin({ onLogin }: { onLogin: (u: User) => void }) {
   )
 }
 
-// ── Analyse IA ───────────────────────────────────────────────
-async function analyserFicheIa(doc: Document): Promise<any> {
-  const systemPrompt = `Tu es un expert en droit du travail français et en gestion de la paie. 
-Tu dois analyser des fiches de paie françaises et détecter les anomalies ou irrégularités légales.
-
-Réponds UNIQUEMENT en JSON avec cette structure exacte :
-{
-  "statut": "ok" | "anomalies",
-  "resume": "Résumé en 1-2 phrases",
-  "elements_verifies": [
-    { "element": "Nom de l'élément", "valeur": "Valeur trouvée", "ok": true/false, "commentaire": "..." }
-  ],
-  "anomalies": [
-    { "gravite": "critique" | "importante" | "mineure", "description": "Description claire", "reference_legale": "Article de loi si applicable" }
-  ],
-  "mentions_obligatoires": { "presentes": ["..."], "manquantes": ["..."] }
-}`
-
-  const userPrompt = `Analyse cette fiche de paie et vérifie :
-1. Présence de toutes les mentions obligatoires (R.3243-1 Code du travail) : nom/adresse employeur, SIRET, code NAF, convention collective, nom salarié, qualification, période, heures travaillées, salaire brut, cotisations salariales et patronales détaillées, net avant IR, montant net social, prélèvement à la source, net à payer, date de paiement, mention conservation sans limite
-2. Cohérence brut → net : vérifie que les calculs approximatifs tiennent la route (taux salarié ~22%, patronal ~42% du brut)
-3. SMIC : vérifier que le salaire net n'est pas inférieur au SMIC (1766.92€ brut/2024)
-4. Montant net social présent (obligatoire depuis juillet 2023)
-5. Prélèvement à la source mentionné
-
-Voici le contenu de la fiche : "${doc.nom}" pour la période ${doc.periode || 'non précisée'}.`
-
-  const response = await fetch('/api/analyser-paie', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ systemPrompt, userPrompt, fichierBase64: doc.fichier_base64 }),
-  })
-  if (!response.ok) throw new Error('Erreur API')
-  const data = await response.json()
-  return data
-}
-
 // ── Vue Admin documents ───────────────────────────────────────
 function VueDocumentsAdmin({ admin }: { admin: User }) {
   const [documents, setDocuments] = useState<Document[]>([])
@@ -160,32 +123,26 @@ function VueDocumentsAdmin({ admin }: { admin: User }) {
     setAnalysing(doc.id)
     await supabase.from('rh_documents').update({ analyse_statut: 'en_cours' }).eq('id', doc.id)
     try {
-      // Appel direct à Claude via l'API Anthropic
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
+      const response = await fetch('/api/analyser-paie', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 2000,
-          system: `Tu es un expert en droit du travail français et en gestion de la paie. Analyse la fiche de paie et réponds UNIQUEMENT en JSON valide sans markdown ni backticks avec cette structure : {"statut":"ok"|"anomalies","resume":"texte","anomalies":[{"gravite":"critique"|"importante"|"mineure","description":"texte","reference_legale":"texte"}],"mentions_obligatoires":{"presentes":[],"manquantes":[]},"elements_verifies":[{"element":"texte","valeur":"texte","ok":true,"commentaire":"texte"}]}`,
-          messages: [{
-            role: 'user',
-            content: [
-              { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: doc.fichier_base64 } },
-              { type: 'text', text: `Analyse cette fiche de paie (${doc.nom}, période: ${doc.periode || 'non précisée'}) et vérifie : 1) Toutes les mentions obligatoires (R.3243-1 Code du travail) 2) Cohérence des calculs brut→net 3) Présence du montant net social (obligatoire depuis juil 2023) 4) Prélèvement à la source 5) SMIC respecté (1802.25€ brut/mois en 2024). Fournis une analyse détaillée.` }
-            ]
-          }]
-        })
+        body: JSON.stringify({ fichierBase64: doc.fichier_base64, nom: doc.nom, periode: doc.periode }),
       })
-      const data = await response.json()
-      const text = data.content?.map((c: any) => c.text || '').join('') || ''
-      const analyse = JSON.parse(text.replace(/```json|```/g, '').trim())
-      await supabase.from('rh_documents').update({ analyse_ia: analyse, analyse_statut: analyse.statut === 'ok' ? 'ok' : 'anomalies' }).eq('id', doc.id)
-    } catch (e) {
-      await supabase.from('rh_documents').update({ analyse_statut: 'erreur', analyse_ia: { erreur: String(e) } }).eq('id', doc.id)
+      if (!response.ok) throw new Error(`Erreur serveur ${response.status}`)
+      const analyse = await response.json()
+      if (analyse.error) throw new Error(analyse.error)
+      await supabase.from('rh_documents').update({
+        analyse_ia: analyse,
+        analyse_statut: analyse.statut === 'ok' ? 'ok' : 'anomalies'
+      }).eq('id', doc.id)
+    } catch (e: any) {
+      await supabase.from('rh_documents').update({
+        analyse_statut: 'erreur',
+        analyse_ia: { erreur: String(e?.message || e) }
+      }).eq('id', doc.id)
     }
-    setAnalysing(null); load()
-    // Refresh detail if open
+    setAnalysing(null)
+    load()
     if (detailDoc?.id === doc.id) {
       const { data: updated } = await supabase.from('rh_documents').select('*').eq('id', doc.id).single()
       if (updated) setDetailDoc({ ...updated, user_prenom: doc.user_prenom, user_nom: doc.user_nom })
