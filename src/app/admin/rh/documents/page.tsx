@@ -1,8 +1,8 @@
 'use client'
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { createClient } from '@supabase/supabase-js'
+import { createBrowserClient } from '@supabase/ssr'
 
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+const supabase = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
 type User = { id: string; prenom: string; nom: string; role: string; pin: string }
 type Document = {
@@ -434,7 +434,22 @@ function VueDocumentsEmploye({ user }: { user: User }) {
 // ── Page principale ───────────────────────────────────────────
 export default function DocumentsRHPage() {
   const [user, setUser] = useState<User | null>(null)
-  if (!user) return <EcranLogin onLogin={setUser} />
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    (async () => {
+      const { data: { user: authUser } } = await supabase.auth.getUser()
+      if (!authUser) { setLoading(false); return }
+      const { data: profile } = await supabase
+        .from('users').select('*').eq('auth_user_id', authUser.id).maybeSingle()
+      if (profile) setUser(profile)
+      setLoading(false)
+    })()
+  }, [])
+
+  if (loading) return <div style={{ minHeight: '100vh', background: '#0d0a08', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(232,224,213,0.3)', fontFamily: "'DM Sans', system-ui, sans-serif" }}>⟳ Chargement...</div>
+  if (!user) return <div style={{ minHeight: '100vh', background: '#0d0a08', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(232,224,213,0.4)', fontFamily: "'DM Sans', system-ui, sans-serif" }}>Profil introuvable. <a href="/login" style={{ color: '#c9a96e', marginLeft: 10 }}>Se reconnecter</a></div>
+
   if (user.role === 'admin') return <VueDocumentsAdmin admin={user} />
   return <VueDocumentsEmploye user={user} />
 }

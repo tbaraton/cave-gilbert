@@ -27,14 +27,8 @@ export async function middleware(request: NextRequest) {
 
   const path = request.nextUrl.pathname
 
-  // Routes protégées : /admin/* SAUF les pages avec login PIN pour employés
-  const isProtected = path.startsWith('/admin')
-  const isPinPage =
-    path.startsWith('/admin/conges') ||
-    path.startsWith('/admin/rh/planning') ||
-    path.startsWith('/admin/rh/documents')
-
-  if (isProtected && !isPinPage && !user) {
+  // Toutes les routes /admin/* nécessitent une connexion Supabase
+  if (path.startsWith('/admin') && !user) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     url.searchParams.set('next', path)
