@@ -12,9 +12,10 @@ type Demande = { user_id: string; date_debut: string; date_fin: string; statut: 
 type SamediOffert = { user_id: string; date_samedi: string; statut: string }
 
 // ── Constantes ───────────────────────────────────────────────
-const TYPES_SHIFT = {
+const TYPES_SHIFT: Record<string, { label: string; color: string; bg: string; icon: string }> = {
   travail:    { label: 'Travail',    color: '#6ec96e', bg: 'rgba(110,201,110,0.12)',  icon: '●' },
   repos:      { label: 'Repos',      color: '#888',     bg: 'rgba(128,128,128,0.08)', icon: '○' },
+  ferie:      { label: 'Férié',      color: '#d4a574',  bg: 'rgba(212,165,116,0.14)', icon: '🇫🇷' },
   conge:      { label: 'Congé',      color: '#6e9ec9',  bg: 'rgba(110,158,201,0.12)', icon: '🏖' },
   maladie:    { label: 'Maladie',    color: '#c96e6e',  bg: 'rgba(201,110,110,0.12)', icon: '🏥' },
   evenement:  { label: 'Événement',  color: '#c9b06e',  bg: 'rgba(201,176,110,0.12)', icon: '⭐' },
@@ -26,6 +27,40 @@ const SITE_NOMS: Record<string, string> = {
   'ee3afa96-0c45-407f-87fc-e503fbada6c4': 'Cave de Gilbert — Marcy',
   'e12d7e47-23dc-4011-95fc-e9e975fc4307': 'Entrepôt',
   '3097e864-f452-4c2e-9af3-21e26f0330b7': 'La Petite Cave — L\'Arbresle',
+}
+
+// ── Jours fériés français ─────────────────────────────────────
+function getJoursFeries(year: number): Map<string, string> {
+  const map = new Map<string, string>()
+  const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+  map.set(`${year}-01-01`, "Jour de l'an")
+  map.set(`${year}-05-01`, 'Fête du travail')
+  map.set(`${year}-05-08`, 'Victoire 1945')
+  map.set(`${year}-07-14`, 'Fête nationale')
+  map.set(`${year}-08-15`, 'Assomption')
+  map.set(`${year}-11-01`, 'Toussaint')
+  map.set(`${year}-11-11`, 'Armistice')
+  map.set(`${year}-12-25`, 'Noël')
+  // Calcul de Pâques (algorithme de Meeus)
+  const a = year % 19, b = Math.floor(year / 100), c = year % 100
+  const d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25)
+  const g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30
+  const i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7
+  const mm = Math.floor((a + 11 * h + 22 * l) / 451)
+  const month = Math.floor((h + l - 7 * mm + 114) / 31)
+  const day = ((h + l - 7 * mm + 114) % 31) + 1
+  const paques = new Date(year, month - 1, day)
+  const lundiPaques = new Date(paques); lundiPaques.setDate(paques.getDate() + 1)
+  const ascension = new Date(paques); ascension.setDate(paques.getDate() + 39)
+  const pentecote = new Date(paques); pentecote.setDate(paques.getDate() + 50)
+  map.set(fmt(lundiPaques), 'Lundi de Pâques')
+  map.set(fmt(ascension), 'Ascension')
+  map.set(fmt(pentecote), 'Lundi de Pentecôte')
+  return map
+}
+function getFerieLabel(date: string): string | null {
+  const year = parseInt(date.slice(0, 4))
+  return getJoursFeries(year).get(date) || null
 }
 
 function toMin(t: string) { const [h, m] = t.split(':').map(Number); return h * 60 + m }
@@ -116,6 +151,9 @@ function ModalShift({ shift, profil, user, date, onSave, onClose }: {
             <div style={{ fontFamily: 'Georgia, serif', fontSize: 17, color: '#f0e8d8' }}>
               {new Date(date + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
             </div>
+            {getFerieLabel(date) && (
+              <div style={{ fontSize: 11, color: '#d4a574', marginTop: 4 }}>🇫🇷 {getFerieLabel(date)} — jour férié</div>
+            )}
           </div>
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.4)', fontSize: 18, cursor: 'pointer' }}>✕</button>
         </div>
@@ -299,6 +337,7 @@ function PlanningAdmin({ admin }: { admin: User }) {
   const getDefaultType = (userId: string, date: string, profil: Profil): string => {
     const dow = new Date(date + 'T12:00:00').getDay()
     if (dow === 0 || dow === 1) return 'repos' // Dimanche et Lundi toujours repos
+    if (getFerieLabel(date)) return 'ferie' // Jour férié par défaut chômé
     if (isConge(userId, date)) return 'conge'
     const jours: number[] = Array.isArray(profil?.jours_travail) && profil.jours_travail.length > 0
       ? profil.jours_travail : [2,3,4,5,6]
@@ -467,13 +506,17 @@ function PlanningAdmin({ admin }: { admin: User }) {
                           return (
                             <td key={di} style={{ padding: 4, verticalAlign: 'top', background: isToday ? 'rgba(201,169,110,0.03)' : 'transparent' }}>
                               <div onClick={() => handleCellClick(emp, date)}
-                                style={{ background: isWE && type === 'repos' ? 'rgba(255,255,255,0.02)' : bg, borderRadius: 6, padding: '8px 6px', cursor: 'pointer', minHeight: 72, border: `0.5px solid ${shift ? color + '40' : 'rgba(255,255,255,0.04)'}`, position: 'relative' as const, transition: 'opacity 0.15s' }}
+                                style={{ background: isWE && type === 'repos' ? 'rgba(255,255,255,0.02)' : bg, borderRadius: 6, padding: '8px 6px', cursor: 'pointer', minHeight: 72, border: `0.5px solid ${shift ? color + '40' : type === 'ferie' ? color + '40' : 'rgba(255,255,255,0.04)'}`, position: 'relative' as const, transition: 'opacity 0.15s' }}
+                                title={getFerieLabel(date) || undefined}
                                 onMouseEnter={e => (e.currentTarget.style.opacity = '0.8')}
                                 onMouseLeave={e => (e.currentTarget.style.opacity = '1')}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
                                   <span style={{ fontSize: 11, color }}>{icon}</span>
                                   <span style={{ fontSize: 10, color, fontWeight: 600, letterSpacing: 0.5 }}>{type === 'travail' ? fmtH(hJour) : TYPES_SHIFT[type]?.label}</span>
                                 </div>
+                                {type === 'ferie' && getFerieLabel(date) && (
+                                  <div style={{ fontSize: 9, color: '#d4a574', fontStyle: 'italic' as const, marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{getFerieLabel(date)}</div>
+                                )}
                                 {type === 'travail' && (
                                   <div style={{ fontSize: 9, color: 'rgba(232,224,213,0.4)', lineHeight: 1.6 }}>
                                     <div>{shift?.matin_debut || getHorairesJour(emp.profil, date).matin_debut}–{shift?.matin_fin || getHorairesJour(emp.profil, date).matin_fin}</div>
@@ -552,6 +595,7 @@ function PlanningAdmin({ admin }: { admin: User }) {
                     const isWE = dow === 0 || dow === 1
                     return (
                       <div key={day} onClick={() => handleCellClick(emp, date)}
+                        title={getFerieLabel(date) || undefined}
                         style={{ background: isToday ? 'rgba(201,169,110,0.15)' : type !== 'repos' ? bg : isWE ? 'transparent' : 'rgba(255,255,255,0.02)', border: `0.5px solid ${isToday ? '#c9a96e' : type !== 'repos' ? color + '30' : 'rgba(255,255,255,0.04)'}`, borderRadius: 4, padding: '5px 3px', cursor: 'pointer', minHeight: 44, textAlign: 'center' as const, opacity: isWE && type === 'repos' ? 0.3 : 1 }}
                         onMouseEnter={e => (e.currentTarget.style.opacity = '0.7')}
                         onMouseLeave={e => (e.currentTarget.style.opacity = isWE && type === 'repos' ? '0.3' : '1')}>
@@ -615,6 +659,7 @@ function PlanningEmploye({ user }: { user: User }) {
   const getDefaultType = (date: string): string => {
     const dow = new Date(date + 'T12:00:00').getDay()
     if (dow === 0 || dow === 1) return 'repos'
+    if (getFerieLabel(date)) return 'ferie'
     const jours: number[] = Array.isArray(profil?.jours_travail) && profil.jours_travail.length > 0
       ? profil.jours_travail : [2,3,4,5,6]
     if (!jours.includes(dow)) return 'repos'
@@ -718,6 +763,7 @@ function PlanningEmploye({ user }: { user: User }) {
                     <div style={{ fontSize: 13, color: isToday ? '#c9a96e' : '#f0e8d8', fontWeight: isToday ? 700 : 400 }}>
                       {JOURS_LONG[d.getDay()]} {d.getDate()}
                       {isToday && <span style={{ fontSize: 10, background: 'rgba(201,169,110,0.2)', color: '#c9a96e', borderRadius: 3, padding: '2px 6px', marginLeft: 8 }}>Aujourd'hui</span>}
+                      {type === 'ferie' && getFerieLabel(date) && <span style={{ fontSize: 10, background: 'rgba(212,165,116,0.2)', color: '#d4a574', borderRadius: 3, padding: '2px 6px', marginLeft: 8 }}>🇫🇷 {getFerieLabel(date)}</span>}
                     </div>
                     {type === 'travail' && (
                       <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)', marginTop: 4 }}>
@@ -755,7 +801,7 @@ function PlanningEmploye({ user }: { user: User }) {
                 const isWE = dow === 0 || dow === 1
                 const h = calcDayHeures(date, shift)
                 return (
-                  <div key={day} style={{
+                  <div key={day} title={getFerieLabel(date) || undefined} style={{
                     background: isToday ? 'rgba(201,169,110,0.15)' : type !== 'repos' ? bg : isWE ? 'rgba(255,255,255,0.01)' : 'rgba(255,255,255,0.02)',
                     border: `0.5px solid ${isToday ? '#c9a96e' : type !== 'repos' ? color + '30' : 'rgba(255,255,255,0.04)'}`,
                     borderRadius: 6, padding: '8px 4px', minHeight: 64,
