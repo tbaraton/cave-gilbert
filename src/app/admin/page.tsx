@@ -1292,6 +1292,7 @@ function ModalNouveauTransfert({ sites, onCreated, onClose, transfertExistant = 
 
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const inputRefs = useRef<Record<string, HTMLInputElement | null>>({})
 
   const isInterSociete = impliqueLaPetiteCave(siteSourceId, siteDestId)
   const sitesDestDispos = sites.filter(s => s.id !== siteSourceId)
@@ -1630,8 +1631,22 @@ function ModalNouveauTransfert({ sites, onCreated, onClose, transfertExistant = 
                     <td style={{ padding: '10px 10px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <button onClick={() => setQuantites(q => ({ ...q, [p.id]: Math.max(1, (q[p.id] || 1) - 1) }))} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: '#e8e0d5', width: 28, height: 28, borderRadius: 3, cursor: 'pointer', fontSize: 16 }}>−</button>
-                        <input type="number" min={1} value={qte}
+                        <input
+                          ref={el => { inputRefs.current[p.id] = el }}
+                          type="number" min={1} value={qte}
                           onChange={e => setQuantites(q => ({ ...q, [p.id]: parseInt(e.target.value) || 1 }))}
+                          onFocus={e => e.target.select()}
+                          onKeyDown={e => {
+                            if (e.key === 'Tab') {
+                              e.preventDefault()
+                              const idx = produitsCochesData.findIndex(x => x.id === p.id)
+                              const next = produitsCochesData[idx + 1]
+                              if (next) {
+                                setQuantites(q => ({ ...q, [next.id]: 0 }))
+                                setTimeout(() => { inputRefs.current[next.id]?.focus(); inputRefs.current[next.id]?.select() }, 30)
+                              }
+                            }
+                          }}
                           style={{ width: 60, background: depasse ? 'rgba(201,176,110,0.08)' : 'rgba(255,255,255,0.06)', border: `0.5px solid ${depasse ? 'rgba(201,176,110,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 3, color: depasse ? '#c9b06e' : '#e8e0d5', fontSize: 15, padding: '4px 6px', textAlign: 'center' as const }} />
                         <button onClick={() => setQuantites(q => ({ ...q, [p.id]: (q[p.id] || 1) + 1 }))} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: '#e8e0d5', width: 28, height: 28, borderRadius: 3, cursor: 'pointer', fontSize: 16 }}>+</button>
                       </div>
