@@ -2218,6 +2218,57 @@ function VueTransferts({ sites, onNew, refreshKey }: { sites: any[]; onNew: () =
 
 
 
+
+// ── Groupe de navigation déroulant ────────────────────────────
+function NavGroup({ title, items }: { title: string; items: { href: string; label: string; icon: string }[] }) {
+  // État persistant : on mémorise si le menu est ouvert dans localStorage
+  const storageKey = `nav-open-${title}`
+  const [open, setOpen] = useState(true)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const saved = window.localStorage.getItem(storageKey)
+      if (saved !== null) setOpen(saved === '1')
+    }
+  }, [])
+  const toggle = () => {
+    setOpen(prev => {
+      const v = !prev
+      if (typeof window !== 'undefined') window.localStorage.setItem(storageKey, v ? '1' : '0')
+      return v
+    })
+  }
+  if (items.length === 0) return null
+  return (
+    <>
+      <div style={{ height: '0.5px', background: 'rgba(255,255,255,0.06)', margin: '10px 0' }} />
+      <button onClick={toggle} style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        width: '100%', background: 'transparent', border: 'none',
+        padding: '4px 20px 8px', fontSize: 9, letterSpacing: 2,
+        color: 'rgba(232,224,213,0.35)', textTransform: 'uppercase' as const,
+        cursor: 'pointer', textAlign: 'left' as const,
+      }}>
+        <span>{title}</span>
+        <span style={{ fontSize: 11, transition: 'transform 0.2s', transform: open ? 'rotate(0deg)' : 'rotate(-90deg)' }}>▾</span>
+      </button>
+      {open && items.map(({ href, label, icon }) => (
+        <a key={href} href={href} style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: '9px 20px', fontSize: 12, letterSpacing: 0.5,
+          color: 'rgba(232,224,213,0.45)',
+          borderLeft: '2px solid transparent',
+          textDecoration: 'none',
+        }}
+          onMouseEnter={e => { e.currentTarget.style.color = '#c9a96e'; e.currentTarget.style.background = 'rgba(201,169,110,0.05)' }}
+          onMouseLeave={e => { e.currentTarget.style.color = 'rgba(232,224,213,0.45)'; e.currentTarget.style.background = 'transparent' }}
+        >
+          <span style={{ fontSize: 14 }}>{icon}</span>{label}
+        </a>
+      ))}
+    </>
+  )
+}
+
 // ── Modal Changer mot de passe ────────────────────────────────
 function ModalChangePassword({ onClose }: { onClose: () => void }) {
   const [current, setCurrent] = useState('')
@@ -2641,62 +2692,34 @@ function AdminPage() {
           ))}
           <div style={{ height: '0.5px', background: 'rgba(255,255,255,0.06)', margin: '10px 0' }} />
           <div style={{ fontSize: 9, letterSpacing: 2, color: 'rgba(232,224,213,0.25)', padding: '4px 20px 8px', textTransform: 'uppercase' as const }}>Gestion</div>
-                    <div style={{ height: '0.5px', background: 'rgba(255,255,255,0.06)', margin: '10px 0' }} />
-          <div style={{ fontSize: 9, letterSpacing: 2, color: 'rgba(232,224,213,0.25)', padding: '4px 20px 8px', textTransform: 'uppercase' as const }}>Gestion</div>
-          {navLinks.filter(l => l.groupe === 'gestion').map(({ href, label, icon }) => (
-            <a key={href} href={href} style={{
-              display: 'flex', alignItems: 'center', gap: 10,
-              padding: '10px 20px', fontSize: 12, letterSpacing: 0.5,
-              color: 'rgba(232,224,213,0.45)',
-              borderLeft: '2px solid transparent',
-              textDecoration: 'none',
-            }}
-              onMouseEnter={e => { e.currentTarget.style.color = '#c9a96e'; e.currentTarget.style.background = 'rgba(201,169,110,0.05)' }}
-              onMouseLeave={e => { e.currentTarget.style.color = 'rgba(232,224,213,0.45)'; e.currentTarget.style.background = 'transparent' }}
-            >
-              <span style={{ fontSize: 14 }}>{icon}</span>{label}
-            </a>
-          ))}
-          <div style={{ height: '0.5px', background: 'rgba(255,255,255,0.06)', margin: '10px 0' }} />
-          <div style={{ fontSize: 9, letterSpacing: 2, color: 'rgba(232,224,213,0.25)', padding: '4px 20px 8px', textTransform: 'uppercase' as const }}>Ressources Humaines</div>
-          {navLinks.filter(l => l.groupe === 'rh').map(({ href, label, icon }) => (
-            <a key={href} href={href} style={{
-              display: 'flex', alignItems: 'center', gap: 10,
-              padding: '10px 20px', fontSize: 12, letterSpacing: 0.5,
-              color: 'rgba(232,224,213,0.45)',
-              borderLeft: '2px solid transparent',
-              textDecoration: 'none',
-            }}
-              onMouseEnter={e => { e.currentTarget.style.color = '#c9a96e'; e.currentTarget.style.background = 'rgba(201,169,110,0.05)' }}
-              onMouseLeave={e => { e.currentTarget.style.color = 'rgba(232,224,213,0.45)'; e.currentTarget.style.background = 'transparent' }}
-            >
-              <span style={{ fontSize: 14 }}>{icon}</span>{label}
-            </a>
-          ))}
+                    <NavGroup title="Gestion" items={navLinks.filter(l => l.groupe === 'gestion')} />
+          <NavGroup title="Ressources Humaines" items={navLinks.filter(l => l.groupe === 'rh')} />
         </nav>
         <div style={{ padding: '16px 20px', borderTop: '0.5px solid rgba(255,255,255,0.06)' }}>
           <a href="/" style={{ fontSize: 11, color: 'rgba(232,224,213,0.3)', textDecoration: 'none', letterSpacing: 1 }}>← Voir le site</a>
-          {currentUser && (
-            <div style={{ marginTop: 14, paddingTop: 14, borderTop: '0.5px solid rgba(255,255,255,0.05)' }}>
-              <div style={{ fontSize: 12, color: '#e8e0d5', fontWeight: 600 }}>{currentUser.prenom}</div>
-              <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.35)', textTransform: 'capitalize' as const, marginBottom: 8 }}>{currentUser.role}</div>
-              <button onClick={() => setShowPasswordModal(true)} style={{
-                display: 'block', width: '100%', marginBottom: 6,
-                background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)',
-                color: 'rgba(232,224,213,0.5)', borderRadius: 4, padding: '6px 10px',
-                fontSize: 10, cursor: 'pointer', letterSpacing: 1, textAlign: 'left' as const,
-              }}>🔑 Changer mot de passe</button>
-              <button onClick={async () => {
-                await supabase.auth.signOut()
-                window.location.href = '/login'
-              }} style={{
-                display: 'block', width: '100%',
-                background: 'transparent', border: '0.5px solid rgba(201,110,110,0.25)',
-                color: 'rgba(201,110,110,0.7)', borderRadius: 4, padding: '6px 10px',
-                fontSize: 10, cursor: 'pointer', letterSpacing: 1, textAlign: 'left' as const,
-              }}>⎋ Déconnexion</button>
-            </div>
-          )}
+          <div style={{ marginTop: 14, paddingTop: 14, borderTop: '0.5px solid rgba(255,255,255,0.05)' }}>
+            {currentUser && (
+              <>
+                <div style={{ fontSize: 12, color: '#e8e0d5', fontWeight: 600 }}>{currentUser.prenom}</div>
+                <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.35)', textTransform: 'capitalize' as const, marginBottom: 8 }}>{currentUser.role}</div>
+                <button onClick={() => setShowPasswordModal(true)} style={{
+                  display: 'block', width: '100%', marginBottom: 6,
+                  background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)',
+                  color: 'rgba(232,224,213,0.5)', borderRadius: 4, padding: '6px 10px',
+                  fontSize: 10, cursor: 'pointer', letterSpacing: 1, textAlign: 'left' as const,
+                }}>🔑 Changer mot de passe</button>
+              </>
+            )}
+            <button onClick={async () => {
+              await supabase.auth.signOut()
+              window.location.href = '/login'
+            }} style={{
+              display: 'block', width: '100%',
+              background: 'transparent', border: '0.5px solid rgba(201,110,110,0.25)',
+              color: 'rgba(201,110,110,0.7)', borderRadius: 4, padding: '6px 10px',
+              fontSize: 10, cursor: 'pointer', letterSpacing: 1, textAlign: 'left' as const,
+            }}>⎋ Déconnexion</button>
+          </div>
         </div>
       </aside>
 
