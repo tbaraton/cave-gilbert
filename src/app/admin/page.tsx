@@ -1333,6 +1333,8 @@ function ModalNouveauTransfert({ sites, onCreated, onClose }: {
     return s ? (s[col] || 0) : 0
   }
 
+  useEffect(() => { setPageProduits(0) }, [search, filterRegion, filterDomaine, filterCouleur, sortCol, sortDir])
+
   const produitsFiltres = produits
     .filter(p =>
       (!search || p.nom.toLowerCase().includes(search.toLowerCase())) &&
@@ -1377,6 +1379,8 @@ function ModalNouveauTransfert({ sites, onCreated, onClose }: {
     setSelected(prev => ({ ...prev, [productId]: Math.max(1, qte) }))
   }
 
+  const [pageProduits, setPageProduits] = useState(0)
+  const PAGE_SIZE_TRANSFERT = 50
   const nbSelected = Object.keys(selected).length
 
   const handleCreate = async () => {
@@ -1534,7 +1538,7 @@ function ModalNouveauTransfert({ sites, onCreated, onClose }: {
               </tr>
             </thead>
             <tbody>
-              {produitsFiltres.map((p, i) => {
+              {produitsFiltres.slice(pageProduits * PAGE_SIZE_TRANSFERT, (pageProduits + 1) * PAGE_SIZE_TRANSFERT).map((p, i) => {
                 const isSelected = selected[p.id] !== undefined
                 const stockSrc = getStock(p.id, srcCol)
                 const stockTotal = getStock(p.id, 'stock_total')
@@ -1579,6 +1583,23 @@ function ModalNouveauTransfert({ sites, onCreated, onClose }: {
               })}
             </tbody>
           </table>
+        )}
+        {/* Pagination */}
+        {produitsFiltres.length > PAGE_SIZE_TRANSFERT && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 20px', borderTop: '0.5px solid rgba(255,255,255,0.06)', background: '#0d0a08' }}>
+            <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>
+              {pageProduits * PAGE_SIZE_TRANSFERT + 1}–{Math.min((pageProduits + 1) * PAGE_SIZE_TRANSFERT, produitsFiltres.length)} sur {produitsFiltres.length}
+            </span>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button onClick={() => setPageProduits(0)} disabled={pageProduits === 0} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: pageProduits === 0 ? 'rgba(232,224,213,0.2)' : 'rgba(232,224,213,0.5)', borderRadius: 4, padding: '5px 10px', fontSize: 11, cursor: pageProduits === 0 ? 'default' : 'pointer' }}>«</button>
+              <button onClick={() => setPageProduits(p => Math.max(0, p - 1))} disabled={pageProduits === 0} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: pageProduits === 0 ? 'rgba(232,224,213,0.2)' : 'rgba(232,224,213,0.5)', borderRadius: 4, padding: '5px 12px', fontSize: 11, cursor: pageProduits === 0 ? 'default' : 'pointer' }}>‹</button>
+              {Array.from({ length: Math.ceil(produitsFiltres.length / PAGE_SIZE_TRANSFERT) }, (_, i) => i).map(i => (
+                <button key={i} onClick={() => setPageProduits(i)} style={{ background: pageProduits === i ? '#c9a96e' : 'transparent', color: pageProduits === i ? '#0d0a08' : 'rgba(232,224,213,0.4)', border: `0.5px solid ${pageProduits === i ? '#c9a96e' : 'rgba(255,255,255,0.1)'}`, borderRadius: 4, padding: '5px 10px', fontSize: 11, cursor: 'pointer', fontWeight: pageProduits === i ? 600 : 400 }}>{i + 1}</button>
+              ))}
+              <button onClick={() => setPageProduits(p => Math.min(Math.ceil(produitsFiltres.length / PAGE_SIZE_TRANSFERT) - 1, p + 1))} disabled={pageProduits >= Math.ceil(produitsFiltres.length / PAGE_SIZE_TRANSFERT) - 1} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: pageProduits >= Math.ceil(produitsFiltres.length / PAGE_SIZE_TRANSFERT) - 1 ? 'rgba(232,224,213,0.2)' : 'rgba(232,224,213,0.5)', borderRadius: 4, padding: '5px 12px', fontSize: 11, cursor: pageProduits >= Math.ceil(produitsFiltres.length / PAGE_SIZE_TRANSFERT) - 1 ? 'default' : 'pointer' }}>›</button>
+              <button onClick={() => setPageProduits(Math.ceil(produitsFiltres.length / PAGE_SIZE_TRANSFERT) - 1)} disabled={pageProduits >= Math.ceil(produitsFiltres.length / PAGE_SIZE_TRANSFERT) - 1} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: pageProduits >= Math.ceil(produitsFiltres.length / PAGE_SIZE_TRANSFERT) - 1 ? 'rgba(232,224,213,0.2)' : 'rgba(232,224,213,0.5)', borderRadius: 4, padding: '5px 10px', fontSize: 11, cursor: pageProduits >= Math.ceil(produitsFiltres.length / PAGE_SIZE_TRANSFERT) - 1 ? 'default' : 'pointer' }}>»</button>
+            </div>
+          </div>
         )}
       </div>
 
