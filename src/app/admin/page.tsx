@@ -1361,21 +1361,30 @@ function ModalNouveauTransfert({ sites, onCreated, onClose }: {
       }
     }
 
-    // Déplacer le stock — source diminue, destination augmente
-    for (const l of lignes) {
-      await supabase.rpc('move_stock', {
-        p_product_id: l.product_id, p_site_id: siteSourceId,
-        p_raison: 'transfert', p_quantite: l.quantite,
-        p_note: `Transfert ${numero} sortie`, p_order_id: null, p_transfer_id: transfer.id,
-      })
-      // Ajouter au site destination
-      // Mettre à jour le stock destination directement
-      const { data: stockDest } = await supabase.from('stock').select('quantite').eq('product_id', l.product_id).eq('site_id', siteDestId).maybeSingle()
-      await supabase.from('stock').upsert({
-        product_id: l.product_id, site_id: siteDestId,
-        quantite: (stockDest?.quantite || 0) + l.quantite,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'product_id,site_id' })
+    // Déplacer le stock — source diminue via move_stock, destination augmente directement
+    try {
+      for (const l of lignes) {
+        const { error: errMove } = await supabase.rpc('move_stock', {
+          p_product_id: l.product_id, p_site_id: siteSourceId,
+          p_raison: 'transfert_out', p_quantite: l.quantite,
+          p_note: `Transfert ${numero} sortie`, p_order_id: null, p_transfer_id: transfer.id,
+        })
+        if (errMove) {
+          console.error('move_stock erreur:', errMove)
+          setError(`Erreur stock source : ${errMove.message}`)
+          setSaving(false); return
+        }
+        // Incrémenter le stock destination
+        const { data: stockDest } = await supabase.from('stock').select('quantite').eq('product_id', l.product_id).eq('site_id', siteDestId).maybeSingle()
+        await supabase.from('stock').upsert({
+          product_id: l.product_id, site_id: siteDestId,
+          quantite: (stockDest?.quantite || 0) + l.quantite,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'product_id,site_id' })
+      }
+    } catch (e: any) {
+      setError(`Erreur lors du transfert : ${e?.message || String(e)}`)
+      setSaving(false); return
     }
 
     // Marquer validé
