@@ -2331,44 +2331,62 @@ function ModalChangePassword({ onClose }: { onClose: () => void }) {
 function AdminPage() {
   const [section, setSection] = useState<Section>('dashboard')
 
+  // IDs des sites (constantes — évite les ambiguïtés)
+  const ID_MARCY    = 'ee3afa96-0c45-407f-87fc-e503fbada6c4'
+  const ID_ENTREPOT = 'e12d7e47-23dc-4011-95fc-e9e975fc4307'
+  const ID_ARBRESLE = '3097e864-f452-4c2e-9af3-21e26f0330b7'
+
   // Utilisateur connecté + permissions + site
   const [currentUser, setCurrentUser] = useState<any>(null)
   const [permissions, setPermissions] = useState<any>(null)
-  const [siteActif, setSiteActif] = useState<any>(null)
+  const [siteActifId, setSiteActifId] = useState<string | null>(null)
+  const [authReady, setAuthReady] = useState(false)
   const [showPasswordModal, setShowPasswordModal] = useState(false)
 
-  // Charger l'utilisateur Supabase + son profil + ses permissions
+  // Charger l'utilisateur connecté
   useEffect(() => {
     (async () => {
-      const { data: { user: authUser } } = await supabase.auth.getUser()
-      if (!authUser) return
-      const { data: profile } = await supabase
-        .from('users')
-        .select('*, employe_profils(*), user_permissions(*)')
-        .eq('auth_user_id', authUser.id)
-        .maybeSingle()
-      if (!profile) return
-      setCurrentUser(profile)
-      const perms = Array.isArray(profile.user_permissions) ? profile.user_permissions[0] : profile.user_permissions
-      setPermissions(perms || null)
-      // Charger le site actif (restriction ou site par défaut depuis employe_profils)
-      const siteId = perms?.site_restreint_id || profile.employe_profils?.site_id
-      if (siteId) {
-        const { data: site } = await supabase.from('sites').select('*').eq('id', siteId).maybeSingle()
-        setSiteActif(site)
+      try {
+        const { data: { user: authUser } } = await supabase.auth.getUser()
+        if (!authUser) { setAuthReady(true); return }
+
+        // 1) Charger le profil utilisateur
+        const { data: profile } = await supabase
+          .from('users').select('*').eq('auth_user_id', authUser.id).maybeSingle()
+        if (!profile) { setAuthReady(true); return }
+        setCurrentUser(profile)
+
+        // 2) Charger les permissions (requête séparée plus fiable)
+        const { data: perms } = await supabase
+          .from('user_permissions').select('*').eq('user_id', profile.id).maybeSingle()
+        setPermissions(perms || null)
+
+        // 3) Déterminer le site actif (restriction explicite OU profil employé)
+        let siteId: string | null = perms?.site_restreint_id || null
+        if (!siteId) {
+          const { data: empProfil } = await supabase
+            .from('employe_profils').select('site_id').eq('user_id', profile.id).maybeSingle()
+          siteId = empProfil?.site_id || null
+        }
+        setSiteActifId(siteId)
+      } finally {
+        setAuthReady(true)
       }
     })()
   }, [])
 
   const isAdmin = currentUser?.role === 'admin'
-  // Helper pour filtrer le menu : admin voit tout, les autres selon permissions
+
+  // Filtrage du menu — strict une fois la session chargée
   const can = (key: string): boolean => {
-    if (isAdmin || !currentUser) return true
+    if (!authReady) return false           // tant que pas chargé : on cache tout
+    if (isAdmin) return true                // admin : tout autorisé
+    if (!currentUser) return false          // pas connu : on cache
     return permissions?.[key] === true
   }
 
-  // Branding dynamique
-  const isLaPetiteCave = siteActif?.code === 'ARBRESLE'
+  // Branding dynamique — basé sur l'ID du site (pas un code)
+  const isLaPetiteCave = siteActifId === ID_ARBRESLE
   const brandLogo = isLaPetiteCave ? '/logo-petite-cave.png' : '/logo.png'
   const brandName = isLaPetiteCave ? 'La Petite Cave' : 'Cave de Gilbert'
 
