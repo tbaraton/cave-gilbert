@@ -1239,7 +1239,6 @@ const CATEGORIES = [
   { id: 'epicerie',    label: 'Épicerie',            icon: '🧀', cat: 'epicerie' },
 ]
 
-export default 
 // ── ID des sites (constantes métier) ─────────────────────────
 const SITE_ARBRESLE_ID = '3097e864-f452-4c2e-9af3-21e26f0330b7' // La Petite Cave
 const MARGE_INTERSOCIETE = 1.05
@@ -2615,3 +2614,6 @@ function AdminPage() {
     </div>
   )
 }
+
+
+export default AdminPage
