@@ -1240,164 +1240,71 @@ const CATEGORIES = [
 ]
 
 // ── ID des sites (constantes métier) ─────────────────────────
-const SITE_ARBRESLE_ID = '3097e864-f452-4c2e-9af3-21e26f0330b7' // La Petite Cave
+const SITE_ARBRESLE_ID = '3097e864-f452-4c2e-9af3-21e26f0330b7'
 const MARGE_INTERSOCIETE = 1.05
 
-function impliqueLaPetiteCave(siteSourceId: string, siteDestId: string) {
-  return siteSourceId === SITE_ARBRESLE_ID || siteDestId === SITE_ARBRESLE_ID
+function impliqueLaPetiteCave(a: string, b: string) {
+  return a === SITE_ARBRESLE_ID || b === SITE_ARBRESLE_ID
 }
 
-// ── Modal nouveau transfert ───────────────────────────────────
+function genNumero(prefix: string) {
+  return `${prefix}-${new Date().getFullYear()}${String(new Date().getMonth()+1).padStart(2,'0')}-${String(Math.floor(Math.random()*9999)).padStart(4,'0')}`
+}
+
+// ── Modal Nouveau Transfert (Étape 1 — Demande) ───────────────
 function ModalNouveauTransfert({ sites, onCreated, onClose }: {
-  sites: any[]
-  onCreated: () => void
-  onClose: () => void
+  sites: any[]; onCreated: () => void; onClose: () => void
 }) {
   const inp = { background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#e8e0d5', fontSize: 13, padding: '9px 12px', boxSizing: 'border-box' as const }
   const lbl = { fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, display: 'block', marginBottom: 6 }
-
   const [siteSourceId, setSiteSourceId] = useState(sites[0]?.id || '')
   const [siteDestId, setSiteDestId] = useState(sites[1]?.id || '')
   const [notes, setNotes] = useState('')
-  const [searchProduit, setSearchProduit] = useState('')
+  const [search, setSearch] = useState('')
   const [produitsTrouves, setProduitsTrouves] = useState<any[]>([])
   const [lignes, setLignes] = useState<any[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const searchTimer = useRef<any>(null)
-
+  const timer = useRef<any>(null)
   const isInterSociete = impliqueLaPetiteCave(siteSourceId, siteDestId)
   const sitesDestDispos = sites.filter(s => s.id !== siteSourceId)
 
   useEffect(() => {
-    if (sitesDestDispos.length > 0 && !sitesDestDispos.find(s => s.id === siteDestId)) {
+    if (sitesDestDispos.length > 0 && !sitesDestDispos.find(s => s.id === siteDestId))
       setSiteDestId(sitesDestDispos[0].id)
-    }
   }, [siteSourceId])
 
   const searchProduits = async (q: string) => {
     if (!q.trim()) { setProduitsTrouves([]); return }
-    const { data: prods } = await supabase
-      .from('products')
-      .select('id, nom, millesime, couleur, prix_achat_ht')
-      .eq('actif', true)
-      .ilike('nom', `%${q}%`)
-      .limit(10)
+    const { data: prods } = await supabase.from('products').select('id, nom, millesime, couleur, prix_achat_ht').eq('actif', true).ilike('nom', `%${q}%`).limit(10)
     if (!prods?.length) { setProduitsTrouves([]); return }
-    // Charger le stock source
-    const { data: stocks } = await supabase
-      .from('stock')
-      .select('product_id, quantite')
-      .eq('site_id', siteSourceId)
-      .in('product_id', prods.map(p => p.id))
-    const stockMap = Object.fromEntries((stocks || []).map((s: any) => [s.product_id, s.quantite || 0]))
-    setProduitsTrouves(prods.map(p => ({ ...p, stock: stockMap[p.id] || 0 })))
+    const { data: stocks } = await supabase.from('stock').select('product_id, quantite').eq('site_id', siteSourceId).in('product_id', prods.map(p => p.id))
+    const sm = Object.fromEntries((stocks || []).map((s: any) => [s.product_id, s.quantite || 0]))
+    setProduitsTrouves(prods.map(p => ({ ...p, stock: sm[p.id] || 0 })))
   }
 
   const addLigne = (p: any) => {
     if (lignes.find(l => l.product_id === p.id)) return
     const prixTransfert = p.prix_achat_ht ? Math.round(parseFloat(p.prix_achat_ht) * MARGE_INTERSOCIETE * 10000) / 10000 : null
-    setLignes(prev => [...prev, {
-      product_id: p.id, nom: p.nom, millesime: p.millesime, couleur: p.couleur,
-      stock: p.stock, quantite: 1,
-      prix_achat_ht: p.prix_achat_ht ? parseFloat(p.prix_achat_ht) : null,
-      prix_transfert_ht: prixTransfert,
-    }])
-    setSearchProduit(''); setProduitsTrouves([])
+    setLignes(prev => [...prev, { product_id: p.id, nom: p.nom, millesime: p.millesime, couleur: p.couleur, stock: p.stock, quantite: 1, prix_achat_ht: p.prix_achat_ht ? parseFloat(p.prix_achat_ht) : null, prix_transfert_ht: prixTransfert }])
+    setSearch(''); setProduitsTrouves([])
   }
-
-  const updateQte = (productId: string, qte: number) => {
-    setLignes(prev => prev.map(l => l.product_id === productId ? { ...l, quantite: Math.max(1, qte) } : l))
-  }
-
-  const totalHT = lignes.reduce((acc, l) => {
-    const prix = isInterSociete ? (l.prix_transfert_ht || 0) : (l.prix_achat_ht || 0)
-    return acc + prix * l.quantite
-  }, 0)
 
   const handleCreate = async () => {
     if (siteSourceId === siteDestId) { setError('Source et destination identiques'); return }
     if (lignes.length === 0) { setError('Ajoutez au moins un produit'); return }
-
     setSaving(true); setError('')
-
-    const numero = `TRF-${new Date().getFullYear()}${String(new Date().getMonth()+1).padStart(2,'0')}-${String(Math.floor(Math.random()*9999)).padStart(4,'0')}`
-
-    // Créer le transfert
     const { data: transfer, error: errT } = await supabase.from('stock_transfers').insert({
-      numero, site_source_id: siteSourceId, site_destination_id: siteDestId,
-      statut: 'en_cours', notes: notes || null,
+      numero: genNumero('TRF'), site_source_id: siteSourceId, site_destination_id: siteDestId,
+      statut: 'demande', notes: notes || null,
     }).select('id').single()
-    if (errT || !transfer) {
-      console.error('Erreur création transfert:', errT)
-      setError(`Erreur création : ${errT?.message || 'Réponse vide'}`)
-      setSaving(false); return
-    }
-
-    // Créer les lignes
-    await supabase.from('stock_transfer_lignes').insert(
-      lignes.map(l => ({
-        transfer_id: transfer.id,
-        product_id: l.product_id,
-        quantite: l.quantite,
-        prix_achat_ht: l.prix_achat_ht,
-        prix_transfert_ht: isInterSociete ? l.prix_transfert_ht : null,
-      }))
-    )
-
-    // Si inter-société → créer la facture
-    if (isInterSociete) {
-      const totalHTCalc = lignes.reduce((acc, l) => acc + (l.prix_transfert_ht || 0) * l.quantite, 0)
-      const totalTTC = Math.round(totalHTCalc * 1.20 * 100) / 100
-      const numFIC = `FIC-${new Date().getFullYear()}${String(new Date().getMonth()+1).padStart(2,'0')}-${String(Math.floor(Math.random()*9999)).padStart(4,'0')}`
-      const { data: facture, error: errF } = await supabase.from('factures_intersocietes').insert({
-        numero: numFIC, transfer_id: transfer.id,
-        site_emetteur_id: siteSourceId, site_destinataire_id: siteDestId,
-        total_ht: Math.round(totalHTCalc * 100) / 100,
-        tva_pct: 20, total_ttc: totalTTC,
-        statut: 'emise', date_emission: new Date().toISOString().split('T')[0],
-      }).select('id').single()
-      if (errF) {
-        console.error('Erreur création facture inter-société:', errF)
-        setError(`Transfert créé mais erreur facture : ${errF.message}`)
-        setSaving(false); return
-      }
-      if (facture) {
-        await supabase.from('stock_transfers').update({ facture_intersociete_id: facture.id }).eq('id', transfer.id)
-      }
-    }
-
-    // Déplacer le stock — source diminue via move_stock, destination augmente directement
-    try {
-      for (const l of lignes) {
-        const { error: errMove } = await supabase.rpc('move_stock', {
-          p_product_id: l.product_id, p_site_id: siteSourceId,
-          p_raison: 'transfert_out', p_quantite: l.quantite,
-          p_note: `Transfert ${numero} sortie`, p_order_id: null, p_transfer_id: transfer.id,
-        })
-        if (errMove) {
-          console.error('move_stock erreur:', errMove)
-          setError(`Erreur stock source : ${errMove.message}`)
-          setSaving(false); return
-        }
-        // Incrémenter le stock destination
-        const { data: stockDest } = await supabase.from('stock').select('quantite').eq('product_id', l.product_id).eq('site_id', siteDestId).maybeSingle()
-        await supabase.from('stock').upsert({
-          product_id: l.product_id, site_id: siteDestId,
-          quantite: (stockDest?.quantite || 0) + l.quantite,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'product_id,site_id' })
-      }
-    } catch (e: any) {
-      setError(`Erreur lors du transfert : ${e?.message || String(e)}`)
-      setSaving(false); return
-    }
-
-    // Marquer validé
-    await supabase.from('stock_transfers').update({ statut: 'validé', validated_at: new Date().toISOString() }).eq('id', transfer.id)
-
-    setSaving(false)
-    onCreated()
+    if (errT || !transfer) { setError(errT?.message || 'Erreur création'); setSaving(false); return }
+    await supabase.from('stock_transfer_lignes').insert(lignes.map(l => ({
+      transfer_id: transfer.id, product_id: l.product_id,
+      quantite: l.quantite, quantite_demandee: l.quantite,
+      prix_achat_ht: l.prix_achat_ht, prix_transfert_ht: isInterSociete ? l.prix_transfert_ht : null,
+    })))
+    setSaving(false); onCreated()
   }
 
   const COULEURS: Record<string, string> = { rouge: '#e07070', blanc: '#c9b06e', rosé: '#e8a0b0', champagne: '#d4c88a', effervescent: '#a0b0e0', autre: '#888' }
@@ -1405,14 +1312,16 @@ function ModalNouveauTransfert({ sites, onCreated, onClose }: {
   return (
     <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }} onClick={onClose}>
       <div style={{ background: '#18130e', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 8, width: '100%', maxWidth: 760, maxHeight: '92vh', overflowY: 'auto' as const, padding: '28px 32px' }} onClick={e => e.stopPropagation()}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-          <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 300, color: '#f0e8d8', margin: 0 }}>Nouveau transfert</h2>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <div>
+            <div style={{ fontSize: 10, letterSpacing: 1.5, color: '#c9a96e', marginBottom: 4 }}>ÉTAPE 1 / 3</div>
+            <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 300, color: '#f0e8d8', margin: 0 }}>Demande de transfert</h2>
+          </div>
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.4)', fontSize: 20, cursor: 'pointer' }}>✕</button>
         </div>
 
         {error && <div style={{ background: 'rgba(201,110,110,0.1)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 4, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: '#c96e6e' }}>{error}</div>}
 
-        {/* Sites source / destination */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 12, alignItems: 'end', marginBottom: 20 }}>
           <div>
             <label style={lbl}>Site source</label>
@@ -1429,28 +1338,22 @@ function ModalNouveauTransfert({ sites, onCreated, onClose }: {
           </div>
         </div>
 
-        {/* Badge inter-société */}
         {isInterSociete && (
-          <div style={{ background: 'rgba(201,110,110,0.08)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 4, padding: '10px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: 16 }}>⚠</span>
+          <div style={{ background: 'rgba(201,110,110,0.08)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 4, padding: '10px 16px', marginBottom: 16, display: 'flex', gap: 10, alignItems: 'center' }}>
+            <span>⚠</span>
             <div>
               <div style={{ fontSize: 12, color: '#c96e6e', fontWeight: 600 }}>Transfert inter-société — La Petite Cave impliquée</div>
-              <div style={{ fontSize: 11, color: 'rgba(201,110,110,0.7)', marginTop: 2 }}>Une facture inter-société sera générée automatiquement au prix d'achat HT × 1,05</div>
+              <div style={{ fontSize: 11, color: 'rgba(201,110,110,0.7)', marginTop: 2 }}>Une facture sera générée à l'expédition au prix d'achat HT × 1,05</div>
             </div>
           </div>
         )}
 
-        {/* Recherche produit */}
         <div style={{ position: 'relative' as const, marginBottom: 16 }}>
           <label style={lbl}>Ajouter un produit</label>
-          <input
-            value={searchProduit}
-            onChange={e => { setSearchProduit(e.target.value); clearTimeout(searchTimer.current); searchTimer.current = setTimeout(() => searchProduits(e.target.value), 250) }}
-            placeholder="🔍 Rechercher un produit..."
-            style={{ ...inp, width: '100%' }}
-          />
+          <input value={search} onChange={e => { setSearch(e.target.value); clearTimeout(timer.current); timer.current = setTimeout(() => searchProduits(e.target.value), 250) }}
+            placeholder="🔍 Rechercher..." style={{ ...inp, width: '100%' }} />
           {produitsTrouves.length > 0 && (
-            <div style={{ position: 'absolute' as const, top: '100%', left: 0, right: 0, background: '#1a1408', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 4, zIndex: 10, maxHeight: 240, overflowY: 'auto' as const }}>
+            <div style={{ position: 'absolute' as const, top: '100%', left: 0, right: 0, background: '#1a1408', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 4, zIndex: 10, maxHeight: 220, overflowY: 'auto' as const }}>
               {produitsTrouves.map(p => (
                 <div key={p.id} onClick={() => addLigne(p)}
                   style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', cursor: 'pointer', borderBottom: '0.5px solid rgba(255,255,255,0.04)' }}
@@ -1463,7 +1366,6 @@ function ModalNouveauTransfert({ sites, onCreated, onClose }: {
                   <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
                     <span style={{ fontSize: 11, color: p.stock <= 0 ? '#c96e6e' : 'rgba(232,224,213,0.4)' }}>stk: {p.stock}</span>
                     {p.prix_achat_ht && <span style={{ fontSize: 12, color: '#c9a96e' }}>{parseFloat(p.prix_achat_ht).toFixed(2)}€ HT</span>}
-                    <span style={{ fontSize: 10, color: '#6ec96e' }}>+ Ajouter</span>
                   </div>
                 </div>
               ))}
@@ -1471,85 +1373,472 @@ function ModalNouveauTransfert({ sites, onCreated, onClose }: {
           )}
         </div>
 
-        {/* Tableau des lignes */}
         {lignes.length > 0 && (
           <div style={{ background: '#14100c', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 6, overflow: 'hidden', marginBottom: 16 }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' as const }}>
               <thead>
                 <tr style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
-                  {['Produit', 'Stock dispo', 'Quantité', isInterSociete ? 'Prix achat HT' : 'Prix HT', isInterSociete ? 'Prix transfert HT (+5%)' : '', 'Total HT', ''].filter(Boolean).map(h => (
+                  {['Produit', 'Stock dispo', 'Qté demandée', isInterSociete ? 'Prix HT' : '', isInterSociete ? 'Prix transfert HT' : '', ''].filter(Boolean).map(h => (
                     <th key={h} style={{ padding: '8px 12px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', fontWeight: 400 }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {lignes.map((l, i) => {
-                  const prix = isInterSociete ? (l.prix_transfert_ht || 0) : (l.prix_achat_ht || 0)
-                  const total = prix * l.quantite
-                  const stockInsuff = l.quantite > l.stock
-                  return (
-                    <tr key={l.product_id} style={{ borderBottom: i < lignes.length - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none', background: stockInsuff ? 'rgba(201,110,110,0.05)' : 'transparent' }}>
-                      <td style={{ padding: '10px 12px' }}>
-                        <div style={{ fontSize: 13, color: '#f0e8d8' }}>{l.nom}{l.millesime ? ` ${l.millesime}` : ''}</div>
-                      </td>
-                      <td style={{ padding: '10px 12px', fontSize: 12, color: l.stock <= 0 ? '#c96e6e' : 'rgba(232,224,213,0.5)' }}>{l.stock}</td>
-                      <td style={{ padding: '10px 12px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <button onClick={() => updateQte(l.product_id, l.quantite - 1)} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: '#e8e0d5', width: 24, height: 24, borderRadius: 3, cursor: 'pointer', fontSize: 14 }}>−</button>
-                          <input type="number" min={1} max={l.stock} value={l.quantite} onChange={e => updateQte(l.product_id, parseInt(e.target.value) || 1)}
-                            style={{ width: 48, background: stockInsuff ? 'rgba(201,110,110,0.1)' : 'rgba(255,255,255,0.06)', border: `0.5px solid ${stockInsuff ? 'rgba(201,110,110,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 3, color: stockInsuff ? '#c96e6e' : '#e8e0d5', fontSize: 13, padding: '3px 6px', textAlign: 'center' as const }} />
-                          <button onClick={() => updateQte(l.product_id, l.quantite + 1)} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: '#e8e0d5', width: 24, height: 24, borderRadius: 3, cursor: 'pointer', fontSize: 14 }}>+</button>
-                        </div>
-                        {stockInsuff && <div style={{ fontSize: 10, color: '#c9b06e', marginTop: 3 }}>⚠ Dépasse le stock affiché</div>}
-                      </td>
-                      <td style={{ padding: '10px 12px', fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>{l.prix_achat_ht ? `${parseFloat(l.prix_achat_ht).toFixed(2)} €` : '—'}</td>
-                      {isInterSociete && <td style={{ padding: '10px 12px', fontSize: 12, color: '#c96e6e', fontWeight: 600 }}>{l.prix_transfert_ht ? `${l.prix_transfert_ht.toFixed(4)} €` : '—'}</td>}
-                      <td style={{ padding: '10px 12px', fontSize: 13, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{total > 0 ? `${total.toFixed(2)} €` : '—'}</td>
-                      <td style={{ padding: '10px 12px' }}>
-                        <button onClick={() => setLignes(prev => prev.filter(x => x.product_id !== l.product_id))} style={{ background: 'transparent', border: 'none', color: '#c96e6e', cursor: 'pointer', fontSize: 16 }}>✕</button>
-                      </td>
-                    </tr>
-                  )
-                })}
+                {lignes.map((l, i) => (
+                  <tr key={l.product_id} style={{ borderBottom: i < lignes.length - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none' }}>
+                    <td style={{ padding: '10px 12px', fontSize: 13, color: '#f0e8d8' }}>{l.nom}{l.millesime ? ` ${l.millesime}` : ''}</td>
+                    <td style={{ padding: '10px 12px', fontSize: 12, color: l.stock <= 0 ? '#c96e6e' : 'rgba(232,224,213,0.5)' }}>{l.stock}</td>
+                    <td style={{ padding: '10px 12px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <button onClick={() => setLignes(prev => prev.map(x => x.product_id === l.product_id ? { ...x, quantite: Math.max(1, x.quantite - 1) } : x))} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: '#e8e0d5', width: 24, height: 24, borderRadius: 3, cursor: 'pointer', fontSize: 14 }}>−</button>
+                        <input type="number" min={1} value={l.quantite} onChange={e => setLignes(prev => prev.map(x => x.product_id === l.product_id ? { ...x, quantite: parseInt(e.target.value) || 1 } : x))}
+                          style={{ width: 52, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 3, color: '#e8e0d5', fontSize: 13, padding: '3px 6px', textAlign: 'center' as const }} />
+                        <button onClick={() => setLignes(prev => prev.map(x => x.product_id === l.product_id ? { ...x, quantite: x.quantite + 1 } : x))} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: '#e8e0d5', width: 24, height: 24, borderRadius: 3, cursor: 'pointer', fontSize: 14 }}>+</button>
+                      </div>
+                    </td>
+                    {isInterSociete && <td style={{ padding: '10px 12px', fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>{l.prix_achat_ht ? `${l.prix_achat_ht.toFixed(2)} €` : '—'}</td>}
+                    {isInterSociete && <td style={{ padding: '10px 12px', fontSize: 12, color: '#c96e6e', fontWeight: 600 }}>{l.prix_transfert_ht ? `${l.prix_transfert_ht.toFixed(4)} €` : '—'}</td>}
+                    <td style={{ padding: '10px 12px' }}>
+                      <button onClick={() => setLignes(prev => prev.filter(x => x.product_id !== l.product_id))} style={{ background: 'transparent', border: 'none', color: '#c96e6e', cursor: 'pointer', fontSize: 16 }}>✕</button>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
-              <tfoot>
-                <tr style={{ borderTop: '0.5px solid rgba(255,255,255,0.1)' }}>
-                  <td colSpan={isInterSociete ? 5 : 3} style={{ padding: '10px 12px', textAlign: 'right' as const, fontSize: 11, color: 'rgba(232,224,213,0.4)', letterSpacing: 1 }}>TOTAL HT</td>
-                  <td style={{ padding: '10px 12px', fontSize: 18, color: '#c9a96e', fontFamily: 'Georgia, serif', fontWeight: 300 }}>{totalHT.toFixed(2)} €</td>
-                  <td />
-                </tr>
-                {isInterSociete && (
-                  <tr>
-                    <td colSpan={isInterSociete ? 5 : 3} style={{ padding: '4px 12px', textAlign: 'right' as const, fontSize: 11, color: 'rgba(232,224,213,0.3)' }}>TVA 20%</td>
-                    <td style={{ padding: '4px 12px', fontSize: 13, color: 'rgba(232,224,213,0.4)', fontFamily: 'Georgia, serif' }}>{(totalHT * 0.20).toFixed(2)} €</td>
-                    <td />
-                  </tr>
-                )}
-                {isInterSociete && (
-                  <tr>
-                    <td colSpan={isInterSociete ? 5 : 3} style={{ padding: '4px 12px 10px', textAlign: 'right' as const, fontSize: 11, color: 'rgba(201,110,110,0.6)' }}>TOTAL TTC FACTURE</td>
-                    <td style={{ padding: '4px 12px 10px', fontSize: 16, color: '#c96e6e', fontFamily: 'Georgia, serif', fontWeight: 600 }}>{(totalHT * 1.20).toFixed(2)} €</td>
-                    <td />
-                  </tr>
-                )}
-              </tfoot>
             </table>
           </div>
         )}
 
-        {/* Notes */}
         <div style={{ marginBottom: 20 }}>
           <label style={lbl}>Notes (optionnel)</label>
-          <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Raison du transfert, référence..." style={{ ...inp, width: '100%' }} />
+          <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Raison du transfert..." style={{ ...inp, width: '100%' }} />
         </div>
 
         <div style={{ display: 'flex', gap: 10 }}>
           <button onClick={onClose} style={{ flex: 1, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '11px', fontSize: 12, cursor: 'pointer' }}>Annuler</button>
           <button onClick={handleCreate} disabled={saving || lignes.length === 0} style={{ flex: 2, background: lignes.length > 0 ? '#c9a96e' : '#2a2a1e', color: lignes.length > 0 ? '#0d0a08' : '#555', border: 'none', borderRadius: 4, padding: '11px', fontSize: 13, cursor: 'pointer', fontWeight: 600, opacity: saving ? 0.7 : 1 }}>
-            {saving ? '⟳ Création...' : isInterSociete ? `✓ Créer le transfert + facture inter-société` : '✓ Créer le transfert'}
+            {saving ? '⟳ Création...' : '✓ Créer la demande de transfert'}
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ── Vue détail transfert (3 étapes) ──────────────────────────
+function VueDetailTransfert({ transfert, sites, onBack, onRefresh }: {
+  transfert: any; sites: any[]; onBack: () => void; onRefresh: () => void
+}) {
+  const [lignes, setLignes] = useState<any[]>([])
+  const [facture, setFacture] = useState<any>(null)
+  const [avoir, setAvoir] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [processing, setProcessing] = useState(false)
+  const [error, setError] = useState('')
+  const [qteExpediees, setQteExpediees] = useState<Record<string, number>>({})
+  const [qteRecues, setQteRecues] = useState<Record<string, number>>({})
+
+  const isInterSociete = impliqueLaPetiteCave(transfert.site_source_id, transfert.site_destination_id)
+  const siteSrc = sites.find(s => s.id === transfert.site_source_id)
+  const siteDest = sites.find(s => s.id === transfert.site_destination_id)
+
+  const load = async () => {
+    setLoading(true)
+    const { data: lig } = await supabase.from('stock_transfer_lignes')
+      .select('*, product:products(id, nom, millesime, couleur)')
+      .eq('transfer_id', transfert.id)
+    setLignes(lig || [])
+    const initExp: Record<string, number> = {}
+    const initRec: Record<string, number> = {}
+    ;(lig || []).forEach((l: any) => {
+      initExp[l.id] = l.quantite_expediee ?? l.quantite_demandee ?? l.quantite
+      initRec[l.id] = l.quantite_recue ?? l.quantite_expediee ?? l.quantite
+    })
+    setQteExpediees(initExp)
+    setQteRecues(initRec)
+    if (transfert.facture_intersociete_id) {
+      const { data: f } = await supabase.from('factures_intersocietes').select('*').eq('id', transfert.facture_intersociete_id).single()
+      setFacture(f)
+    }
+    if (transfert.avoir_id) {
+      const { data: a } = await supabase.from('factures_intersocietes').select('*').eq('id', transfert.avoir_id).single()
+      setAvoir(a)
+    }
+    setLoading(false)
+  }
+
+  useEffect(() => { load() }, [transfert.id])
+
+  // ── Étape 2 : Expédition ──
+  const handleExpedier = async () => {
+    setProcessing(true); setError('')
+    try {
+      // Mettre à jour les quantités expédiées
+      for (const l of lignes) {
+        const qte = qteExpediees[l.id] ?? l.quantite_demandee
+        await supabase.from('stock_transfer_lignes').update({
+          quantite_expediee: qte,
+          prix_transfert_ht: isInterSociete ? l.prix_transfert_ht : null,
+        }).eq('id', l.id)
+      }
+
+      // Décrémenter le stock source
+      for (const l of lignes) {
+        const qte = qteExpediees[l.id] ?? l.quantite_demandee
+        if (qte > 0) {
+          const { error: errMove } = await supabase.rpc('move_stock', {
+            p_product_id: l.product_id, p_site_id: transfert.site_source_id,
+            p_raison: 'transfert_out', p_quantite: qte,
+            p_note: `Transfert ${transfert.numero} — expédition`, p_order_id: null, p_transfer_id: transfert.id,
+          })
+          if (errMove) throw new Error(`Stock source : ${errMove.message}`)
+        }
+      }
+
+      // Générer la facture inter-société si applicable
+      let factureId = null
+      if (isInterSociete) {
+        const totalHT = lignes.reduce((acc, l) => {
+          const qte = qteExpediees[l.id] ?? l.quantite_demandee
+          return acc + (parseFloat(l.prix_transfert_ht || 0)) * qte
+        }, 0)
+        const { data: fac, error: errF } = await supabase.from('factures_intersocietes').insert({
+          numero: genNumero('FIC'), transfer_id: transfert.id,
+          site_emetteur_id: transfert.site_source_id,
+          site_destinataire_id: transfert.site_destination_id,
+          total_ht: Math.round(totalHT * 100) / 100,
+          tva_pct: 20, total_ttc: Math.round(totalHT * 1.20 * 100) / 100,
+          statut: 'emise', type: 'facture',
+          date_emission: new Date().toISOString().split('T')[0],
+        }).select('id').single()
+        if (errF) throw new Error(`Facture : ${errF.message}`)
+        factureId = fac?.id
+      }
+
+      await supabase.from('stock_transfers').update({
+        statut: 'expedie',
+        expedie_at: new Date().toISOString(),
+        facture_intersociete_id: factureId,
+      }).eq('id', transfert.id)
+
+      onRefresh()
+    } catch (e: any) {
+      setError(e.message)
+    }
+    setProcessing(false)
+  }
+
+  // ── Étape 3 : Réception ──
+  const handleReceptionner = async () => {
+    setProcessing(true); setError('')
+    try {
+      // Mettre à jour les quantités reçues
+      for (const l of lignes) {
+        const qte = qteRecues[l.id] ?? l.quantite_expediee
+        await supabase.from('stock_transfer_lignes').update({ quantite_recue: qte }).eq('id', l.id)
+      }
+
+      // Incrémenter le stock destination avec les quantités réellement reçues
+      for (const l of lignes) {
+        const qte = qteRecues[l.id] ?? l.quantite_expediee
+        if (qte > 0) {
+          const { data: stockDest } = await supabase.from('stock').select('quantite')
+            .eq('product_id', l.product_id).eq('site_id', transfert.site_destination_id).maybeSingle()
+          await supabase.from('stock').upsert({
+            product_id: l.product_id, site_id: transfert.site_destination_id,
+            quantite: (stockDest?.quantite || 0) + qte,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'product_id,site_id' })
+        }
+      }
+
+      // Vérifier les écarts si inter-société
+      let avoirId = null
+      if (isInterSociete) {
+        let ecartHT = 0
+        for (const l of lignes) {
+          const qteExp = l.quantite_expediee ?? l.quantite_demandee
+          const qteRec = qteRecues[l.id] ?? qteExp
+          const ecart = qteRec - qteExp // positif = reçu plus, négatif = reçu moins
+          if (ecart !== 0) {
+            ecartHT += parseFloat(l.prix_transfert_ht || 0) * Math.abs(ecart) * (ecart < 0 ? -1 : 1)
+          }
+        }
+
+        if (Math.abs(ecartHT) > 0.001) {
+          const isAvoir = ecartHT < 0 // Reçu moins → avoir
+          const montantHT = Math.abs(ecartHT)
+          const { data: doc, error: errA } = await supabase.from('factures_intersocietes').insert({
+            numero: genNumero(isAvoir ? 'AV' : 'FIC'),
+            transfer_id: transfert.id,
+            site_emetteur_id: isAvoir ? transfert.site_destination_id : transfert.site_source_id,
+            site_destinataire_id: isAvoir ? transfert.site_source_id : transfert.site_destination_id,
+            total_ht: Math.round(montantHT * 100) / 100,
+            tva_pct: 20, total_ttc: Math.round(montantHT * 1.20 * 100) / 100,
+            statut: 'emise', type: isAvoir ? 'avoir' : 'facture',
+            date_emission: new Date().toISOString().split('T')[0],
+          }).select('id').single()
+          if (errA) throw new Error(`Document écart : ${errA.message}`)
+          avoirId = doc?.id
+        }
+      }
+
+      await supabase.from('stock_transfers').update({
+        statut: 'recu',
+        recu_at: new Date().toISOString(),
+        avoir_id: avoirId,
+      }).eq('id', transfert.id)
+
+      onRefresh()
+    } catch (e: any) {
+      setError(e.message)
+    }
+    setProcessing(false)
+  }
+
+  const imprimerDoc = (doc: any, type: 'facture' | 'avoir') => {
+    const srcId = doc.site_emetteur_id
+    const destId = doc.site_destinataire_id
+    const srcNom = sites.find(s => s.id === srcId)?.nom || ''
+    const destNom = sites.find(s => s.id === destId)?.nom || ''
+    const title = type === 'avoir' ? `AVOIR N° ${doc.numero}` : `FACTURE INTER-SOCIÉTÉ N° ${doc.numero}`
+    const html = `<html><head><style>
+      body{font-family:Arial,sans-serif;font-size:12px;max-width:210mm;margin:0 auto;padding:20mm}
+      .header{display:flex;justify-content:space-between;margin-bottom:30px}
+      .title{font-size:20px;font-weight:bold;color:${type === 'avoir' ? '#6B4C4C' : '#8B6914'};margin-bottom:16px}
+      .total{text-align:right;margin-top:16px}
+      .footer{margin-top:40px;font-size:10px;color:#666;border-top:1px solid #eee;padding-top:10px}
+    </style></head><body>
+      <div class="header">
+        <div><b>${srcNom}</b><br/>Cave de Gilbert SAS<br/>SIRET 898 622 055 00017</div>
+        <div style="text-align:right"><b>${destNom}</b><br/>Date : ${doc.date_emission}</div>
+      </div>
+      <div class="title">${title}</div>
+      <div style="margin-bottom:8px;color:#666;font-size:11px">Référence transfert : ${transfert.numero}</div>
+      <div class="total">
+        <div>Total HT : <b>${parseFloat(doc.total_ht).toFixed(2)} €</b></div>
+        <div>TVA 20% : ${(parseFloat(doc.total_ht) * 0.20).toFixed(2)} €</div>
+        <div style="font-size:18px;color:${type === 'avoir' ? '#6B4C4C' : '#8B6914'};font-weight:bold;margin-top:8px">Total TTC : ${parseFloat(doc.total_ttc).toFixed(2)} €</div>
+      </div>
+      <div class="footer">Cave de Gilbert SAS — SIRET 898 622 055 00017 — TVA FR79 898 622 055</div>
+    </body></html>`
+    const win = window.open('', '_blank')
+    if (win) { win.document.write(html); win.document.close(); win.print() }
+  }
+
+  const statutColor: Record<string, string> = { demande: '#c9b06e', expedie: '#6e9ec9', recu: '#6ec96e', annule: '#888' }
+  const statutLabel: Record<string, string> = { demande: 'Demande', expedie: 'Expédié', recu: 'Réceptionné', annule: 'Annulé' }
+
+  if (loading) return (
+    <div>
+      <button onClick={onBack} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.4)', fontSize: 11, cursor: 'pointer', padding: 0, marginBottom: 16 }}>← Retour</button>
+      <div style={{ textAlign: 'center' as const, padding: 48, color: 'rgba(232,224,213,0.3)' }}>⟳ Chargement...</div>
+    </div>
+  )
+
+  return (
+    <div>
+      <button onClick={onBack} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.4)', fontSize: 11, cursor: 'pointer', padding: 0, marginBottom: 16 }}>← Retour aux transferts</button>
+
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
+        <div>
+          <div style={{ fontFamily: 'monospace', fontSize: 12, color: '#c9a96e', marginBottom: 4 }}>{transfert.numero}</div>
+          <h1 style={{ fontFamily: 'Georgia, serif', fontSize: 22, fontWeight: 300, color: '#f0e8d8', margin: 0 }}>
+            {siteSrc?.nom} <span style={{ color: '#c9a96e' }}>→</span> {siteDest?.nom}
+          </h1>
+          <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', marginTop: 4 }}>
+            {new Date(transfert.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
+            {transfert.notes && ` · ${transfert.notes}`}
+          </div>
+        </div>
+        <span style={{ background: `${statutColor[transfert.statut]}22`, color: statutColor[transfert.statut], fontSize: 11, padding: '4px 12px', borderRadius: 3, letterSpacing: 1, textTransform: 'uppercase' as const }}>
+          {statutLabel[transfert.statut]}
+        </span>
+      </div>
+
+      {/* Stepper */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 0, marginBottom: 28 }}>
+        {[
+          { label: '1. Demande', statuts: ['demande', 'expedie', 'recu'] },
+          { label: '2. Expédition', statuts: ['expedie', 'recu'] },
+          { label: '3. Réception', statuts: ['recu'] },
+        ].map((step, i) => {
+          const done = step.statuts.includes(transfert.statut)
+          const current = (i === 0 && transfert.statut === 'demande') || (i === 1 && transfert.statut === 'expedie') || (i === 2 && transfert.statut === 'recu')
+          return (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ width: 28, height: 28, borderRadius: '50%', background: done ? '#6ec96e' : current ? '#c9a96e' : 'rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: done ? '#0d0a08' : current ? '#0d0a08' : 'rgba(232,224,213,0.3)', fontWeight: 600, flexShrink: 0 }}>
+                  {done && !current ? '✓' : i + 1}
+                </div>
+                <span style={{ fontSize: 12, color: done ? '#6ec96e' : current ? '#c9a96e' : 'rgba(232,224,213,0.3)', whiteSpace: 'nowrap' as const }}>{step.label}</span>
+              </div>
+              {i < 2 && <div style={{ flex: 1, height: 1, background: done && !current ? '#6ec96e' : 'rgba(255,255,255,0.08)', margin: '0 12px' }} />}
+            </div>
+          )
+        })}
+      </div>
+
+      {error && <div style={{ background: 'rgba(201,110,110,0.1)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 4, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: '#c96e6e' }}>{error}</div>}
+
+      {/* Documents inter-société */}
+      {(facture || avoir) && (
+        <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' as const }}>
+          {facture && (
+            <div style={{ flex: 1, background: 'rgba(201,110,110,0.06)', border: '0.5px solid rgba(201,110,110,0.2)', borderRadius: 6, padding: '14px 18px' }}>
+              <div style={{ fontSize: 10, letterSpacing: 1.5, color: '#c96e6e', marginBottom: 8 }}>FACTURE INTER-SOCIÉTÉ</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontFamily: 'monospace', fontSize: 13, color: '#f0e8d8' }}>{facture.numero}</div>
+                  <div style={{ fontSize: 18, color: '#c9a96e', fontFamily: 'Georgia, serif', marginTop: 4 }}>{parseFloat(facture.total_ttc).toFixed(2)} € TTC</div>
+                  <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>{parseFloat(facture.total_ht).toFixed(2)} € HT + TVA 20%</div>
+                </div>
+                <button onClick={() => imprimerDoc(facture, 'facture')} style={{ background: 'rgba(201,110,110,0.1)', border: '0.5px solid rgba(201,110,110,0.3)', color: '#c96e6e', borderRadius: 4, padding: '8px 14px', fontSize: 11, cursor: 'pointer' }}>🖨 Imprimer</button>
+              </div>
+            </div>
+          )}
+          {avoir && (
+            <div style={{ flex: 1, background: avoir.type === 'avoir' ? 'rgba(110,158,201,0.06)' : 'rgba(201,110,110,0.06)', border: `0.5px solid ${avoir.type === 'avoir' ? 'rgba(110,158,201,0.2)' : 'rgba(201,110,110,0.2)'}`, borderRadius: 6, padding: '14px 18px' }}>
+              <div style={{ fontSize: 10, letterSpacing: 1.5, color: avoir.type === 'avoir' ? '#6e9ec9' : '#c96e6e', marginBottom: 8 }}>{avoir.type === 'avoir' ? 'AVOIR — ÉCART RÉCEPTION' : 'FACTURE COMPLÉMENTAIRE'}</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontFamily: 'monospace', fontSize: 13, color: '#f0e8d8' }}>{avoir.numero}</div>
+                  <div style={{ fontSize: 18, color: avoir.type === 'avoir' ? '#6e9ec9' : '#c9a96e', fontFamily: 'Georgia, serif', marginTop: 4 }}>{parseFloat(avoir.total_ttc).toFixed(2)} € TTC</div>
+                </div>
+                <button onClick={() => imprimerDoc(avoir, avoir.type)} style={{ background: 'rgba(110,158,201,0.1)', border: '0.5px solid rgba(110,158,201,0.3)', color: '#6e9ec9', borderRadius: 4, padding: '8px 14px', fontSize: 11, cursor: 'pointer' }}>🖨 Imprimer</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tableau des lignes */}
+      <div style={{ background: '#18130e', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 6, overflow: 'hidden', marginBottom: 20 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' as const }}>
+          <thead>
+            <tr style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
+              {['Produit', 'Demandé', transfert.statut !== 'demande' ? 'Expédié' : '', transfert.statut === 'recu' ? 'Reçu' : '', isInterSociete ? 'Prix transfert HT' : ''].filter(Boolean).map(h => (
+                <th key={h} style={{ padding: '10px 14px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', fontWeight: 400 }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {lignes.map((l, i) => {
+              const qteExp = l.quantite_expediee ?? l.quantite_demandee
+              const qteRec = l.quantite_recue ?? qteExp
+              const ecart = transfert.statut === 'recu' ? qteRec - qteExp : null
+              return (
+                <tr key={l.id} style={{ borderBottom: i < lignes.length - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none' }}>
+                  <td style={{ padding: '10px 14px' }}>
+                    <div style={{ fontSize: 13, color: '#f0e8d8' }}>{l.product?.nom}{l.product?.millesime ? ` ${l.product.millesime}` : ''}</div>
+                  </td>
+                  <td style={{ padding: '10px 14px', fontSize: 13, color: 'rgba(232,224,213,0.6)', fontFamily: 'Georgia, serif' }}>{l.quantite_demandee ?? l.quantite}</td>
+                  {transfert.statut !== 'demande' && (
+                    <td style={{ padding: '10px 14px', fontSize: 13, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{l.quantite_expediee ?? '—'}</td>
+                  )}
+                  {transfert.statut === 'recu' && (
+                    <td style={{ padding: '10px 14px' }}>
+                      <span style={{ fontSize: 13, color: ecart === 0 ? '#6ec96e' : '#c96e6e', fontFamily: 'Georgia, serif' }}>{l.quantite_recue ?? '—'}</span>
+                      {ecart !== null && ecart !== 0 && <span style={{ fontSize: 10, color: '#c96e6e', marginLeft: 6 }}>({ecart > 0 ? '+' : ''}{ecart})</span>}
+                    </td>
+                  )}
+                  {isInterSociete && <td style={{ padding: '10px 14px', fontSize: 12, color: '#c96e6e' }}>{l.prix_transfert_ht ? `${parseFloat(l.prix_transfert_ht).toFixed(4)} €` : '—'}</td>}
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Action de l'étape courante */}
+      {transfert.statut === 'demande' && (
+        <div style={{ background: '#18130e', border: '0.5px solid rgba(110,158,201,0.2)', borderRadius: 6, padding: '20px 24px' }}>
+          <div style={{ fontSize: 11, letterSpacing: 1.5, color: '#6e9ec9', marginBottom: 12 }}>ÉTAPE 2 — EXPÉDITION</div>
+          <p style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)', marginBottom: 16 }}>Ajustez les quantités expédiées si nécessaire, puis confirmez l'expédition. Le stock source sera décrémenté.{isInterSociete && ' La facture inter-société sera générée.'}</p>
+          <div style={{ background: '#14100c', border: '0.5px solid rgba(255,255,255,0.06)', borderRadius: 4, overflow: 'hidden', marginBottom: 16 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' as const }}>
+              <thead>
+                <tr style={{ borderBottom: '0.5px solid rgba(255,255,255,0.06)' }}>
+                  <th style={{ padding: '8px 14px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', fontWeight: 400 }}>Produit</th>
+                  <th style={{ padding: '8px 14px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', fontWeight: 400 }}>Demandé</th>
+                  <th style={{ padding: '8px 14px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: '#6e9ec9', fontWeight: 400 }}>Qté à expédier</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lignes.map((l, i) => (
+                  <tr key={l.id} style={{ borderBottom: i < lignes.length - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none' }}>
+                    <td style={{ padding: '8px 14px', fontSize: 13, color: '#f0e8d8' }}>{l.product?.nom}{l.product?.millesime ? ` ${l.product.millesime}` : ''}</td>
+                    <td style={{ padding: '8px 14px', fontSize: 13, color: 'rgba(232,224,213,0.5)' }}>{l.quantite_demandee ?? l.quantite}</td>
+                    <td style={{ padding: '8px 14px' }}>
+                      <input type="number" min={0} value={qteExpediees[l.id] ?? l.quantite_demandee ?? l.quantite}
+                        onChange={e => setQteExpediees(prev => ({ ...prev, [l.id]: parseInt(e.target.value) || 0 }))}
+                        style={{ width: 70, background: 'rgba(110,158,201,0.08)', border: '0.5px solid rgba(110,158,201,0.3)', borderRadius: 4, color: '#6e9ec9', fontSize: 14, padding: '5px 8px', textAlign: 'center' as const }} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <button onClick={handleExpedier} disabled={processing} style={{ background: '#6e9ec9', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '12px 24px', fontSize: 13, cursor: 'pointer', fontWeight: 600, opacity: processing ? 0.7 : 1 }}>
+            {processing ? '⟳ Traitement...' : '📦 Confirmer l\'expédition' + (isInterSociete ? ' + générer facture' : '')}
+          </button>
+        </div>
+      )}
+
+      {transfert.statut === 'expedie' && (
+        <div style={{ background: '#18130e', border: '0.5px solid rgba(110,201,110,0.2)', borderRadius: 6, padding: '20px 24px' }}>
+          <div style={{ fontSize: 11, letterSpacing: 1.5, color: '#6ec96e', marginBottom: 12 }}>ÉTAPE 3 — RÉCEPTION</div>
+          <p style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)', marginBottom: 16 }}>Saisissez les quantités réellement reçues. Le stock destination sera incrémenté.{isInterSociete && ' Si écart : avoir ou facture complémentaire généré automatiquement.'}</p>
+          <div style={{ background: '#14100c', border: '0.5px solid rgba(255,255,255,0.06)', borderRadius: 4, overflow: 'hidden', marginBottom: 16 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' as const }}>
+              <thead>
+                <tr style={{ borderBottom: '0.5px solid rgba(255,255,255,0.06)' }}>
+                  <th style={{ padding: '8px 14px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', fontWeight: 400 }}>Produit</th>
+                  <th style={{ padding: '8px 14px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', fontWeight: 400 }}>Expédié</th>
+                  <th style={{ padding: '8px 14px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: '#6ec96e', fontWeight: 400 }}>Qté reçue</th>
+                  <th style={{ padding: '8px 14px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', fontWeight: 400 }}>Écart</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lignes.map((l, i) => {
+                  const qteExp = l.quantite_expediee ?? l.quantite_demandee ?? l.quantite
+                  const qteRec = qteRecues[l.id] ?? qteExp
+                  const ecart = qteRec - qteExp
+                  return (
+                    <tr key={l.id} style={{ borderBottom: i < lignes.length - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none' }}>
+                      <td style={{ padding: '8px 14px', fontSize: 13, color: '#f0e8d8' }}>{l.product?.nom}{l.product?.millesime ? ` ${l.product.millesime}` : ''}</td>
+                      <td style={{ padding: '8px 14px', fontSize: 13, color: 'rgba(232,224,213,0.5)' }}>{qteExp}</td>
+                      <td style={{ padding: '8px 14px' }}>
+                        <input type="number" min={0} value={qteRecues[l.id] ?? qteExp}
+                          onChange={e => setQteRecues(prev => ({ ...prev, [l.id]: parseInt(e.target.value) || 0 }))}
+                          style={{ width: 70, background: ecart < 0 ? 'rgba(201,110,110,0.08)' : ecart > 0 ? 'rgba(110,201,110,0.08)' : 'rgba(110,201,110,0.08)', border: `0.5px solid ${ecart !== 0 ? '#c96e6e' : 'rgba(110,201,110,0.3)'}`, borderRadius: 4, color: ecart < 0 ? '#c96e6e' : '#6ec96e', fontSize: 14, padding: '5px 8px', textAlign: 'center' as const }} />
+                      </td>
+                      <td style={{ padding: '8px 14px', fontSize: 13, color: ecart === 0 ? '#6ec96e' : '#c96e6e', fontFamily: 'Georgia, serif' }}>
+                        {ecart === 0 ? '✓' : `${ecart > 0 ? '+' : ''}${ecart}`}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          <button onClick={handleReceptionner} disabled={processing} style={{ background: '#6ec96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '12px 24px', fontSize: 13, cursor: 'pointer', fontWeight: 600, opacity: processing ? 0.7 : 1 }}>
+            {processing ? '⟳ Traitement...' : '✓ Confirmer la réception'}
+          </button>
+        </div>
+      )}
+
+      {transfert.statut === 'recu' && (
+        <div style={{ background: 'rgba(110,201,110,0.06)', border: '0.5px solid rgba(110,201,110,0.2)', borderRadius: 6, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ fontSize: 24 }}>✓</span>
+          <div>
+            <div style={{ fontSize: 14, color: '#6ec96e', fontWeight: 600 }}>Transfert complété</div>
+            <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', marginTop: 2 }}>
+              Réceptionné le {transfert.recu_at ? new Date(transfert.recu_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1560,8 +1849,6 @@ function VueTransferts({ sites, onNew }: { sites: any[]; onNew: () => void }) {
   const [loading, setLoading] = useState(true)
   const [filterStatut, setFilterStatut] = useState('tous')
   const [detail, setDetail] = useState<any>(null)
-  const [lignesDetail, setLignesDetail] = useState<any[]>([])
-  const [factureDetail, setFactureDetail] = useState<any>(null)
 
   const load = async () => {
     setLoading(true)
@@ -1576,133 +1863,22 @@ function VueTransferts({ sites, onNew }: { sites: any[]; onNew: () => void }) {
 
   useEffect(() => { load() }, [])
 
-  const openDetail = async (t: any) => {
-    setDetail(t)
-    const { data: lignes } = await supabase
-      .from('stock_transfer_lignes')
-      .select('*, product:products(id, nom, millesime, couleur)')
-      .eq('transfer_id', t.id)
-    setLignesDetail(lignes || [])
-    if (t.facture_intersociete_id) {
-      const { data: facture } = await supabase
-        .from('factures_intersocietes')
-        .select('*')
-        .eq('id', t.facture_intersociete_id)
-        .single()
-      setFactureDetail(facture)
-    } else setFactureDetail(null)
-  }
-
-  const imprimerFacture = (t: any, f: any, lignes: any[]) => {
-    const siteSrc = sites.find(s => s.id === t.site_source_id)
-    const siteDest = sites.find(s => s.id === t.site_destination_id)
-    const lignesHtml = lignes.map(l =>
-      `<tr><td>${l.product?.nom}${l.product?.millesime ? ' ' + l.product.millesime : ''}</td><td style="text-align:center">${l.quantite}</td><td style="text-align:right">${parseFloat(l.prix_transfert_ht || 0).toFixed(4)} €</td><td style="text-align:right"><b>${(parseFloat(l.prix_transfert_ht || 0) * l.quantite).toFixed(2)} €</b></td></tr>`
-    ).join('')
-    const html = `<html><head><style>
-      body{font-family:Arial,sans-serif;font-size:12px;max-width:210mm;margin:0 auto;padding:20mm}
-      .header{display:flex;justify-content:space-between;margin-bottom:30px}
-      .title{font-size:20px;font-weight:bold;color:#8B6914;margin-bottom:16px}
-      table{width:100%;border-collapse:collapse;margin:20px 0}
-      th{background:#f5f0e8;padding:8px;text-align:left;border-bottom:2px solid #c9a96e;font-size:11px;letter-spacing:1px}
-      td{padding:8px;border-bottom:1px solid #eee}
-      .total{text-align:right;margin-top:16px;font-size:14px}
-      .footer{margin-top:40px;font-size:10px;color:#666;border-top:1px solid #eee;padding-top:10px}
-    </style></head><body>
-      <div class="header">
-        <div><b>${siteSrc?.nom || ''}</b><br/>Cave de Gilbert SAS<br/>SIRET 898 622 055 00017</div>
-        <div style="text-align:right"><b>${siteDest?.nom || ''}</b><br/>Destinataire<br/>Date : ${f.date_emission}</div>
-      </div>
-      <div class="title">FACTURE INTER-SOCIÉTÉ N° ${f.numero}</div>
-      <div style="margin-bottom:8px;color:#666;font-size:11px">Référence transfert : ${t.numero}</div>
-      <table>
-        <thead><tr><th>Désignation</th><th style="text-align:center">Qté</th><th style="text-align:right">P.U. HT</th><th style="text-align:right">Total HT</th></tr></thead>
-        <tbody>${lignesHtml}</tbody>
-      </table>
-      <div class="total">
-        <div>Total HT : <b>${parseFloat(f.total_ht).toFixed(2)} €</b></div>
-        <div>TVA 20% : ${(parseFloat(f.total_ht) * 0.20).toFixed(2)} €</div>
-        <div style="font-size:18px;color:#8B6914;font-weight:bold;margin-top:8px">Total TTC : ${parseFloat(f.total_ttc).toFixed(2)} €</div>
-      </div>
-      <div class="footer">Cave de Gilbert SAS — SIRET 898 622 055 00017 — TVA FR79 898 622 055 — Prix de transfert = Prix achat HT × 1,05</div>
-    </body></html>`
-    const win = window.open('', '_blank')
-    if (win) { win.document.write(html); win.document.close(); win.print() }
-  }
-
-  const statutColor: Record<string, string> = { 'en_cours': '#c9b06e', 'validé': '#6ec96e', 'annulé': '#888' }
-  const statutBg: Record<string, string> = { 'en_cours': 'rgba(201,176,110,0.1)', 'validé': 'rgba(110,201,110,0.1)', 'annulé': 'rgba(128,128,128,0.1)' }
-
   const filtered = transferts.filter(t => filterStatut === 'tous' || t.statut === filterStatut)
 
+  const statutColor: Record<string, string> = { demande: '#c9b06e', expedie: '#6e9ec9', recu: '#6ec96e', annule: '#888' }
+  const statutLabel: Record<string, string> = { demande: 'Demande', expedie: 'Expédié', recu: 'Réceptionné', annule: 'Annulé' }
+
   if (detail) return (
-    <div>
-      <button onClick={() => { setDetail(null); setFactureDetail(null); setLignesDetail([]) }}
-        style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.4)', fontSize: 11, cursor: 'pointer', padding: 0, marginBottom: 16 }}>← Retour aux transferts</button>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
-        <div>
-          <div style={{ fontFamily: 'monospace', fontSize: 12, color: '#c9a96e', marginBottom: 4 }}>{detail.numero}</div>
-          <h1 style={{ fontFamily: 'Georgia, serif', fontSize: 22, fontWeight: 300, color: '#f0e8d8', margin: 0 }}>
-            {detail.source?.nom} → {detail.dest?.nom}
-          </h1>
-          <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', marginTop: 4 }}>
-            {new Date(detail.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
-            {detail.notes && ` · ${detail.notes}`}
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <span style={{ background: statutBg[detail.statut] || 'transparent', color: statutColor[detail.statut] || '#888', fontSize: 10, padding: '3px 10px', borderRadius: 3, letterSpacing: 1, textTransform: 'uppercase' as const }}>{detail.statut}</span>
-          {factureDetail && (
-            <button onClick={() => imprimerFacture(detail, factureDetail, lignesDetail)}
-              style={{ background: 'rgba(201,110,110,0.1)', border: '0.5px solid rgba(201,110,110,0.3)', color: '#c96e6e', borderRadius: 4, padding: '8px 14px', fontSize: 11, cursor: 'pointer' }}>
-              🖨 Imprimer facture inter-société
-            </button>
-          )}
-        </div>
-      </div>
-
-      {factureDetail && (
-        <div style={{ background: 'rgba(201,110,110,0.06)', border: '0.5px solid rgba(201,110,110,0.2)', borderRadius: 6, padding: '14px 18px', marginBottom: 20 }}>
-          <div style={{ fontSize: 10, letterSpacing: 1.5, color: '#c96e6e', marginBottom: 8 }}>FACTURE INTER-SOCIÉTÉ</div>
-          <div style={{ display: 'flex', gap: 24 }}>
-            <div><span style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>Numéro</span><div style={{ fontSize: 14, color: '#f0e8d8', fontFamily: 'monospace' }}>{factureDetail.numero}</div></div>
-            <div><span style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>Total HT</span><div style={{ fontSize: 14, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{parseFloat(factureDetail.total_ht).toFixed(2)} €</div></div>
-            <div><span style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>TVA 20%</span><div style={{ fontSize: 14, color: 'rgba(232,224,213,0.5)' }}>{(parseFloat(factureDetail.total_ht) * 0.20).toFixed(2)} €</div></div>
-            <div><span style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>Total TTC</span><div style={{ fontSize: 16, color: '#c96e6e', fontFamily: 'Georgia, serif', fontWeight: 600 }}>{parseFloat(factureDetail.total_ttc).toFixed(2)} €</div></div>
-            <div><span style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>Statut</span><div style={{ fontSize: 13, color: factureDetail.statut === 'payee' ? '#6ec96e' : '#c9b06e' }}>{factureDetail.statut}</div></div>
-          </div>
-        </div>
-      )}
-
-      <div style={{ background: '#18130e', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 6, overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' as const }}>
-          <thead>
-            <tr style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
-              {['Produit', 'Quantité', 'Prix achat HT', ...(detail.facture_intersociete_id ? ['Prix transfert HT (+5%)', 'Total HT ligne'] : ['Total HT ligne'])].map(h => (
-                <th key={h} style={{ padding: '10px 14px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', fontWeight: 400 }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {lignesDetail.map((l, i) => (
-              <tr key={l.id} style={{ borderBottom: i < lignesDetail.length - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none' }}>
-                <td style={{ padding: '10px 14px' }}>
-                  <div style={{ fontSize: 13, color: '#f0e8d8' }}>{l.product?.nom}{l.product?.millesime ? ` ${l.product.millesime}` : ''}</div>
-                </td>
-                <td style={{ padding: '10px 14px', fontSize: 13, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{l.quantite}</td>
-                <td style={{ padding: '10px 14px', fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>{l.prix_achat_ht ? `${parseFloat(l.prix_achat_ht).toFixed(4)} €` : '—'}</td>
-                {detail.facture_intersociete_id && (
-                  <td style={{ padding: '10px 14px', fontSize: 12, color: '#c96e6e' }}>{l.prix_transfert_ht ? `${parseFloat(l.prix_transfert_ht).toFixed(4)} €` : '—'}</td>
-                )}
-                <td style={{ padding: '10px 14px', fontSize: 13, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>
-                  {((parseFloat(detail.facture_intersociete_id ? l.prix_transfert_ht || 0 : l.prix_achat_ht || 0)) * l.quantite).toFixed(2)} €
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
+    <VueDetailTransfert
+      transfert={detail}
+      sites={sites}
+      onBack={() => { setDetail(null); load() }}
+      onRefresh={async () => {
+        const { data } = await supabase.from('stock_transfers').select('*, source:sites!site_source_id(id, nom), dest:sites!site_destination_id(id, nom)').eq('id', detail.id).single()
+        setDetail(data)
+        load()
+      }}
+    />
   )
 
   return (
@@ -1710,13 +1886,15 @@ function VueTransferts({ sites, onNew }: { sites: any[]; onNew: () => void }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
           <h1 style={{ fontFamily: 'Georgia, serif', fontSize: 26, fontWeight: 300, color: '#f0e8d8', marginBottom: 4 }}>Transferts de stock</h1>
-          <p style={{ fontSize: 12, color: 'rgba(232,224,213,0.35)' }}>{transferts.filter(t => t.statut === 'validé').length} transfert{transferts.filter(t => t.statut === 'validé').length > 1 ? 's' : ''} validé{transferts.filter(t => t.statut === 'validé').length > 1 ? 's' : ''}</p>
+          <p style={{ fontSize: 12, color: 'rgba(232,224,213,0.35)' }}>
+            {transferts.filter(t => t.statut === 'demande').length} en attente · {transferts.filter(t => t.statut === 'expedie').length} en transit · {transferts.filter(t => t.statut === 'recu').length} complétés
+          </p>
         </div>
         <button onClick={onNew} style={{ background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '10px 20px', fontSize: 11, letterSpacing: 1.5, cursor: 'pointer', fontWeight: 500, textTransform: 'uppercase' as const }}>+ Nouveau transfert</button>
       </div>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-        {[['tous', 'Tous'], ['validé', 'Validés'], ['annulé', 'Annulés']].map(([val, label]) => (
+        {[['tous', 'Tous'], ['demande', 'Demandes'], ['expedie', 'En transit'], ['recu', 'Complétés'], ['annule', 'Annulés']].map(([val, label]) => (
           <button key={val} onClick={() => setFilterStatut(val)} style={{
             background: filterStatut === val ? 'rgba(201,169,110,0.15)' : 'transparent',
             border: `0.5px solid ${filterStatut === val ? 'rgba(201,169,110,0.4)' : 'rgba(255,255,255,0.1)'}`,
@@ -1730,21 +1908,21 @@ function VueTransferts({ sites, onNew }: { sites: any[]; onNew: () => void }) {
         <div style={{ textAlign: 'center' as const, padding: 48, color: 'rgba(232,224,213,0.3)' }}>⟳ Chargement...</div>
       ) : filtered.length === 0 ? (
         <div style={{ background: '#18130e', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 6, padding: 48, textAlign: 'center' as const }}>
-          <p style={{ color: 'rgba(232,224,213,0.4)', marginBottom: 16 }}>Aucun transfert. Créez-en un pour déplacer du stock entre vos sites.</p>
+          <p style={{ color: 'rgba(232,224,213,0.4)', marginBottom: 16 }}>Aucun transfert.</p>
           <button onClick={onNew} style={{ background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '10px 20px', fontSize: 12, cursor: 'pointer' }}>+ Nouveau transfert</button>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
           {filtered.map(t => (
-            <div key={t.id} onClick={() => openDetail(t)}
+            <div key={t.id} onClick={() => setDetail(t)}
               style={{ background: '#18130e', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 6, padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
               onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(201,169,110,0.25)')}
               onMouseLeave={e => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)')}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 5 }}>
                   <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#c9a96e' }}>{t.numero}</span>
-                  <span style={{ background: statutBg[t.statut] || 'transparent', color: statutColor[t.statut] || '#888', fontSize: 10, padding: '2px 8px', borderRadius: 3, letterSpacing: 1, textTransform: 'uppercase' as const }}>{t.statut}</span>
-                  {t.facture_intersociete_id && <span style={{ background: 'rgba(201,110,110,0.1)', color: '#c96e6e', fontSize: 10, padding: '2px 8px', borderRadius: 3, letterSpacing: 1 }}>INTER-SOCIÉTÉ</span>}
+                  <span style={{ background: `${statutColor[t.statut] || '#888'}22`, color: statutColor[t.statut] || '#888', fontSize: 10, padding: '2px 8px', borderRadius: 3, letterSpacing: 1, textTransform: 'uppercase' as const }}>{statutLabel[t.statut] || t.statut}</span>
+                  {t.facture_intersociete_id && <span style={{ background: 'rgba(201,110,110,0.1)', color: '#c96e6e', fontSize: 10, padding: '2px 8px', borderRadius: 3 }}>INTER-SOCIÉTÉ</span>}
                 </div>
                 <div style={{ fontSize: 15, color: '#f0e8d8', fontFamily: 'Georgia, serif', fontWeight: 300 }}>
                   {t.source?.nom} <span style={{ color: '#c9a96e' }}>→</span> {t.dest?.nom}
@@ -1754,7 +1932,11 @@ function VueTransferts({ sites, onNew }: { sites: any[]; onNew: () => void }) {
                   {t.notes && ` · ${t.notes}`}
                 </div>
               </div>
-              <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.3)' }}>Voir →</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                {t.statut === 'demande' && <span style={{ fontSize: 11, color: '#c9b06e' }}>À expédier →</span>}
+                {t.statut === 'expedie' && <span style={{ fontSize: 11, color: '#6e9ec9' }}>À réceptionner →</span>}
+                {t.statut === 'recu' && <span style={{ fontSize: 11, color: '#6ec96e' }}>Voir →</span>}
+              </div>
             </div>
           ))}
         </div>
@@ -1762,6 +1944,7 @@ function VueTransferts({ sites, onNew }: { sites: any[]; onNew: () => void }) {
     </div>
   )
 }
+
 
 
 function AdminPage() {
