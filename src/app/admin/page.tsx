@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@supabase/supabase-js'
 
 // ============================================================
@@ -1239,7 +1239,516 @@ const CATEGORIES = [
   { id: 'epicerie',    label: 'Épicerie',            icon: '🧀', cat: 'epicerie' },
 ]
 
-export default function AdminPage() {
+export default 
+// ── ID des sites (constantes métier) ─────────────────────────
+const SITE_ARBRESLE_ID = '3097e864-f452-4c2e-9af3-21e26f0330b7' // La Petite Cave
+const MARGE_INTERSOCIETE = 1.05
+
+function impliqueLaPetiteCave(siteSourceId: string, siteDestId: string) {
+  return siteSourceId === SITE_ARBRESLE_ID || siteDestId === SITE_ARBRESLE_ID
+}
+
+// ── Modal nouveau transfert ───────────────────────────────────
+function ModalNouveauTransfert({ sites, onCreated, onClose }: {
+  sites: any[]
+  onCreated: () => void
+  onClose: () => void
+}) {
+  const inp = { background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#e8e0d5', fontSize: 13, padding: '9px 12px', boxSizing: 'border-box' as const }
+  const lbl = { fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, display: 'block', marginBottom: 6 }
+
+  const [siteSourceId, setSiteSourceId] = useState(sites[0]?.id || '')
+  const [siteDestId, setSiteDestId] = useState(sites[1]?.id || '')
+  const [notes, setNotes] = useState('')
+  const [searchProduit, setSearchProduit] = useState('')
+  const [produitsTrouves, setProduitsTrouves] = useState<any[]>([])
+  const [lignes, setLignes] = useState<any[]>([])
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const searchTimer = useRef<any>(null)
+
+  const isInterSociete = impliqueLaPetiteCave(siteSourceId, siteDestId)
+  const sitesDestDispos = sites.filter(s => s.id !== siteSourceId)
+
+  useEffect(() => {
+    if (sitesDestDispos.length > 0 && !sitesDestDispos.find(s => s.id === siteDestId)) {
+      setSiteDestId(sitesDestDispos[0].id)
+    }
+  }, [siteSourceId])
+
+  const searchProduits = async (q: string) => {
+    if (!q.trim()) { setProduitsTrouves([]); return }
+    const { data: prods } = await supabase
+      .from('products')
+      .select('id, nom, millesime, couleur, prix_achat_ht')
+      .eq('actif', true)
+      .ilike('nom', `%${q}%`)
+      .limit(10)
+    if (!prods?.length) { setProduitsTrouves([]); return }
+    // Charger le stock source
+    const { data: stocks } = await supabase
+      .from('stock')
+      .select('product_id, quantite')
+      .eq('site_id', siteSourceId)
+      .in('product_id', prods.map(p => p.id))
+    const stockMap = Object.fromEntries((stocks || []).map((s: any) => [s.product_id, s.quantite || 0]))
+    setProduitsTrouves(prods.map(p => ({ ...p, stock: stockMap[p.id] || 0 })))
+  }
+
+  const addLigne = (p: any) => {
+    if (lignes.find(l => l.product_id === p.id)) return
+    const prixTransfert = p.prix_achat_ht ? Math.round(parseFloat(p.prix_achat_ht) * MARGE_INTERSOCIETE * 10000) / 10000 : null
+    setLignes(prev => [...prev, {
+      product_id: p.id, nom: p.nom, millesime: p.millesime, couleur: p.couleur,
+      stock: p.stock, quantite: 1,
+      prix_achat_ht: p.prix_achat_ht ? parseFloat(p.prix_achat_ht) : null,
+      prix_transfert_ht: prixTransfert,
+    }])
+    setSearchProduit(''); setProduitsTrouves([])
+  }
+
+  const updateQte = (productId: string, qte: number) => {
+    setLignes(prev => prev.map(l => l.product_id === productId ? { ...l, quantite: Math.max(1, qte) } : l))
+  }
+
+  const totalHT = lignes.reduce((acc, l) => {
+    const prix = isInterSociete ? (l.prix_transfert_ht || 0) : (l.prix_achat_ht || 0)
+    return acc + prix * l.quantite
+  }, 0)
+
+  const handleCreate = async () => {
+    if (siteSourceId === siteDestId) { setError('Source et destination identiques'); return }
+    if (lignes.length === 0) { setError('Ajoutez au moins un produit'); return }
+    const insuff = lignes.find(l => l.quantite > l.stock)
+    if (insuff) { setError(`Stock insuffisant pour ${insuff.nom} (dispo: ${insuff.stock})`); return }
+
+    setSaving(true); setError('')
+
+    const numero = `TRF-${new Date().getFullYear()}${String(new Date().getMonth()+1).padStart(2,'0')}-${String(Math.floor(Math.random()*9999)).padStart(4,'0')}`
+
+    // Créer le transfert
+    const { data: transfer, error: errT } = await supabase.from('stock_transfers').insert({
+      numero, site_source_id: siteSourceId, site_destination_id: siteDestId,
+      statut: 'en_cours', notes: notes || null,
+    }).select('id').single()
+    if (errT || !transfer) { setError(errT?.message || 'Erreur création'); setSaving(false); return }
+
+    // Créer les lignes
+    await supabase.from('stock_transfer_lignes').insert(
+      lignes.map(l => ({
+        transfer_id: transfer.id,
+        product_id: l.product_id,
+        quantite: l.quantite,
+        prix_achat_ht: l.prix_achat_ht,
+        prix_transfert_ht: isInterSociete ? l.prix_transfert_ht : null,
+      }))
+    )
+
+    // Si inter-société → créer la facture
+    if (isInterSociete) {
+      const totalTTC = Math.round(totalHT * 1.20 * 100) / 100
+      const numFIC = `FIC-${new Date().getFullYear()}${String(new Date().getMonth()+1).padStart(2,'0')}-${String(Math.floor(Math.random()*9999)).padStart(4,'0')}`
+      const { data: facture } = await supabase.from('factures_intersocietes').insert({
+        numero: numFIC, transfer_id: transfer.id,
+        site_emetteur_id: siteSourceId, site_destinataire_id: siteDestId,
+        total_ht: Math.round(totalHT * 100) / 100,
+        tva_pct: 20, total_ttc: totalTTC,
+        statut: 'émise', date_emission: new Date().toISOString().split('T')[0],
+      }).select('id').single()
+      if (facture) {
+        await supabase.from('stock_transfers').update({ facture_intersociete_id: facture.id }).eq('id', transfer.id)
+      }
+    }
+
+    // Déplacer le stock — source diminue, destination augmente
+    for (const l of lignes) {
+      await supabase.rpc('move_stock', {
+        p_product_id: l.product_id, p_site_id: siteSourceId,
+        p_raison: 'transfert', p_quantite: l.quantite,
+        p_note: `Transfert ${numero} sortie`, p_order_id: null, p_transfer_id: transfer.id,
+      })
+      // Ajouter au site destination
+      // Mettre à jour le stock destination directement
+      const { data: stockDest } = await supabase.from('stock').select('quantite').eq('product_id', l.product_id).eq('site_id', siteDestId).maybeSingle()
+      await supabase.from('stock').upsert({
+        product_id: l.product_id, site_id: siteDestId,
+        quantite: (stockDest?.quantite || 0) + l.quantite,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'product_id,site_id' })
+    }
+
+    // Marquer validé
+    await supabase.from('stock_transfers').update({ statut: 'validé', validated_at: new Date().toISOString() }).eq('id', transfer.id)
+
+    setSaving(false)
+    onCreated()
+  }
+
+  const COULEURS: Record<string, string> = { rouge: '#e07070', blanc: '#c9b06e', rosé: '#e8a0b0', champagne: '#d4c88a', effervescent: '#a0b0e0', autre: '#888' }
+
+  return (
+    <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }} onClick={onClose}>
+      <div style={{ background: '#18130e', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 8, width: '100%', maxWidth: 760, maxHeight: '92vh', overflowY: 'auto' as const, padding: '28px 32px' }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+          <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 300, color: '#f0e8d8', margin: 0 }}>Nouveau transfert</h2>
+          <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.4)', fontSize: 20, cursor: 'pointer' }}>✕</button>
+        </div>
+
+        {error && <div style={{ background: 'rgba(201,110,110,0.1)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 4, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: '#c96e6e' }}>{error}</div>}
+
+        {/* Sites source / destination */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 12, alignItems: 'end', marginBottom: 20 }}>
+          <div>
+            <label style={lbl}>Site source</label>
+            <select value={siteSourceId} onChange={e => setSiteSourceId(e.target.value)} style={{ ...inp, width: '100%', background: '#1a1408' }}>
+              {sites.map(s => <option key={s.id} value={s.id}>{s.nom}</option>)}
+            </select>
+          </div>
+          <div style={{ fontSize: 22, color: '#c9a96e', paddingBottom: 8, textAlign: 'center' as const }}>→</div>
+          <div>
+            <label style={lbl}>Site destination</label>
+            <select value={siteDestId} onChange={e => setSiteDestId(e.target.value)} style={{ ...inp, width: '100%', background: '#1a1408' }}>
+              {sitesDestDispos.map(s => <option key={s.id} value={s.id}>{s.nom}</option>)}
+            </select>
+          </div>
+        </div>
+
+        {/* Badge inter-société */}
+        {isInterSociete && (
+          <div style={{ background: 'rgba(201,110,110,0.08)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 4, padding: '10px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 16 }}>⚠</span>
+            <div>
+              <div style={{ fontSize: 12, color: '#c96e6e', fontWeight: 600 }}>Transfert inter-société — La Petite Cave impliquée</div>
+              <div style={{ fontSize: 11, color: 'rgba(201,110,110,0.7)', marginTop: 2 }}>Une facture inter-société sera générée automatiquement au prix d'achat HT × 1,05</div>
+            </div>
+          </div>
+        )}
+
+        {/* Recherche produit */}
+        <div style={{ position: 'relative' as const, marginBottom: 16 }}>
+          <label style={lbl}>Ajouter un produit</label>
+          <input
+            value={searchProduit}
+            onChange={e => { setSearchProduit(e.target.value); clearTimeout(searchTimer.current); searchTimer.current = setTimeout(() => searchProduits(e.target.value), 250) }}
+            placeholder="🔍 Rechercher un produit..."
+            style={{ ...inp, width: '100%' }}
+          />
+          {produitsTrouves.length > 0 && (
+            <div style={{ position: 'absolute' as const, top: '100%', left: 0, right: 0, background: '#1a1408', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 4, zIndex: 10, maxHeight: 240, overflowY: 'auto' as const }}>
+              {produitsTrouves.map(p => (
+                <div key={p.id} onClick={() => addLigne(p)}
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', cursor: 'pointer', borderBottom: '0.5px solid rgba(255,255,255,0.04)' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(201,169,110,0.06)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                  <div>
+                    <span style={{ color: COULEURS[p.couleur] || '#888', marginRight: 8 }}>●</span>
+                    <span style={{ fontSize: 13, color: '#f0e8d8' }}>{p.nom}{p.millesime ? ` ${p.millesime}` : ''}</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                    <span style={{ fontSize: 11, color: p.stock <= 0 ? '#c96e6e' : 'rgba(232,224,213,0.4)' }}>stk: {p.stock}</span>
+                    {p.prix_achat_ht && <span style={{ fontSize: 12, color: '#c9a96e' }}>{parseFloat(p.prix_achat_ht).toFixed(2)}€ HT</span>}
+                    <span style={{ fontSize: 10, color: '#6ec96e' }}>+ Ajouter</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Tableau des lignes */}
+        {lignes.length > 0 && (
+          <div style={{ background: '#14100c', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 6, overflow: 'hidden', marginBottom: 16 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' as const }}>
+              <thead>
+                <tr style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
+                  {['Produit', 'Stock dispo', 'Quantité', isInterSociete ? 'Prix achat HT' : 'Prix HT', isInterSociete ? 'Prix transfert HT (+5%)' : '', 'Total HT', ''].filter(Boolean).map(h => (
+                    <th key={h} style={{ padding: '8px 12px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', fontWeight: 400 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {lignes.map((l, i) => {
+                  const prix = isInterSociete ? (l.prix_transfert_ht || 0) : (l.prix_achat_ht || 0)
+                  const total = prix * l.quantite
+                  const stockInsuff = l.quantite > l.stock
+                  return (
+                    <tr key={l.product_id} style={{ borderBottom: i < lignes.length - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none', background: stockInsuff ? 'rgba(201,110,110,0.05)' : 'transparent' }}>
+                      <td style={{ padding: '10px 12px' }}>
+                        <div style={{ fontSize: 13, color: '#f0e8d8' }}>{l.nom}{l.millesime ? ` ${l.millesime}` : ''}</div>
+                      </td>
+                      <td style={{ padding: '10px 12px', fontSize: 12, color: l.stock <= 0 ? '#c96e6e' : 'rgba(232,224,213,0.5)' }}>{l.stock}</td>
+                      <td style={{ padding: '10px 12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <button onClick={() => updateQte(l.product_id, l.quantite - 1)} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: '#e8e0d5', width: 24, height: 24, borderRadius: 3, cursor: 'pointer', fontSize: 14 }}>−</button>
+                          <input type="number" min={1} max={l.stock} value={l.quantite} onChange={e => updateQte(l.product_id, parseInt(e.target.value) || 1)}
+                            style={{ width: 48, background: stockInsuff ? 'rgba(201,110,110,0.1)' : 'rgba(255,255,255,0.06)', border: `0.5px solid ${stockInsuff ? 'rgba(201,110,110,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 3, color: stockInsuff ? '#c96e6e' : '#e8e0d5', fontSize: 13, padding: '3px 6px', textAlign: 'center' as const }} />
+                          <button onClick={() => updateQte(l.product_id, l.quantite + 1)} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: '#e8e0d5', width: 24, height: 24, borderRadius: 3, cursor: 'pointer', fontSize: 14 }}>+</button>
+                        </div>
+                        {stockInsuff && <div style={{ fontSize: 10, color: '#c96e6e', marginTop: 3 }}>Stock insuffisant</div>}
+                      </td>
+                      <td style={{ padding: '10px 12px', fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>{l.prix_achat_ht ? `${parseFloat(l.prix_achat_ht).toFixed(2)} €` : '—'}</td>
+                      {isInterSociete && <td style={{ padding: '10px 12px', fontSize: 12, color: '#c96e6e', fontWeight: 600 }}>{l.prix_transfert_ht ? `${l.prix_transfert_ht.toFixed(4)} €` : '—'}</td>}
+                      <td style={{ padding: '10px 12px', fontSize: 13, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{total > 0 ? `${total.toFixed(2)} €` : '—'}</td>
+                      <td style={{ padding: '10px 12px' }}>
+                        <button onClick={() => setLignes(prev => prev.filter(x => x.product_id !== l.product_id))} style={{ background: 'transparent', border: 'none', color: '#c96e6e', cursor: 'pointer', fontSize: 16 }}>✕</button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+              <tfoot>
+                <tr style={{ borderTop: '0.5px solid rgba(255,255,255,0.1)' }}>
+                  <td colSpan={isInterSociete ? 5 : 3} style={{ padding: '10px 12px', textAlign: 'right' as const, fontSize: 11, color: 'rgba(232,224,213,0.4)', letterSpacing: 1 }}>TOTAL HT</td>
+                  <td style={{ padding: '10px 12px', fontSize: 18, color: '#c9a96e', fontFamily: 'Georgia, serif', fontWeight: 300 }}>{totalHT.toFixed(2)} €</td>
+                  <td />
+                </tr>
+                {isInterSociete && (
+                  <tr>
+                    <td colSpan={isInterSociete ? 5 : 3} style={{ padding: '4px 12px', textAlign: 'right' as const, fontSize: 11, color: 'rgba(232,224,213,0.3)' }}>TVA 20%</td>
+                    <td style={{ padding: '4px 12px', fontSize: 13, color: 'rgba(232,224,213,0.4)', fontFamily: 'Georgia, serif' }}>{(totalHT * 0.20).toFixed(2)} €</td>
+                    <td />
+                  </tr>
+                )}
+                {isInterSociete && (
+                  <tr>
+                    <td colSpan={isInterSociete ? 5 : 3} style={{ padding: '4px 12px 10px', textAlign: 'right' as const, fontSize: 11, color: 'rgba(201,110,110,0.6)' }}>TOTAL TTC FACTURE</td>
+                    <td style={{ padding: '4px 12px 10px', fontSize: 16, color: '#c96e6e', fontFamily: 'Georgia, serif', fontWeight: 600 }}>{(totalHT * 1.20).toFixed(2)} €</td>
+                    <td />
+                  </tr>
+                )}
+              </tfoot>
+            </table>
+          </div>
+        )}
+
+        {/* Notes */}
+        <div style={{ marginBottom: 20 }}>
+          <label style={lbl}>Notes (optionnel)</label>
+          <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Raison du transfert, référence..." style={{ ...inp, width: '100%' }} />
+        </div>
+
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={onClose} style={{ flex: 1, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '11px', fontSize: 12, cursor: 'pointer' }}>Annuler</button>
+          <button onClick={handleCreate} disabled={saving || lignes.length === 0} style={{ flex: 2, background: lignes.length > 0 ? '#c9a96e' : '#2a2a1e', color: lignes.length > 0 ? '#0d0a08' : '#555', border: 'none', borderRadius: 4, padding: '11px', fontSize: 13, cursor: 'pointer', fontWeight: 600, opacity: saving ? 0.7 : 1 }}>
+            {saving ? '⟳ Création...' : isInterSociete ? `✓ Créer le transfert + facture inter-société` : '✓ Créer le transfert'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Vue liste des transferts ──────────────────────────────────
+function VueTransferts({ sites, onNew }: { sites: any[]; onNew: () => void }) {
+  const [transferts, setTransferts] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [filterStatut, setFilterStatut] = useState('tous')
+  const [detail, setDetail] = useState<any>(null)
+  const [lignesDetail, setLignesDetail] = useState<any[]>([])
+  const [factureDetail, setFactureDetail] = useState<any>(null)
+
+  const load = async () => {
+    setLoading(true)
+    const { data } = await supabase
+      .from('stock_transfers')
+      .select('*, source:sites!site_source_id(id, nom), dest:sites!site_destination_id(id, nom)')
+      .order('created_at', { ascending: false })
+      .limit(100)
+    setTransferts(data || [])
+    setLoading(false)
+  }
+
+  useEffect(() => { load() }, [])
+
+  const openDetail = async (t: any) => {
+    setDetail(t)
+    const { data: lignes } = await supabase
+      .from('stock_transfer_lignes')
+      .select('*, product:products(id, nom, millesime, couleur)')
+      .eq('transfer_id', t.id)
+    setLignesDetail(lignes || [])
+    if (t.facture_intersociete_id) {
+      const { data: facture } = await supabase
+        .from('factures_intersocietes')
+        .select('*')
+        .eq('id', t.facture_intersociete_id)
+        .single()
+      setFactureDetail(facture)
+    } else setFactureDetail(null)
+  }
+
+  const imprimerFacture = (t: any, f: any, lignes: any[]) => {
+    const siteSrc = sites.find(s => s.id === t.site_source_id)
+    const siteDest = sites.find(s => s.id === t.site_destination_id)
+    const lignesHtml = lignes.map(l =>
+      `<tr><td>${l.product?.nom}${l.product?.millesime ? ' ' + l.product.millesime : ''}</td><td style="text-align:center">${l.quantite}</td><td style="text-align:right">${parseFloat(l.prix_transfert_ht || 0).toFixed(4)} €</td><td style="text-align:right"><b>${(parseFloat(l.prix_transfert_ht || 0) * l.quantite).toFixed(2)} €</b></td></tr>`
+    ).join('')
+    const html = `<html><head><style>
+      body{font-family:Arial,sans-serif;font-size:12px;max-width:210mm;margin:0 auto;padding:20mm}
+      .header{display:flex;justify-content:space-between;margin-bottom:30px}
+      .title{font-size:20px;font-weight:bold;color:#8B6914;margin-bottom:16px}
+      table{width:100%;border-collapse:collapse;margin:20px 0}
+      th{background:#f5f0e8;padding:8px;text-align:left;border-bottom:2px solid #c9a96e;font-size:11px;letter-spacing:1px}
+      td{padding:8px;border-bottom:1px solid #eee}
+      .total{text-align:right;margin-top:16px;font-size:14px}
+      .footer{margin-top:40px;font-size:10px;color:#666;border-top:1px solid #eee;padding-top:10px}
+    </style></head><body>
+      <div class="header">
+        <div><b>${siteSrc?.nom || ''}</b><br/>Cave de Gilbert SAS<br/>SIRET 898 622 055 00017</div>
+        <div style="text-align:right"><b>${siteDest?.nom || ''}</b><br/>Destinataire<br/>Date : ${f.date_emission}</div>
+      </div>
+      <div class="title">FACTURE INTER-SOCIÉTÉ N° ${f.numero}</div>
+      <div style="margin-bottom:8px;color:#666;font-size:11px">Référence transfert : ${t.numero}</div>
+      <table>
+        <thead><tr><th>Désignation</th><th style="text-align:center">Qté</th><th style="text-align:right">P.U. HT</th><th style="text-align:right">Total HT</th></tr></thead>
+        <tbody>${lignesHtml}</tbody>
+      </table>
+      <div class="total">
+        <div>Total HT : <b>${parseFloat(f.total_ht).toFixed(2)} €</b></div>
+        <div>TVA 20% : ${(parseFloat(f.total_ht) * 0.20).toFixed(2)} €</div>
+        <div style="font-size:18px;color:#8B6914;font-weight:bold;margin-top:8px">Total TTC : ${parseFloat(f.total_ttc).toFixed(2)} €</div>
+      </div>
+      <div class="footer">Cave de Gilbert SAS — SIRET 898 622 055 00017 — TVA FR79 898 622 055 — Prix de transfert = Prix achat HT × 1,05</div>
+    </body></html>`
+    const win = window.open('', '_blank')
+    if (win) { win.document.write(html); win.document.close(); win.print() }
+  }
+
+  const statutColor: Record<string, string> = { 'en_cours': '#c9b06e', 'validé': '#6ec96e', 'annulé': '#888' }
+  const statutBg: Record<string, string> = { 'en_cours': 'rgba(201,176,110,0.1)', 'validé': 'rgba(110,201,110,0.1)', 'annulé': 'rgba(128,128,128,0.1)' }
+
+  const filtered = transferts.filter(t => filterStatut === 'tous' || t.statut === filterStatut)
+
+  if (detail) return (
+    <div>
+      <button onClick={() => { setDetail(null); setFactureDetail(null); setLignesDetail([]) }}
+        style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.4)', fontSize: 11, cursor: 'pointer', padding: 0, marginBottom: 16 }}>← Retour aux transferts</button>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
+        <div>
+          <div style={{ fontFamily: 'monospace', fontSize: 12, color: '#c9a96e', marginBottom: 4 }}>{detail.numero}</div>
+          <h1 style={{ fontFamily: 'Georgia, serif', fontSize: 22, fontWeight: 300, color: '#f0e8d8', margin: 0 }}>
+            {detail.source?.nom} → {detail.dest?.nom}
+          </h1>
+          <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', marginTop: 4 }}>
+            {new Date(detail.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
+            {detail.notes && ` · ${detail.notes}`}
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <span style={{ background: statutBg[detail.statut] || 'transparent', color: statutColor[detail.statut] || '#888', fontSize: 10, padding: '3px 10px', borderRadius: 3, letterSpacing: 1, textTransform: 'uppercase' as const }}>{detail.statut}</span>
+          {factureDetail && (
+            <button onClick={() => imprimerFacture(detail, factureDetail, lignesDetail)}
+              style={{ background: 'rgba(201,110,110,0.1)', border: '0.5px solid rgba(201,110,110,0.3)', color: '#c96e6e', borderRadius: 4, padding: '8px 14px', fontSize: 11, cursor: 'pointer' }}>
+              🖨 Imprimer facture inter-société
+            </button>
+          )}
+        </div>
+      </div>
+
+      {factureDetail && (
+        <div style={{ background: 'rgba(201,110,110,0.06)', border: '0.5px solid rgba(201,110,110,0.2)', borderRadius: 6, padding: '14px 18px', marginBottom: 20 }}>
+          <div style={{ fontSize: 10, letterSpacing: 1.5, color: '#c96e6e', marginBottom: 8 }}>FACTURE INTER-SOCIÉTÉ</div>
+          <div style={{ display: 'flex', gap: 24 }}>
+            <div><span style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>Numéro</span><div style={{ fontSize: 14, color: '#f0e8d8', fontFamily: 'monospace' }}>{factureDetail.numero}</div></div>
+            <div><span style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>Total HT</span><div style={{ fontSize: 14, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{parseFloat(factureDetail.total_ht).toFixed(2)} €</div></div>
+            <div><span style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>TVA 20%</span><div style={{ fontSize: 14, color: 'rgba(232,224,213,0.5)' }}>{(parseFloat(factureDetail.total_ht) * 0.20).toFixed(2)} €</div></div>
+            <div><span style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>Total TTC</span><div style={{ fontSize: 16, color: '#c96e6e', fontFamily: 'Georgia, serif', fontWeight: 600 }}>{parseFloat(factureDetail.total_ttc).toFixed(2)} €</div></div>
+            <div><span style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>Statut</span><div style={{ fontSize: 13, color: factureDetail.statut === 'payée' ? '#6ec96e' : '#c9b06e' }}>{factureDetail.statut}</div></div>
+          </div>
+        </div>
+      )}
+
+      <div style={{ background: '#18130e', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 6, overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' as const }}>
+          <thead>
+            <tr style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
+              {['Produit', 'Quantité', 'Prix achat HT', ...(detail.facture_intersociete_id ? ['Prix transfert HT (+5%)', 'Total HT ligne'] : ['Total HT ligne'])].map(h => (
+                <th key={h} style={{ padding: '10px 14px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', fontWeight: 400 }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {lignesDetail.map((l, i) => (
+              <tr key={l.id} style={{ borderBottom: i < lignesDetail.length - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none' }}>
+                <td style={{ padding: '10px 14px' }}>
+                  <div style={{ fontSize: 13, color: '#f0e8d8' }}>{l.product?.nom}{l.product?.millesime ? ` ${l.product.millesime}` : ''}</div>
+                </td>
+                <td style={{ padding: '10px 14px', fontSize: 13, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{l.quantite}</td>
+                <td style={{ padding: '10px 14px', fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>{l.prix_achat_ht ? `${parseFloat(l.prix_achat_ht).toFixed(4)} €` : '—'}</td>
+                {detail.facture_intersociete_id && (
+                  <td style={{ padding: '10px 14px', fontSize: 12, color: '#c96e6e' }}>{l.prix_transfert_ht ? `${parseFloat(l.prix_transfert_ht).toFixed(4)} €` : '—'}</td>
+                )}
+                <td style={{ padding: '10px 14px', fontSize: 13, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>
+                  {((parseFloat(detail.facture_intersociete_id ? l.prix_transfert_ht || 0 : l.prix_achat_ht || 0)) * l.quantite).toFixed(2)} €
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
+        <div>
+          <h1 style={{ fontFamily: 'Georgia, serif', fontSize: 26, fontWeight: 300, color: '#f0e8d8', marginBottom: 4 }}>Transferts de stock</h1>
+          <p style={{ fontSize: 12, color: 'rgba(232,224,213,0.35)' }}>{transferts.filter(t => t.statut === 'validé').length} transfert{transferts.filter(t => t.statut === 'validé').length > 1 ? 's' : ''} validé{transferts.filter(t => t.statut === 'validé').length > 1 ? 's' : ''}</p>
+        </div>
+        <button onClick={onNew} style={{ background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '10px 20px', fontSize: 11, letterSpacing: 1.5, cursor: 'pointer', fontWeight: 500, textTransform: 'uppercase' as const }}>+ Nouveau transfert</button>
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+        {[['tous', 'Tous'], ['validé', 'Validés'], ['annulé', 'Annulés']].map(([val, label]) => (
+          <button key={val} onClick={() => setFilterStatut(val)} style={{
+            background: filterStatut === val ? 'rgba(201,169,110,0.15)' : 'transparent',
+            border: `0.5px solid ${filterStatut === val ? 'rgba(201,169,110,0.4)' : 'rgba(255,255,255,0.1)'}`,
+            color: filterStatut === val ? '#c9a96e' : 'rgba(232,224,213,0.4)',
+            borderRadius: 4, padding: '7px 14px', fontSize: 11, cursor: 'pointer',
+          }}>{label}</button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div style={{ textAlign: 'center' as const, padding: 48, color: 'rgba(232,224,213,0.3)' }}>⟳ Chargement...</div>
+      ) : filtered.length === 0 ? (
+        <div style={{ background: '#18130e', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 6, padding: 48, textAlign: 'center' as const }}>
+          <p style={{ color: 'rgba(232,224,213,0.4)', marginBottom: 16 }}>Aucun transfert. Créez-en un pour déplacer du stock entre vos sites.</p>
+          <button onClick={onNew} style={{ background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '10px 20px', fontSize: 12, cursor: 'pointer' }}>+ Nouveau transfert</button>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
+          {filtered.map(t => (
+            <div key={t.id} onClick={() => openDetail(t)}
+              style={{ background: '#18130e', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 6, padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+              onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(201,169,110,0.25)')}
+              onMouseLeave={e => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)')}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 5 }}>
+                  <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#c9a96e' }}>{t.numero}</span>
+                  <span style={{ background: statutBg[t.statut] || 'transparent', color: statutColor[t.statut] || '#888', fontSize: 10, padding: '2px 8px', borderRadius: 3, letterSpacing: 1, textTransform: 'uppercase' as const }}>{t.statut}</span>
+                  {t.facture_intersociete_id && <span style={{ background: 'rgba(201,110,110,0.1)', color: '#c96e6e', fontSize: 10, padding: '2px 8px', borderRadius: 3, letterSpacing: 1 }}>INTER-SOCIÉTÉ</span>}
+                </div>
+                <div style={{ fontSize: 15, color: '#f0e8d8', fontFamily: 'Georgia, serif', fontWeight: 300 }}>
+                  {t.source?.nom} <span style={{ color: '#c9a96e' }}>→</span> {t.dest?.nom}
+                </div>
+                <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)', marginTop: 3 }}>
+                  {new Date(t.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
+                  {t.notes && ` · ${t.notes}`}
+                </div>
+              </div>
+              <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.3)' }}>Voir →</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+function AdminPage() {
   const [section, setSection] = useState<Section>('dashboard')
 
   // Données réelles depuis Supabase
@@ -1263,6 +1772,7 @@ export default function AdminPage() {
   const [showNouveauProduit, setShowNouveauProduit] = useState(false)
   const [dupliquerProduit, setDupliquerProduit] = useState<any>(null)
   const [showModalMouvement, setShowModalMouvement] = useState(false)
+  const [showModalTransfert, setShowModalTransfert] = useState(false)
   const [selectedProduit, setSelectedProduit] = useState<any>(null)
   const [activeCategorie, setActiveCategorie] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -2067,6 +2577,13 @@ export default function AdminPage() {
       {/* Modals */}
       {showModalProduit && sites.length > 0 && (
         <ModalAjoutProduit sites={sites} onClose={() => setShowModalProduit(false)} onSaved={loadData} />
+      )}
+      {showModalTransfert && (
+        <ModalNouveauTransfert
+          sites={sites}
+          onCreated={() => { setShowModalTransfert(false); loadData() }}
+          onClose={() => setShowModalTransfert(false)}
+        />
       )}
       {showModalMouvement && (
         <ModalMouvement produits={produits} sites={sites} onClose={() => setShowModalMouvement(false)} onSaved={loadData} />
