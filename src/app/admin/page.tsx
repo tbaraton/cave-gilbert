@@ -1485,8 +1485,8 @@ function ModalNouveauTransfert({ sites, onCreated, onClose, transfertExistant = 
         </div>
         {error && <div style={{ fontSize: 12, color: '#c96e6e' }}>{error}</div>}
         <button onClick={handleConfirmerSelection} disabled={coches.size === 0}
-          style={{ background: coches.size > 0 ? '#c9a96e' : '#2a2a1e', color: coches.size > 0 ? '#0d0a08' : '#555', border: 'none', borderRadius: 4, padding: '10px 20px', fontSize: 13, cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap' as const }}>
-          Ajuster les quantités ({coches.size}) →
+          style={{ background: coches.size > 0 ? '#c9a96e' : 'transparent', color: coches.size > 0 ? '#0d0a08' : 'rgba(232,224,213,0.3)', border: `0.5px solid ${coches.size > 0 ? '#c9a96e' : 'rgba(255,255,255,0.15)'}`, borderRadius: 4, padding: '10px 20px', fontSize: 13, cursor: coches.size > 0 ? 'pointer' : 'not-allowed', fontWeight: 600, whiteSpace: 'nowrap' as const }}>
+          {coches.size > 0 ? `Ajuster les quantités (${coches.size}) →` : 'Cochez des produits'}
         </button>
         <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.4)', fontSize: 18, cursor: 'pointer' }}>✕</button>
       </div>
