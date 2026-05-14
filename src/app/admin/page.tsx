@@ -1257,15 +1257,35 @@ function ModalNouveauTransfert({ sites, onCreated, onClose }: {
 }) {
   const inp = { background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#e8e0d5', fontSize: 13, padding: '9px 12px', boxSizing: 'border-box' as const }
   const lbl = { fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, display: 'block', marginBottom: 6 }
+  const sel = { ...inp, background: '#1a1408', border: '0.5px solid rgba(201,169,110,0.2)', cursor: 'pointer' }
+
+  // Étapes
+  const [step, setStep] = useState<'config' | 'produits'>('config')
   const [siteSourceId, setSiteSourceId] = useState(sites[0]?.id || '')
   const [siteDestId, setSiteDestId] = useState(sites[1]?.id || '')
   const [notes, setNotes] = useState('')
+
+  // Catalogue produits
+  const [produits, setProduits] = useState<any[]>([])
+  const [stockAgrege, setStockAgrege] = useState<any[]>([])
+  const [regions, setRegions] = useState<any[]>([])
+  const [domaines, setDomaines] = useState<any[]>([])
+  const [appellations, setAppellations] = useState<any[]>([])
+  const [loadingProduits, setLoadingProduits] = useState(false)
+
+  // Filtres
   const [search, setSearch] = useState('')
-  const [produitsTrouves, setProduitsTrouves] = useState<any[]>([])
-  const [lignes, setLignes] = useState<any[]>([])
+  const [filterRegion, setFilterRegion] = useState('')
+  const [filterDomaine, setFilterDomaine] = useState('')
+  const [filterCouleur, setFilterCouleur] = useState('')
+  const [sortCol, setSortCol] = useState('nom')
+  const [sortDir, setSortDir] = useState<'asc'|'desc'>('asc')
+
+  // Sélection
+  const [selected, setSelected] = useState<Record<string, number>>({}) // product_id → quantité
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const timer = useRef<any>(null)
+
   const isInterSociete = impliqueLaPetiteCave(siteSourceId, siteDestId)
   const sitesDestDispos = sites.filter(s => s.id !== siteSourceId)
 
@@ -1274,48 +1294,131 @@ function ModalNouveauTransfert({ sites, onCreated, onClose }: {
       setSiteDestId(sitesDestDispos[0].id)
   }, [siteSourceId])
 
-  const searchProduits = async (q: string) => {
-    if (!q.trim()) { setProduitsTrouves([]); return }
-    const { data: prods } = await supabase.from('products').select('id, nom, millesime, couleur, prix_achat_ht').eq('actif', true).ilike('nom', `%${q}%`).limit(10)
-    if (!prods?.length) { setProduitsTrouves([]); return }
-    const { data: stocks } = await supabase.from('stock').select('product_id, quantite').eq('site_id', siteSourceId).in('product_id', prods.map(p => p.id))
-    const sm = Object.fromEntries((stocks || []).map((s: any) => [s.product_id, s.quantite || 0]))
-    setProduitsTrouves(prods.map(p => ({ ...p, stock: sm[p.id] || 0 })))
+  const loadCatalogue = async () => {
+    setLoadingProduits(true)
+    const [
+      { data: prods },
+      { data: stock },
+      { data: regs },
+      { data: doms },
+    ] = await Promise.all([
+      supabase.from('products').select('id, nom, millesime, couleur, prix_achat_ht, prix_vente_ttc, domaine_id, region_id, actif').eq('actif', true).order('nom').limit(5000),
+      supabase.from('v_stock_agrege').select('product_id, stock_marcy, stock_entrepot, stock_arbresle, stock_total').range(0, 9999),
+      supabase.from('regions').select('id, nom').order('nom'),
+      supabase.from('domaines').select('id, nom').order('nom'),
+    ])
+    setProduits(prods || [])
+    setStockAgrege(stock || [])
+    setRegions(regs || [])
+    setDomaines(doms || [])
+    setLoadingProduits(false)
   }
 
-  const addLigne = (p: any) => {
-    if (lignes.find(l => l.product_id === p.id)) return
-    const prixTransfert = p.prix_achat_ht ? Math.round(parseFloat(p.prix_achat_ht) * MARGE_INTERSOCIETE * 10000) / 10000 : null
-    setLignes(prev => [...prev, { product_id: p.id, nom: p.nom, millesime: p.millesime, couleur: p.couleur, stock: p.stock, quantite: 1, prix_achat_ht: p.prix_achat_ht ? parseFloat(p.prix_achat_ht) : null, prix_transfert_ht: prixTransfert }])
-    setSearch(''); setProduitsTrouves([])
+  useEffect(() => {
+    if (step === 'produits') loadCatalogue()
+  }, [step])
+
+  const COULEURS_LABEL: Record<string, string> = { rouge: 'Rouge', blanc: 'Blanc', rosé: 'Rosé', champagne: 'Champagne', effervescent: 'Effervescent', spiritueux: 'Spiritueux', autre: 'Autre' }
+  const COULEURS_DOT: Record<string, string> = { rouge: '#e07070', blanc: '#c9b06e', rosé: '#e8a0b0', champagne: '#d4c88a', effervescent: '#a0b0e0', spiritueux: '#8ec98e', autre: '#888' }
+
+  // Site source stock column
+  const siteCol = (siteId: string): 'stock_marcy' | 'stock_entrepot' | 'stock_arbresle' => {
+    if (siteId === 'ee3afa96-0c45-407f-87fc-e503fbada6c4') return 'stock_marcy'
+    if (siteId === 'e12d7e47-23dc-4011-95fc-e9e975fc4307') return 'stock_entrepot'
+    return 'stock_arbresle'
   }
+
+  const getStock = (productId: string, col: string) => {
+    const s = stockAgrege.find(x => x.product_id === productId)
+    return s ? (s[col] || 0) : 0
+  }
+
+  const produitsFiltres = produits
+    .filter(p =>
+      (!search || p.nom.toLowerCase().includes(search.toLowerCase())) &&
+      (!filterRegion || p.region_id === filterRegion) &&
+      (!filterDomaine || p.domaine_id === filterDomaine) &&
+      (!filterCouleur || p.couleur === filterCouleur)
+    )
+    .sort((a, b) => {
+      let va: any, vb: any
+      if (sortCol === 'stock_source') {
+        va = getStock(a.id, siteCol(siteSourceId))
+        vb = getStock(b.id, siteCol(siteSourceId))
+      } else if (sortCol === 'stock_total') {
+        va = getStock(a.id, 'stock_total')
+        vb = getStock(b.id, 'stock_total')
+      } else if (sortCol === 'prix_achat_ht' || sortCol === 'prix_vente_ttc') {
+        va = parseFloat(a[sortCol] || 0)
+        vb = parseFloat(b[sortCol] || 0)
+      } else {
+        va = (a[sortCol] || '').toString().toLowerCase()
+        vb = (b[sortCol] || '').toString().toLowerCase()
+      }
+      return sortDir === 'asc' ? (va < vb ? -1 : va > vb ? 1 : 0) : (va > vb ? -1 : va < vb ? 1 : 0)
+    })
+
+  const toggleSort = (col: string) => {
+    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortCol(col); setSortDir('asc') }
+  }
+  const sortIcon = (col: string) => sortCol === col ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''
+
+  const toggleSelect = (productId: string) => {
+    setSelected(prev => {
+      if (prev[productId] !== undefined) {
+        const n = { ...prev }; delete n[productId]; return n
+      }
+      return { ...prev, [productId]: 1 }
+    })
+  }
+
+  const updateQte = (productId: string, qte: number) => {
+    setSelected(prev => ({ ...prev, [productId]: Math.max(1, qte) }))
+  }
+
+  const nbSelected = Object.keys(selected).length
 
   const handleCreate = async () => {
     if (siteSourceId === siteDestId) { setError('Source et destination identiques'); return }
-    if (lignes.length === 0) { setError('Ajoutez au moins un produit'); return }
+    if (nbSelected === 0) { setError('Sélectionnez au moins un produit'); return }
     setSaving(true); setError('')
+
     const { data: transfer, error: errT } = await supabase.from('stock_transfers').insert({
       numero: genNumero('TRF'), site_source_id: siteSourceId, site_destination_id: siteDestId,
       statut: 'demande', notes: notes || null,
     }).select('id').single()
     if (errT || !transfer) { setError(errT?.message || 'Erreur création'); setSaving(false); return }
-    await supabase.from('stock_transfer_lignes').insert(lignes.map(l => ({
-      transfer_id: transfer.id, product_id: l.product_id,
-      quantite: l.quantite, quantite_demandee: l.quantite,
-      prix_achat_ht: l.prix_achat_ht, prix_transfert_ht: isInterSociete ? l.prix_transfert_ht : null,
-    })))
+
+    const lignesInsert = Object.entries(selected).map(([productId, qte]) => {
+      const p = produits.find(x => x.id === productId)
+      const prixAchatHT = p?.prix_achat_ht ? parseFloat(p.prix_achat_ht) : null
+      const prixTransfert = isInterSociete && prixAchatHT ? Math.round(prixAchatHT * MARGE_INTERSOCIETE * 10000) / 10000 : null
+      return {
+        transfer_id: transfer.id, product_id: productId,
+        quantite: qte, quantite_demandee: qte,
+        prix_achat_ht: prixAchatHT,
+        prix_transfert_ht: prixTransfert,
+      }
+    })
+
+    for (let i = 0; i < lignesInsert.length; i += 200)
+      await supabase.from('stock_transfer_lignes').insert(lignesInsert.slice(i, i + 200))
+
     setSaving(false); onCreated()
   }
 
-  const COULEURS: Record<string, string> = { rouge: '#e07070', blanc: '#c9b06e', rosé: '#e8a0b0', champagne: '#d4c88a', effervescent: '#a0b0e0', autre: '#888' }
+  const srcCol = siteCol(siteSourceId)
+  const thStyle = { padding: '9px 12px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', fontWeight: 400, cursor: 'pointer', userSelect: 'none' as const, whiteSpace: 'nowrap' as const }
 
-  return (
+  // ── Étape 1 : Configuration ──
+  if (step === 'config') return (
     <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }} onClick={onClose}>
-      <div style={{ background: '#18130e', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 8, width: '100%', maxWidth: 760, maxHeight: '92vh', overflowY: 'auto' as const, padding: '28px 32px' }} onClick={e => e.stopPropagation()}>
+      <div style={{ background: '#18130e', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 8, width: '100%', maxWidth: 520, padding: '28px 32px' }} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <div>
             <div style={{ fontSize: 10, letterSpacing: 1.5, color: '#c9a96e', marginBottom: 4 }}>ÉTAPE 1 / 3</div>
-            <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 300, color: '#f0e8d8', margin: 0 }}>Demande de transfert</h2>
+            <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 300, color: '#f0e8d8', margin: 0 }}>Nouveau transfert</h2>
           </div>
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.4)', fontSize: 20, cursor: 'pointer' }}>✕</button>
         </div>
@@ -1325,14 +1428,14 @@ function ModalNouveauTransfert({ sites, onCreated, onClose }: {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 12, alignItems: 'end', marginBottom: 20 }}>
           <div>
             <label style={lbl}>Site source</label>
-            <select value={siteSourceId} onChange={e => setSiteSourceId(e.target.value)} style={{ ...inp, width: '100%', background: '#1a1408' }}>
+            <select value={siteSourceId} onChange={e => setSiteSourceId(e.target.value)} style={{ ...sel, width: '100%' }}>
               {sites.map(s => <option key={s.id} value={s.id}>{s.nom}</option>)}
             </select>
           </div>
           <div style={{ fontSize: 22, color: '#c9a96e', paddingBottom: 8, textAlign: 'center' as const }}>→</div>
           <div>
             <label style={lbl}>Site destination</label>
-            <select value={siteDestId} onChange={e => setSiteDestId(e.target.value)} style={{ ...inp, width: '100%', background: '#1a1408' }}>
+            <select value={siteDestId} onChange={e => setSiteDestId(e.target.value)} style={{ ...sel, width: '100%' }}>
               {sitesDestDispos.map(s => <option key={s.id} value={s.id}>{s.nom}</option>)}
             </select>
           </div>
@@ -1342,69 +1445,9 @@ function ModalNouveauTransfert({ sites, onCreated, onClose }: {
           <div style={{ background: 'rgba(201,110,110,0.08)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 4, padding: '10px 16px', marginBottom: 16, display: 'flex', gap: 10, alignItems: 'center' }}>
             <span>⚠</span>
             <div>
-              <div style={{ fontSize: 12, color: '#c96e6e', fontWeight: 600 }}>Transfert inter-société — La Petite Cave impliquée</div>
-              <div style={{ fontSize: 11, color: 'rgba(201,110,110,0.7)', marginTop: 2 }}>Une facture sera générée à l'expédition au prix d'achat HT × 1,05</div>
+              <div style={{ fontSize: 12, color: '#c96e6e', fontWeight: 600 }}>Transfert inter-société</div>
+              <div style={{ fontSize: 11, color: 'rgba(201,110,110,0.7)', marginTop: 2 }}>Facture générée à l'expédition au prix d'achat HT × 1,05</div>
             </div>
-          </div>
-        )}
-
-        <div style={{ position: 'relative' as const, marginBottom: 16 }}>
-          <label style={lbl}>Ajouter un produit</label>
-          <input value={search} onChange={e => { setSearch(e.target.value); clearTimeout(timer.current); timer.current = setTimeout(() => searchProduits(e.target.value), 250) }}
-            placeholder="🔍 Rechercher..." style={{ ...inp, width: '100%' }} />
-          {produitsTrouves.length > 0 && (
-            <div style={{ position: 'absolute' as const, top: '100%', left: 0, right: 0, background: '#1a1408', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 4, zIndex: 10, maxHeight: 220, overflowY: 'auto' as const }}>
-              {produitsTrouves.map(p => (
-                <div key={p.id} onClick={() => addLigne(p)}
-                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', cursor: 'pointer', borderBottom: '0.5px solid rgba(255,255,255,0.04)' }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(201,169,110,0.06)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                  <div>
-                    <span style={{ color: COULEURS[p.couleur] || '#888', marginRight: 8 }}>●</span>
-                    <span style={{ fontSize: 13, color: '#f0e8d8' }}>{p.nom}{p.millesime ? ` ${p.millesime}` : ''}</span>
-                  </div>
-                  <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                    <span style={{ fontSize: 11, color: p.stock <= 0 ? '#c96e6e' : 'rgba(232,224,213,0.4)' }}>stk: {p.stock}</span>
-                    {p.prix_achat_ht && <span style={{ fontSize: 12, color: '#c9a96e' }}>{parseFloat(p.prix_achat_ht).toFixed(2)}€ HT</span>}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {lignes.length > 0 && (
-          <div style={{ background: '#14100c', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 6, overflow: 'hidden', marginBottom: 16 }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' as const }}>
-              <thead>
-                <tr style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
-                  {['Produit', 'Stock dispo', 'Qté demandée', isInterSociete ? 'Prix HT' : '', isInterSociete ? 'Prix transfert HT' : '', ''].filter(Boolean).map(h => (
-                    <th key={h} style={{ padding: '8px 12px', textAlign: 'left' as const, fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', fontWeight: 400 }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {lignes.map((l, i) => (
-                  <tr key={l.product_id} style={{ borderBottom: i < lignes.length - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none' }}>
-                    <td style={{ padding: '10px 12px', fontSize: 13, color: '#f0e8d8' }}>{l.nom}{l.millesime ? ` ${l.millesime}` : ''}</td>
-                    <td style={{ padding: '10px 12px', fontSize: 12, color: l.stock <= 0 ? '#c96e6e' : 'rgba(232,224,213,0.5)' }}>{l.stock}</td>
-                    <td style={{ padding: '10px 12px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <button onClick={() => setLignes(prev => prev.map(x => x.product_id === l.product_id ? { ...x, quantite: Math.max(1, x.quantite - 1) } : x))} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: '#e8e0d5', width: 24, height: 24, borderRadius: 3, cursor: 'pointer', fontSize: 14 }}>−</button>
-                        <input type="number" min={1} value={l.quantite} onChange={e => setLignes(prev => prev.map(x => x.product_id === l.product_id ? { ...x, quantite: parseInt(e.target.value) || 1 } : x))}
-                          style={{ width: 52, background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 3, color: '#e8e0d5', fontSize: 13, padding: '3px 6px', textAlign: 'center' as const }} />
-                        <button onClick={() => setLignes(prev => prev.map(x => x.product_id === l.product_id ? { ...x, quantite: x.quantite + 1 } : x))} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: '#e8e0d5', width: 24, height: 24, borderRadius: 3, cursor: 'pointer', fontSize: 14 }}>+</button>
-                      </div>
-                    </td>
-                    {isInterSociete && <td style={{ padding: '10px 12px', fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>{l.prix_achat_ht ? `${l.prix_achat_ht.toFixed(2)} €` : '—'}</td>}
-                    {isInterSociete && <td style={{ padding: '10px 12px', fontSize: 12, color: '#c96e6e', fontWeight: 600 }}>{l.prix_transfert_ht ? `${l.prix_transfert_ht.toFixed(4)} €` : '—'}</td>}
-                    <td style={{ padding: '10px 12px' }}>
-                      <button onClick={() => setLignes(prev => prev.filter(x => x.product_id !== l.product_id))} style={{ background: 'transparent', border: 'none', color: '#c96e6e', cursor: 'pointer', fontSize: 16 }}>✕</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           </div>
         )}
 
@@ -1415,14 +1458,149 @@ function ModalNouveauTransfert({ sites, onCreated, onClose }: {
 
         <div style={{ display: 'flex', gap: 10 }}>
           <button onClick={onClose} style={{ flex: 1, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '11px', fontSize: 12, cursor: 'pointer' }}>Annuler</button>
-          <button onClick={handleCreate} disabled={saving || lignes.length === 0} style={{ flex: 2, background: lignes.length > 0 ? '#c9a96e' : '#2a2a1e', color: lignes.length > 0 ? '#0d0a08' : '#555', border: 'none', borderRadius: 4, padding: '11px', fontSize: 13, cursor: 'pointer', fontWeight: 600, opacity: saving ? 0.7 : 1 }}>
-            {saving ? '⟳ Création...' : '✓ Créer la demande de transfert'}
+          <button onClick={() => { if (siteSourceId === siteDestId) { setError('Source et destination identiques'); return } setError(''); setStep('produits') }}
+            style={{ flex: 2, background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '11px', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>
+            Sélectionner les produits →
           </button>
         </div>
       </div>
     </div>
   )
+
+  // ── Étape 2 : Sélection produits (plein écran) ──
+  return (
+    <div style={{ position: 'fixed' as const, inset: 0, background: '#0d0a08', zIndex: 1000, display: 'flex', flexDirection: 'column' as const }}>
+      {/* Header */}
+      <div style={{ padding: '14px 20px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', gap: 16, background: '#100d0a' }}>
+        <button onClick={() => setStep('config')} style={{ background: 'transparent', border: 'none', color: '#c9a96e', fontSize: 18, cursor: 'pointer' }}>←</button>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 13, color: '#f0e8d8' }}>{sites.find(s => s.id === siteSourceId)?.nom} → {sites.find(s => s.id === siteDestId)?.nom}</div>
+          <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>{nbSelected} produit{nbSelected > 1 ? 's' : ''} sélectionné{nbSelected > 1 ? 's' : ''}</div>
+        </div>
+        {error && <div style={{ fontSize: 12, color: '#c96e6e' }}>{error}</div>}
+        <button onClick={handleCreate} disabled={saving || nbSelected === 0}
+          style={{ background: nbSelected > 0 ? '#c9a96e' : '#2a2a1e', color: nbSelected > 0 ? '#0d0a08' : '#555', border: 'none', borderRadius: 4, padding: '10px 20px', fontSize: 13, cursor: 'pointer', fontWeight: 600, opacity: saving ? 0.7 : 1, whiteSpace: 'nowrap' as const }}>
+          {saving ? '⟳' : `✓ Créer la demande (${nbSelected})`}
+        </button>
+        <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.4)', fontSize: 18, cursor: 'pointer' }}>✕</button>
+      </div>
+
+      {/* Filtres */}
+      <div style={{ padding: '12px 20px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', display: 'flex', gap: 10, flexWrap: 'wrap' as const, alignItems: 'center', background: '#100d0a' }}>
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Rechercher..." style={{ ...inp, flex: '1 1 180px', fontSize: 12, padding: '7px 10px' }} />
+        <select value={filterRegion} onChange={e => setFilterRegion(e.target.value)} style={{ ...sel, fontSize: 12, padding: '7px 10px' }}>
+          <option value="">Toutes les régions</option>
+          {regions.map(r => <option key={r.id} value={r.id}>{r.nom}</option>)}
+        </select>
+        <select value={filterDomaine} onChange={e => setFilterDomaine(e.target.value)} style={{ ...sel, fontSize: 12, padding: '7px 10px' }}>
+          <option value="">Tous les domaines</option>
+          {domaines.map(d => <option key={d.id} value={d.id}>{d.nom}</option>)}
+        </select>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
+          {['', 'rouge', 'blanc', 'rosé', 'champagne', 'effervescent', 'spiritueux'].map(c => (
+            <button key={c} onClick={() => setFilterCouleur(c)} style={{ background: filterCouleur === c ? 'rgba(201,169,110,0.15)' : 'rgba(255,255,255,0.04)', border: `0.5px solid ${filterCouleur === c ? 'rgba(201,169,110,0.4)' : 'rgba(255,255,255,0.1)'}`, color: filterCouleur === c ? '#c9a96e' : 'rgba(232,224,213,0.4)', borderRadius: 20, padding: '4px 10px', fontSize: 11, cursor: 'pointer' }}>
+              {c ? (COULEURS_LABEL[c] || c) : 'Toutes'}
+            </button>
+          ))}
+        </div>
+        <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)', marginLeft: 'auto' }}>{produitsFiltres.length} produits</span>
+      </div>
+
+      {/* Tableau */}
+      <div style={{ flex: 1, overflowY: 'auto' as const }}>
+        {loadingProduits ? (
+          <div style={{ textAlign: 'center' as const, padding: 48, color: 'rgba(232,224,213,0.3)' }}>⟳ Chargement...</div>
+        ) : (
+          <table style={{ width: '100%', borderCollapse: 'collapse' as const }}>
+            <thead style={{ position: 'sticky' as const, top: 0, background: '#100d0a', zIndex: 1 }}>
+              <tr style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
+                <th style={{ ...thStyle, width: 40 }}>
+                  <div style={{ width: 14, height: 14, borderRadius: 3, border: '0.5px solid rgba(255,255,255,0.2)', background: 'transparent', cursor: 'pointer' }}
+                    onClick={() => {
+                      if (nbSelected === produitsFiltres.length) setSelected({})
+                      else setSelected(Object.fromEntries(produitsFiltres.map(p => [p.id, selected[p.id] || 1])))
+                    }}>
+                  </div>
+                </th>
+                <th style={thStyle} onClick={() => toggleSort('nom')}>Produit{sortIcon('nom')}</th>
+                <th style={thStyle} onClick={() => toggleSort('couleur')}>Couleur{sortIcon('couleur')}</th>
+                <th style={thStyle} onClick={() => toggleSort('millesime')}>Mill.{sortIcon('millesime')}</th>
+                <th style={thStyle} onClick={() => toggleSort('prix_achat_ht')}>PA HT{sortIcon('prix_achat_ht')}</th>
+                <th style={thStyle} onClick={() => toggleSort('prix_vente_ttc')}>PV TTC{sortIcon('prix_vente_ttc')}</th>
+                <th style={{ ...thStyle, color: '#6e9ec9' }} onClick={() => toggleSort('stock_source')}>Stk {sites.find(s => s.id === siteSourceId)?.nom?.split(' ')[0]}{sortIcon('stock_source')}</th>
+                <th style={thStyle} onClick={() => toggleSort('stock_total')}>Total{sortIcon('stock_total')}</th>
+                {isInterSociete && <th style={{ ...thStyle, color: '#c96e6e' }}>Prix transf. HT</th>}
+                <th style={{ ...thStyle, width: 80 }}>Quantité</th>
+              </tr>
+            </thead>
+            <tbody>
+              {produitsFiltres.map((p, i) => {
+                const isSelected = selected[p.id] !== undefined
+                const stockSrc = getStock(p.id, srcCol)
+                const stockTotal = getStock(p.id, 'stock_total')
+                const prixAchat = p.prix_achat_ht ? parseFloat(p.prix_achat_ht) : null
+                const prixTransfert = isInterSociete && prixAchat ? Math.round(prixAchat * MARGE_INTERSOCIETE * 10000) / 10000 : null
+                return (
+                  <tr key={p.id}
+                    style={{ borderBottom: i < produitsFiltres.length - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none', background: isSelected ? 'rgba(201,169,110,0.05)' : 'transparent', cursor: 'pointer' }}
+                    onClick={() => toggleSelect(p.id)}
+                    onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'rgba(255,255,255,0.02)' }}
+                    onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent' }}>
+                    <td style={{ padding: '9px 12px' }}>
+                      <div style={{ width: 14, height: 14, borderRadius: 3, border: `1.5px solid ${isSelected ? '#c9a96e' : 'rgba(255,255,255,0.2)'}`, background: isSelected ? '#c9a96e' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {isSelected && <span style={{ fontSize: 9, color: '#0d0a08', fontWeight: 700 }}>✓</span>}
+                      </div>
+                    </td>
+                    <td style={{ padding: '9px 12px', fontSize: 13, color: '#f0e8d8' }}>{p.nom}</td>
+                    <td style={{ padding: '9px 12px' }}>
+                      <span style={{ color: COULEURS_DOT[p.couleur] || '#888', fontSize: 11 }}>● {COULEURS_LABEL[p.couleur] || p.couleur}</span>
+                    </td>
+                    <td style={{ padding: '9px 12px', fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>{p.millesime || '—'}</td>
+                    <td style={{ padding: '9px 12px', fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>{prixAchat ? `${prixAchat.toFixed(2)} €` : '—'}</td>
+                    <td style={{ padding: '9px 12px', fontSize: 12, color: '#c9a96e' }}>{p.prix_vente_ttc ? `${parseFloat(p.prix_vente_ttc).toFixed(2)} €` : '—'}</td>
+                    <td style={{ padding: '9px 12px' }}>
+                      <span style={{ fontSize: 13, color: stockSrc === 0 ? '#c96e6e' : stockSrc <= 3 ? '#c9b06e' : '#6ec96e', fontFamily: 'Georgia, serif' }}>{stockSrc}</span>
+                    </td>
+                    <td style={{ padding: '9px 12px', fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>{stockTotal}</td>
+                    {isInterSociete && <td style={{ padding: '9px 12px', fontSize: 12, color: '#c96e6e' }}>{prixTransfert ? `${prixTransfert.toFixed(4)} €` : '—'}</td>}
+                    <td style={{ padding: '9px 12px' }} onClick={e => e.stopPropagation()}>
+                      {isSelected && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <button onClick={() => updateQte(p.id, (selected[p.id] || 1) - 1)} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: '#e8e0d5', width: 22, height: 22, borderRadius: 3, cursor: 'pointer', fontSize: 13 }}>−</button>
+                          <input type="number" min={1} value={selected[p.id] || 1}
+                            onChange={e => updateQte(p.id, parseInt(e.target.value) || 1)}
+                            style={{ width: 44, background: 'rgba(201,169,110,0.08)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 3, color: '#c9a96e', fontSize: 13, padding: '2px 4px', textAlign: 'center' as const }} />
+                          <button onClick={() => updateQte(p.id, (selected[p.id] || 1) + 1)} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: '#e8e0d5', width: 22, height: 22, borderRadius: 3, cursor: 'pointer', fontSize: 13 }}>+</button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Footer récap */}
+      {nbSelected > 0 && (
+        <div style={{ padding: '12px 20px', borderTop: '0.5px solid rgba(255,255,255,0.07)', background: '#100d0a', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' as const }}>
+          <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>
+            {Object.entries(selected).map(([pid, qte]) => {
+              const p = produits.find(x => x.id === pid)
+              return p ? <span key={pid} style={{ marginRight: 12 }}>{p.nom}{p.millesime ? ` ${p.millesime}` : ''} × {qte}</span> : null
+            })}
+          </div>
+          <button onClick={handleCreate} disabled={saving}
+            style={{ marginLeft: 'auto', background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '10px 24px', fontSize: 13, cursor: 'pointer', fontWeight: 600, opacity: saving ? 0.7 : 1 }}>
+            {saving ? '⟳ Création...' : `✓ Créer la demande (${nbSelected} produit${nbSelected > 1 ? 's' : ''})`}
+          </button>
+        </div>
+      )}
+    </div>
+  )
 }
+
 
 // ── Vue détail transfert (3 étapes) ──────────────────────────
 function VueDetailTransfert({ transfert, sites, onBack, onRefresh }: {
