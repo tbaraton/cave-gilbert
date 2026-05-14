@@ -2217,8 +2217,110 @@ function VueTransferts({ sites, onNew, refreshKey }: { sites: any[]; onNew: () =
 
 
 
+
+// ── Modal Changer mot de passe ────────────────────────────────
+function ModalChangePassword({ onClose }: { onClose: () => void }) {
+  const [current, setCurrent] = useState('')
+  const [next1, setNext1] = useState('')
+  const [next2, setNext2] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [msg, setMsg] = useState<{type: 'err' | 'ok', text: string} | null>(null)
+
+  const inp = { background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.15)', borderRadius: 8, color: '#f0e8d8', fontSize: 14, padding: '11px 14px', width: '100%', boxSizing: 'border-box' as const }
+  const lbl = { fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, display: 'block', marginBottom: 6 }
+
+  const handleSubmit = async () => {
+    setMsg(null)
+    if (next1.length < 8) { setMsg({type:'err', text:'Minimum 8 caractères'}); return }
+    if (next1 !== next2) { setMsg({type:'err', text:'Les mots de passe ne correspondent pas'}); return }
+    setLoading(true)
+    // Vérifier mot de passe actuel
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user?.email) {
+      const { error: signErr } = await supabase.auth.signInWithPassword({ email: user.email, password: current })
+      if (signErr) { setMsg({type:'err', text:'Mot de passe actuel incorrect'}); setLoading(false); return }
+    }
+    const { error } = await supabase.auth.updateUser({ password: next1 })
+    setLoading(false)
+    if (error) { setMsg({type:'err', text: error.message}); return }
+    setMsg({type:'ok', text:'Mot de passe mis à jour ✓'})
+    setTimeout(onClose, 1500)
+  }
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: 20 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#18130e', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 10, width: '100%', maxWidth: 420, padding: '28px 32px' }}>
+        <div style={{ fontFamily: 'Georgia, serif', fontSize: 18, color: '#c9a96e', marginBottom: 24 }}>Changer mon mot de passe</div>
+        {msg && (
+          <div style={{ background: msg.type === 'err' ? 'rgba(201,110,110,0.12)' : 'rgba(110,201,110,0.12)', border: `0.5px solid ${msg.type === 'err' ? 'rgba(201,110,110,0.35)' : 'rgba(110,201,110,0.35)'}`, color: msg.type === 'err' ? '#c96e6e' : '#6ec96e', borderRadius: 6, padding: '10px 14px', marginBottom: 16, fontSize: 13 }}>{msg.text}</div>
+        )}
+        <div style={{ marginBottom: 14 }}>
+          <label style={lbl}>Mot de passe actuel</label>
+          <input type="password" value={current} onChange={e => setCurrent(e.target.value)} style={inp} />
+        </div>
+        <div style={{ marginBottom: 14 }}>
+          <label style={lbl}>Nouveau mot de passe</label>
+          <input type="password" value={next1} onChange={e => setNext1(e.target.value)} style={inp} />
+        </div>
+        <div style={{ marginBottom: 22 }}>
+          <label style={lbl}>Confirmer nouveau mot de passe</label>
+          <input type="password" value={next2} onChange={e => setNext2(e.target.value)} style={inp} />
+        </div>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={onClose} style={{ flex: 1, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 8, padding: '11px', fontSize: 12, cursor: 'pointer' }}>Annuler</button>
+          <button onClick={handleSubmit} disabled={loading} style={{ flex: 2, background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 8, padding: '11px', fontSize: 13, cursor: 'pointer', fontWeight: 600, opacity: loading ? 0.7 : 1 }}>
+            {loading ? '⟳' : '✓ Mettre à jour'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function AdminPage() {
   const [section, setSection] = useState<Section>('dashboard')
+
+  // Utilisateur connecté + permissions + site
+  const [currentUser, setCurrentUser] = useState<any>(null)
+  const [permissions, setPermissions] = useState<any>(null)
+  const [siteActif, setSiteActif] = useState<any>(null)
+  const [showPasswordModal, setShowPasswordModal] = useState(false)
+
+  // Charger l'utilisateur Supabase + son profil + ses permissions
+  useEffect(() => {
+    (async () => {
+      const { data: { user: authUser } } = await supabase.auth.getUser()
+      if (!authUser) return
+      const { data: profile } = await supabase
+        .from('users')
+        .select('*, employe_profils(*), user_permissions(*)')
+        .eq('auth_user_id', authUser.id)
+        .maybeSingle()
+      if (!profile) return
+      setCurrentUser(profile)
+      const perms = Array.isArray(profile.user_permissions) ? profile.user_permissions[0] : profile.user_permissions
+      setPermissions(perms || null)
+      // Charger le site actif (restriction ou site par défaut depuis employe_profils)
+      const siteId = perms?.site_restreint_id || profile.employe_profils?.site_id
+      if (siteId) {
+        const { data: site } = await supabase.from('sites').select('*').eq('id', siteId).maybeSingle()
+        setSiteActif(site)
+      }
+    })()
+  }, [])
+
+  const isAdmin = currentUser?.role === 'admin'
+  // Helper pour filtrer le menu : admin voit tout, les autres selon permissions
+  const can = (key: string): boolean => {
+    if (isAdmin || !currentUser) return true
+    return permissions?.[key] === true
+  }
+
+  // Branding dynamique
+  const isLaPetiteCave = siteActif?.code === 'ARBRESLE'
+  const brandLogo = isLaPetiteCave ? '/logo-petite-cave.png' : '/logo.png'
+  const brandName = isLaPetiteCave ? 'La Petite Cave' : 'Cave de Gilbert'
+
 
   // Données réelles depuis Supabase
   const [produits, setProduits] = useState<any[]>([])
@@ -2450,27 +2552,29 @@ function AdminPage() {
 
   // ── Navigation ───────────────────────────────────────────
 
-  const navItems: { id: Section; label: string; icon: string }[] = [
-    { id: 'dashboard',  label: 'Tableau de bord',  icon: '⬡' },
-    { id: 'produits',   label: 'Produits',          icon: '⬥' },
-    { id: 'transferts', label: 'Transferts',        icon: '⇄' },
+  const navItemsAll: { id: Section; label: string; icon: string; perm: string }[] = [
+    { id: 'dashboard',  label: 'Tableau de bord',  icon: '⬡', perm: 'acces_dashboard' },
+    { id: 'produits',   label: 'Produits',          icon: '⬥', perm: 'acces_produits' },
+    { id: 'transferts', label: 'Transferts',        icon: '⇄', perm: 'acces_transferts' },
   ]
+  const navItems = navItemsAll.filter(n => can(n.perm))
 
   const [produitsOpen, setProduitsOpen] = useState(false)
 
-  const navLinks = [
-    { label: 'Clients',       href: '/admin/clients',       icon: '◎', groupe: 'gestion' },
-    { label: 'Fournisseurs',  href: '/admin/fournisseurs',  icon: '◈', groupe: 'gestion' },
-    { label: 'Commandes',     href: '/admin/commandes',     icon: '◻', groupe: 'gestion' },
-    { label: 'Inventaire',    href: '/admin/inventaire',    icon: '◉', groupe: 'gestion' },
-    { label: 'Assistant IA',  href: '/admin/ia',            icon: '✦', groupe: 'gestion' },
-    { label: 'Location',      href: '/admin/location',      icon: '🍺', groupe: 'gestion' },
-    { label: 'Utilisateurs',  href: '/admin/utilisateurs',  icon: '👤', groupe: 'gestion' },
-    { label: 'Import',        href: '/admin/import',        icon: '↑',  groupe: 'gestion' },
-    { label: 'Congés',        href: '/admin/conges',        icon: '🏖', groupe: 'rh' },
-    { label: 'Planning',      href: '/admin/rh/planning',   icon: '📅', groupe: 'rh' },
-    { label: 'Documents RH',  href: '/admin/rh/documents',  icon: '📂', groupe: 'rh' },
+  const navLinksAll = [
+    { label: 'Clients',       href: '/admin/clients',       icon: '◎',  groupe: 'gestion', perm: 'acces_clients' },
+    { label: 'Fournisseurs',  href: '/admin/fournisseurs',  icon: '◈',  groupe: 'gestion', perm: 'acces_fournisseurs' },
+    { label: 'Commandes',     href: '/admin/commandes',     icon: '◻',  groupe: 'gestion', perm: 'acces_commandes' },
+    { label: 'Inventaire',    href: '/admin/inventaire',    icon: '◉',  groupe: 'gestion', perm: 'acces_inventaire' },
+    { label: 'Assistant IA',  href: '/admin/ia',            icon: '✦',  groupe: 'gestion', perm: 'acces_assistant_ia' },
+    { label: 'Location',      href: '/admin/location',      icon: '🍺', groupe: 'gestion', perm: 'acces_location' },
+    { label: 'Import',        href: '/admin/import',        icon: '↑',  groupe: 'gestion', perm: 'acces_import' },
+    { label: 'Congés',        href: '/admin/conges',        icon: '🏖', groupe: 'rh',      perm: 'acces_conges' },
+    { label: 'Planning',      href: '/admin/rh/planning',   icon: '📅', groupe: 'rh',      perm: 'acces_planning' },
+    { label: 'Documents',     href: '/admin/rh/documents',  icon: '📂', groupe: 'rh',      perm: 'acces_documents' },
+    { label: 'Utilisateurs',  href: '/admin/rh/utilisateurs', icon: '👤', groupe: 'rh',    perm: 'acces_utilisateurs' },
   ]
+  const navLinks = navLinksAll.filter(n => can(n.perm))
 
   const inputStyle = {
     background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.12)',
@@ -2486,13 +2590,13 @@ function AdminPage() {
           {/* Logo — remplacez /logo.png par votre fichier dans le dossier public/ */}
           <a href="/" style={{ display: 'block', marginBottom: 10 }}>
             <img
-              src="/logo.png"
-              alt="Cave de Gilbert"
+              src={brandLogo}
+              alt={brandName}
               onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
               style={{ width: '100%', maxHeight: 60, objectFit: 'contain', cursor: 'pointer' }}
             />
           </a>
-          <div style={{ fontFamily: 'Georgia, serif', fontSize: 15, color: '#c9a96e', letterSpacing: 3, textTransform: 'uppercase' as const, fontWeight: 300 }}>Cave de Gilbert</div>
+          <div style={{ fontFamily: 'Georgia, serif', fontSize: 15, color: '#c9a96e', letterSpacing: 3, textTransform: 'uppercase' as const, fontWeight: 300 }}>{brandName}</div>
           <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.3)', letterSpacing: 1.5, marginTop: 3 }}>ADMINISTRATION</div>
         </div>
         <nav style={{ flex: 1, padding: '16px 0', overflowY: 'auto' as const }}>
@@ -2572,17 +2676,27 @@ function AdminPage() {
         </nav>
         <div style={{ padding: '16px 20px', borderTop: '0.5px solid rgba(255,255,255,0.06)' }}>
           <a href="/" style={{ fontSize: 11, color: 'rgba(232,224,213,0.3)', textDecoration: 'none', letterSpacing: 1 }}>← Voir le site</a>
-          <button onClick={async () => {
-            await supabase.auth.signOut()
-            window.location.href = '/login'
-          }} style={{
-            display: 'block', width: '100%', marginTop: 10,
-            background: 'transparent', border: '0.5px solid rgba(201,110,110,0.25)',
-            color: 'rgba(201,110,110,0.7)', borderRadius: 4, padding: '7px 10px',
-            fontSize: 11, cursor: 'pointer', letterSpacing: 1, textAlign: 'left' as const,
-          }}>
-            ⎋ Déconnexion
-          </button>
+          {currentUser && (
+            <div style={{ marginTop: 14, paddingTop: 14, borderTop: '0.5px solid rgba(255,255,255,0.05)' }}>
+              <div style={{ fontSize: 12, color: '#e8e0d5', fontWeight: 600 }}>{currentUser.prenom}</div>
+              <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.35)', textTransform: 'capitalize' as const, marginBottom: 8 }}>{currentUser.role}</div>
+              <button onClick={() => setShowPasswordModal(true)} style={{
+                display: 'block', width: '100%', marginBottom: 6,
+                background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)',
+                color: 'rgba(232,224,213,0.5)', borderRadius: 4, padding: '6px 10px',
+                fontSize: 10, cursor: 'pointer', letterSpacing: 1, textAlign: 'left' as const,
+              }}>🔑 Changer mot de passe</button>
+              <button onClick={async () => {
+                await supabase.auth.signOut()
+                window.location.href = '/login'
+              }} style={{
+                display: 'block', width: '100%',
+                background: 'transparent', border: '0.5px solid rgba(201,110,110,0.25)',
+                color: 'rgba(201,110,110,0.7)', borderRadius: 4, padding: '6px 10px',
+                fontSize: 10, cursor: 'pointer', letterSpacing: 1, textAlign: 'left' as const,
+              }}>⎋ Déconnexion</button>
+            </div>
+          )}
         </div>
       </aside>
 
@@ -3046,6 +3160,9 @@ function AdminPage() {
         )}
 
       </main>
+
+      {/* Modal Changer mot de passe */}
+      {showPasswordModal && <ModalChangePassword onClose={() => setShowPasswordModal(false)} />}
 
       {/* Modals */}
       {showModalProduit && sites.length > 0 && (
