@@ -2572,6 +2572,17 @@ function AdminPage() {
         </nav>
         <div style={{ padding: '16px 20px', borderTop: '0.5px solid rgba(255,255,255,0.06)' }}>
           <a href="/" style={{ fontSize: 11, color: 'rgba(232,224,213,0.3)', textDecoration: 'none', letterSpacing: 1 }}>← Voir le site</a>
+          <button onClick={async () => {
+            await supabase.auth.signOut()
+            window.location.href = '/login'
+          }} style={{
+            display: 'block', width: '100%', marginTop: 10,
+            background: 'transparent', border: '0.5px solid rgba(201,110,110,0.25)',
+            color: 'rgba(201,110,110,0.7)', borderRadius: 4, padding: '7px 10px',
+            fontSize: 11, cursor: 'pointer', letterSpacing: 1, textAlign: 'left' as const,
+          }}>
+            ⎋ Déconnexion
+          </button>
         </div>
       </aside>
 
