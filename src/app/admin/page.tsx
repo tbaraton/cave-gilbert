@@ -1999,6 +1999,7 @@ function AdminPage() {
   const navItems: { id: Section; label: string; icon: string }[] = [
     { id: 'dashboard',  label: 'Tableau de bord',  icon: '⬡' },
     { id: 'produits',   label: 'Produits',          icon: '⬥' },
+    { id: 'transferts', label: 'Transferts',        icon: '⇄' },
   ]
 
   const [produitsOpen, setProduitsOpen] = useState(false)
@@ -2007,7 +2008,6 @@ function AdminPage() {
     { label: 'Clients',       href: '/admin/clients',       icon: '◎' },
     { label: 'Fournisseurs',  href: '/admin/fournisseurs',  icon: '◈' },
     { label: 'Commandes',     href: '/admin/commandes',     icon: '◻' },
-    { label: 'Transferts',    href: '/admin/transferts',    icon: '⇄' },
     { label: 'Inventaire',    href: '/admin/inventaire',    icon: '◉' },
     { label: 'Assistant IA',  href: '/admin/ia',            icon: '✦' },
     { label: 'Location',      href: '/admin/location',      icon: '🍺' },
@@ -2556,36 +2556,7 @@ function AdminPage() {
 
         {/* ── TRANSFERTS ── */}
         {section === 'transferts' && (
-          <>
-            <h1 style={{ fontFamily: 'Georgia, serif', fontSize: 28, fontWeight: 300, color: '#f0e8d8', marginBottom: 28 }}>Transferts inter-sites</h1>
-            {sites.length < 2 ? (
-              <div style={{ background: '#18130e', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 6, padding: '32px', textAlign: 'center' as const }}>
-                <p style={{ color: 'rgba(232,224,213,0.4)', fontSize: 13 }}>Il faut au moins 2 sites actifs pour créer un transfert.</p>
-                <p style={{ color: 'rgba(232,224,213,0.3)', fontSize: 12, marginTop: 8 }}>Ajoutez vos sites dans Supabase → Table Editor → sites.</p>
-              </div>
-            ) : (
-              <div style={{ background: '#18130e', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 6, padding: '28px' }}>
-                <p style={{ color: 'rgba(232,224,213,0.4)', fontSize: 13, marginBottom: 20 }}>Créer un transfert de stock entre deux sites</p>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
-                  <div>
-                    <label style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, display: 'block', marginBottom: 8 }}>Site source</label>
-                    <select style={{ width: '100%', ...inputStyle }}>
-                      {sites.map(s => <option key={s.id} value={s.id}>{s.nom}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, display: 'block', marginBottom: 8 }}>Site destination</label>
-                    <select style={{ width: '100%', ...inputStyle }}>
-                      {sites.map(s => <option key={s.id} value={s.id}>{s.nom}</option>)}
-                    </select>
-                  </div>
-                </div>
-                <button style={{ background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '11px 24px', fontSize: 11, cursor: 'pointer', fontWeight: 500, letterSpacing: 1.5, textTransform: 'uppercase' as const }}>
-                  Créer le transfert
-                </button>
-              </div>
-            )}
-          </>
+          <VueTransferts sites={sites} onNew={() => setShowModalTransfert(true)} />
         )}
 
       </main>
