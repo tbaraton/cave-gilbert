@@ -88,7 +88,7 @@ function VueDocumentsAdmin({ admin }: { admin: User }) {
   const load = useCallback(async () => {
     setLoading(true)
     const [{ data: users }, { data: docs }] = await Promise.all([
-      supabase.from('users').select('id, prenom, nom, role').eq('actif', true).in('role', ['vendeur', 'caviste']),
+      supabase.from('users').select('id, prenom, nom, role').eq('actif', true).in('role', ['responsable', 'vendeur', 'caviste']),
       supabase.from('rh_documents').select('*').order('created_at', { ascending: false }),
     ])
     const userMap = Object.fromEntries((users || []).map(u => [u.id, u]))
@@ -269,7 +269,7 @@ function VueDocumentsAdmin({ admin }: { admin: User }) {
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           {anomaliesCount > 0 && <div style={{ background: 'rgba(201,110,110,0.1)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 20, padding: '4px 12px', fontSize: 12, color: '#c96e6e' }}>⚠ {anomaliesCount} anomalie{anomaliesCount > 1 ? 's' : ''}</div>}
           <button onClick={() => setShowUpload(v => !v)} style={{ background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '9px 18px', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>+ Déposer un document</button>
-          <a href="/admin" style={{ fontSize: 11, color: 'rgba(232,224,213,0.3)', textDecoration: 'none' }}>← Admin</a>
+          <a href="/admin" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'rgba(232,224,213,0.6)', textDecoration: 'none', background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 6, padding: '8px 14px' }}>← Retour admin</a>
         </div>
       </div>
 
@@ -405,9 +405,12 @@ function VueDocumentsEmploye({ user }: { user: User }) {
 
   return (
     <div style={{ minHeight: '100vh', background: '#0d0a08', fontFamily: "'DM Sans', system-ui, sans-serif", color: '#e8e0d5' }}>
-      <div style={{ padding: '14px 20px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', background: '#100d0a' }}>
-        <div style={{ fontFamily: 'Georgia, serif', fontSize: 18, color: '#c9a96e' }}>Mes documents</div>
-        <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)', marginTop: 2 }}>{user.prenom} · {documents.length} document{documents.length > 1 ? 's' : ''}</div>
+      <div style={{ padding: '14px 20px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', background: '#100d0a', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <div>
+          <div style={{ fontFamily: 'Georgia, serif', fontSize: 18, color: '#c9a96e' }}>Mes documents</div>
+          <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)', marginTop: 2 }}>{user.prenom} · {documents.length} document{documents.length > 1 ? 's' : ''}</div>
+        </div>
+        <a href="/admin" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'rgba(232,224,213,0.6)', textDecoration: 'none', background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 6, padding: '8px 14px' }}>← Retour</a>
       </div>
       <div style={{ padding: '20px' }}>
         {loading ? <div style={{ textAlign: 'center' as const, padding: 48, color: 'rgba(232,224,213,0.3)' }}>⟳ Chargement...</div>

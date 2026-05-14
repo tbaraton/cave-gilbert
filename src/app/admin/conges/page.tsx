@@ -207,7 +207,7 @@ function VueAdmin({ admin }: { admin: User }) {
   const load = useCallback(async () => {
     setLoading(true)
     const [{ data: users }, { data: profils }, { data: dem }, { data: sam }, { data: ev }] = await Promise.all([
-      supabase.from('users').select('id, prenom, nom, role').eq('actif', true).in('role', ['vendeur', 'caviste']),
+      supabase.from('users').select('id, prenom, nom, role').eq('actif', true).in('role', ['responsable', 'vendeur', 'caviste']),
       supabase.from('employe_profils').select('*'),
       supabase.from('conges_demandes').select('*').order('created_at', { ascending: false }),
       supabase.from('samedis_offerts').select('*').order('date_samedi'),

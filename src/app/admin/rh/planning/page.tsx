@@ -306,7 +306,7 @@ function PlanningAdmin({ admin }: { admin: User }) {
   const load = useCallback(async () => {
     setLoading(true)
     const [{ data: users }, { data: profils }, { data: dem }, { data: sam }] = await Promise.all([
-      supabase.from('users').select('id, prenom, nom, role').eq('actif', true).in('role', ['vendeur', 'caviste']),
+      supabase.from('users').select('id, prenom, nom, role').eq('actif', true).in('role', ['responsable', 'vendeur', 'caviste']),
       supabase.from('employe_profils').select('*'),
       supabase.from('conges_demandes').select('*').eq('statut', 'approuve'),
       supabase.from('samedis_offerts').select('*').neq('statut', 'annule'),
@@ -624,6 +624,7 @@ function PlanningEmploye({ user }: { user: User }) {
   const [vue, setVue] = useState<'semaine' | 'mois'>('semaine')
   const [profil, setProfil] = useState<Profil | null>(null)
   const [shifts, setShifts] = useState<Shift[]>([])
+  const [demandes, setDemandes] = useState<Demande[]>([])
   const [semaine, setSemaine] = useState(getMonday(new Date()))
   const [moisRef, setMoisRef] = useState({ y: new Date().getFullYear(), m: new Date().getMonth() })
   const [loading, setLoading] = useState(true)
@@ -633,8 +634,12 @@ function PlanningEmploye({ user }: { user: User }) {
 
   useEffect(() => {
     (async () => {
-      const { data: p } = await supabase.from('employe_profils').select('*').eq('user_id', user.id).maybeSingle()
+      const [{ data: p }, { data: dem }] = await Promise.all([
+        supabase.from('employe_profils').select('*').eq('user_id', user.id).maybeSingle(),
+        supabase.from('conges_demandes').select('*').eq('user_id', user.id).eq('statut', 'approuve'),
+      ])
       setProfil(p)
+      setDemandes(dem || [])
       setLoading(false)
     })()
   }, [user.id])
@@ -656,9 +661,11 @@ function PlanningEmploye({ user }: { user: User }) {
   }, [vue, semaine, moisRef.y, moisRef.m, user.id])
 
   const getShift = (date: string) => shifts.find(s => s.date === date)
+  const isConge = (date: string) => demandes.some(d => date >= d.date_debut && date <= d.date_fin)
   const getDefaultType = (date: string): string => {
     const dow = new Date(date + 'T12:00:00').getDay()
     if (dow === 0 || dow === 1) return 'repos'
+    if (isConge(date)) return 'conge'
     if (getFerieLabel(date)) return 'ferie'
     const jours: number[] = Array.isArray(profil?.jours_travail) && profil.jours_travail.length > 0
       ? profil.jours_travail : [2,3,4,5,6]
