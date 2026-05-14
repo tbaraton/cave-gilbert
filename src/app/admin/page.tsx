@@ -1347,15 +1347,21 @@ function ModalNouveauTransfert({ sites, onCreated, onClose }: {
 
     // Si inter-société → créer la facture
     if (isInterSociete) {
-      const totalTTC = Math.round(totalHT * 1.20 * 100) / 100
+      const totalHTCalc = lignes.reduce((acc, l) => acc + (l.prix_transfert_ht || 0) * l.quantite, 0)
+      const totalTTC = Math.round(totalHTCalc * 1.20 * 100) / 100
       const numFIC = `FIC-${new Date().getFullYear()}${String(new Date().getMonth()+1).padStart(2,'0')}-${String(Math.floor(Math.random()*9999)).padStart(4,'0')}`
-      const { data: facture } = await supabase.from('factures_intersocietes').insert({
+      const { data: facture, error: errF } = await supabase.from('factures_intersocietes').insert({
         numero: numFIC, transfer_id: transfer.id,
         site_emetteur_id: siteSourceId, site_destinataire_id: siteDestId,
-        total_ht: Math.round(totalHT * 100) / 100,
+        total_ht: Math.round(totalHTCalc * 100) / 100,
         tva_pct: 20, total_ttc: totalTTC,
-        statut: 'émise', date_emission: new Date().toISOString().split('T')[0],
+        statut: 'emise', date_emission: new Date().toISOString().split('T')[0],
       }).select('id').single()
+      if (errF) {
+        console.error('Erreur création facture inter-société:', errF)
+        setError(`Transfert créé mais erreur facture : ${errF.message}`)
+        setSaving(false); return
+      }
       if (facture) {
         await supabase.from('stock_transfers').update({ facture_intersociete_id: facture.id }).eq('id', transfer.id)
       }
@@ -1663,7 +1669,7 @@ function VueTransferts({ sites, onNew }: { sites: any[]; onNew: () => void }) {
             <div><span style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>Total HT</span><div style={{ fontSize: 14, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{parseFloat(factureDetail.total_ht).toFixed(2)} €</div></div>
             <div><span style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>TVA 20%</span><div style={{ fontSize: 14, color: 'rgba(232,224,213,0.5)' }}>{(parseFloat(factureDetail.total_ht) * 0.20).toFixed(2)} €</div></div>
             <div><span style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>Total TTC</span><div style={{ fontSize: 16, color: '#c96e6e', fontFamily: 'Georgia, serif', fontWeight: 600 }}>{parseFloat(factureDetail.total_ttc).toFixed(2)} €</div></div>
-            <div><span style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>Statut</span><div style={{ fontSize: 13, color: factureDetail.statut === 'payée' ? '#6ec96e' : '#c9b06e' }}>{factureDetail.statut}</div></div>
+            <div><span style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>Statut</span><div style={{ fontSize: 13, color: factureDetail.statut === 'payee' ? '#6ec96e' : '#c9b06e' }}>{factureDetail.statut}</div></div>
           </div>
         </div>
       )}
