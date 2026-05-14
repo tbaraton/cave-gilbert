@@ -1318,8 +1318,6 @@ function ModalNouveauTransfert({ sites, onCreated, onClose }: {
   const handleCreate = async () => {
     if (siteSourceId === siteDestId) { setError('Source et destination identiques'); return }
     if (lignes.length === 0) { setError('Ajoutez au moins un produit'); return }
-    const insuff = lignes.find(l => l.quantite > l.stock)
-    if (insuff) { setError(`Stock insuffisant pour ${insuff.nom} (dispo: ${insuff.stock})`); return }
 
     setSaving(true); setError('')
 
@@ -1330,7 +1328,11 @@ function ModalNouveauTransfert({ sites, onCreated, onClose }: {
       numero, site_source_id: siteSourceId, site_destination_id: siteDestId,
       statut: 'en_cours', notes: notes || null,
     }).select('id').single()
-    if (errT || !transfer) { setError(errT?.message || 'Erreur création'); setSaving(false); return }
+    if (errT || !transfer) {
+      console.error('Erreur création transfert:', errT)
+      setError(`Erreur création : ${errT?.message || 'Réponse vide'}`)
+      setSaving(false); return
+    }
 
     // Créer les lignes
     await supabase.from('stock_transfer_lignes').insert(
@@ -1483,7 +1485,7 @@ function ModalNouveauTransfert({ sites, onCreated, onClose }: {
                             style={{ width: 48, background: stockInsuff ? 'rgba(201,110,110,0.1)' : 'rgba(255,255,255,0.06)', border: `0.5px solid ${stockInsuff ? 'rgba(201,110,110,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 3, color: stockInsuff ? '#c96e6e' : '#e8e0d5', fontSize: 13, padding: '3px 6px', textAlign: 'center' as const }} />
                           <button onClick={() => updateQte(l.product_id, l.quantite + 1)} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: '#e8e0d5', width: 24, height: 24, borderRadius: 3, cursor: 'pointer', fontSize: 14 }}>+</button>
                         </div>
-                        {stockInsuff && <div style={{ fontSize: 10, color: '#c96e6e', marginTop: 3 }}>Stock insuffisant</div>}
+                        {stockInsuff && <div style={{ fontSize: 10, color: '#c9b06e', marginTop: 3 }}>⚠ Dépasse le stock affiché</div>}
                       </td>
                       <td style={{ padding: '10px 12px', fontSize: 12, color: 'rgba(232,224,213,0.5)' }}>{l.prix_achat_ht ? `${parseFloat(l.prix_achat_ht).toFixed(2)} €` : '—'}</td>
                       {isInterSociete && <td style={{ padding: '10px 12px', fontSize: 12, color: '#c96e6e', fontWeight: 600 }}>{l.prix_transfert_ht ? `${l.prix_transfert_ht.toFixed(4)} €` : '—'}</td>}
