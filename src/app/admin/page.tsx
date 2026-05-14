@@ -2459,14 +2459,16 @@ function AdminPage() {
   const [produitsOpen, setProduitsOpen] = useState(false)
 
   const navLinks = [
-    { label: 'Clients',       href: '/admin/clients',       icon: '◎' },
-    { label: 'Fournisseurs',  href: '/admin/fournisseurs',  icon: '◈' },
-    { label: 'Commandes',     href: '/admin/commandes',     icon: '◻' },
-    { label: 'Inventaire',    href: '/admin/inventaire',    icon: '◉' },
-    { label: 'Assistant IA',  href: '/admin/ia',            icon: '✦' },
-    { label: 'Location',      href: '/admin/location',      icon: '🍺' },
-    { label: 'Utilisateurs',  href: '/admin/utilisateurs',  icon: '👤' },
-    { label: 'Import',        href: '/admin/import',        icon: '↑' },
+    { label: 'Clients',       href: '/admin/clients',       icon: '◎', groupe: 'gestion' },
+    { label: 'Fournisseurs',  href: '/admin/fournisseurs',  icon: '◈', groupe: 'gestion' },
+    { label: 'Commandes',     href: '/admin/commandes',     icon: '◻', groupe: 'gestion' },
+    { label: 'Inventaire',    href: '/admin/inventaire',    icon: '◉', groupe: 'gestion' },
+    { label: 'Assistant IA',  href: '/admin/ia',            icon: '✦', groupe: 'gestion' },
+    { label: 'Location',      href: '/admin/location',      icon: '🍺', groupe: 'gestion' },
+    { label: 'Utilisateurs',  href: '/admin/utilisateurs',  icon: '👤', groupe: 'gestion' },
+    { label: 'Import',        href: '/admin/import',        icon: '↑',  groupe: 'gestion' },
+    { label: 'Congés',        href: '/admin/conges',        icon: '🏖', groupe: 'rh' },
+    { label: 'Planning',      href: '/admin/rh/planning',   icon: '📅', groupe: 'rh' },
   ]
 
   const inputStyle = {
@@ -2534,7 +2536,25 @@ function AdminPage() {
           ))}
           <div style={{ height: '0.5px', background: 'rgba(255,255,255,0.06)', margin: '10px 0' }} />
           <div style={{ fontSize: 9, letterSpacing: 2, color: 'rgba(232,224,213,0.25)', padding: '4px 20px 8px', textTransform: 'uppercase' as const }}>Gestion</div>
-          {navLinks.map(({ href, label, icon }) => (
+                    <div style={{ height: '0.5px', background: 'rgba(255,255,255,0.06)', margin: '10px 0' }} />
+          <div style={{ fontSize: 9, letterSpacing: 2, color: 'rgba(232,224,213,0.25)', padding: '4px 20px 8px', textTransform: 'uppercase' as const }}>Gestion</div>
+          {navLinks.filter(l => l.groupe === 'gestion').map(({ href, label, icon }) => (
+            <a key={href} href={href} style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '10px 20px', fontSize: 12, letterSpacing: 0.5,
+              color: 'rgba(232,224,213,0.45)',
+              borderLeft: '2px solid transparent',
+              textDecoration: 'none',
+            }}
+              onMouseEnter={e => { e.currentTarget.style.color = '#c9a96e'; e.currentTarget.style.background = 'rgba(201,169,110,0.05)' }}
+              onMouseLeave={e => { e.currentTarget.style.color = 'rgba(232,224,213,0.45)'; e.currentTarget.style.background = 'transparent' }}
+            >
+              <span style={{ fontSize: 14 }}>{icon}</span>{label}
+            </a>
+          ))}
+          <div style={{ height: '0.5px', background: 'rgba(255,255,255,0.06)', margin: '10px 0' }} />
+          <div style={{ fontSize: 9, letterSpacing: 2, color: 'rgba(232,224,213,0.25)', padding: '4px 20px 8px', textTransform: 'uppercase' as const }}>Ressources Humaines</div>
+          {navLinks.filter(l => l.groupe === 'rh').map(({ href, label, icon }) => (
             <a key={href} href={href} style={{
               display: 'flex', alignItems: 'center', gap: 10,
               padding: '10px 20px', fontSize: 12, letterSpacing: 0.5,
