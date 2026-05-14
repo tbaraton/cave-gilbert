@@ -2043,7 +2043,7 @@ function VueDetailTransfert({ transfert, sites, onBack, onRefresh }: {
 }
 
 // ── Vue liste des transferts ──────────────────────────────────
-function VueTransferts({ sites, onNew }: { sites: any[]; onNew: () => void }) {
+function VueTransferts({ sites, onNew, refreshKey }: { sites: any[]; onNew: () => void; refreshKey?: number }) {
   const [transferts, setTransferts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [filterStatut, setFilterStatut] = useState('tous')
@@ -2060,7 +2060,7 @@ function VueTransferts({ sites, onNew }: { sites: any[]; onNew: () => void }) {
     setLoading(false)
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [refreshKey])
 
   const filtered = transferts.filter(t => filterStatut === 'tous' || t.statut === filterStatut)
 
@@ -2171,6 +2171,7 @@ function AdminPage() {
   const [dupliquerProduit, setDupliquerProduit] = useState<any>(null)
   const [showModalMouvement, setShowModalMouvement] = useState(false)
   const [showModalTransfert, setShowModalTransfert] = useState(false)
+  const [transfertRefresh, setTransfertRefresh] = useState(0)
   const [selectedProduit, setSelectedProduit] = useState<any>(null)
   const [activeCategorie, setActiveCategorie] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -2938,7 +2939,7 @@ function AdminPage() {
 
         {/* ── TRANSFERTS ── */}
         {section === 'transferts' && (
-          <VueTransferts sites={sites} onNew={() => setShowModalTransfert(true)} />
+          <VueTransferts sites={sites} onNew={() => setShowModalTransfert(true)} refreshKey={transfertRefresh} />
         )}
 
       </main>
@@ -2950,7 +2951,7 @@ function AdminPage() {
       {showModalTransfert && (
         <ModalNouveauTransfert
           sites={sites}
-          onCreated={() => { setShowModalTransfert(false); loadData() }}
+          onCreated={() => { setShowModalTransfert(false); setTransfertRefresh(r => r + 1) }}
           onClose={() => setShowModalTransfert(false)}
         />
       )}
