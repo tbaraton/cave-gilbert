@@ -292,7 +292,18 @@ ${lignesFuts || lignesTireuses ? `
         .update({ statut: 'en_cours' })
         .eq('id', r.id)
 
-      // 3. Uploader le bon de livraison signé dans Supabase Storage
+      // 3. Sauvegarder la signature + URL du bon dans la base
+      try {
+        await supabase
+          .from('reservations_location')
+          .update({
+            signature_livraison: signature,
+            bon_livraison_url: `/api/bon-livraison?id=${r.id}`,
+          })
+          .eq('id', r.id)
+      } catch (err) {
+        console.error('Erreur sauvegarde signature:', err)
+      }
       // La signature base64 est embarquée directement dans le HTML (autosuffisant)
       try {
         const html = genererBonLivraison(signature!)
