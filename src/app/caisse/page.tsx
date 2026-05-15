@@ -2421,7 +2421,7 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
         )}
         <div style={{padding:'12px 16px 20px'}}>
           {!showPaiement?(
-            <button onClick={()=>lignes.length>0&&setShowPaiement(true)} style={{width:'100%',background:lignes.length>0?'#c9a96e':'#2a2a1e',color:lignes.length>0?'#0d0a08':'#555',border:'none',borderRadius:10,padding:'16px',fontSize:16,cursor:lignes.length>0?'pointer':'not-allowed',fontWeight:700}}>{lignes.length>0?`💳 Encaisser ${fmt(totalNet)}`:'Panier vide'}</button>
+            <button onClick={()=>lignes.length>0&&(typeDoc==='devis'?handleSauvegarderDevis():setShowPaiement(true))} style={{width:'100%',background:lignes.length>0?(typeDoc==='devis'?'#6e9ec9':'#c9a96e'):'#2a2a1e',color:lignes.length>0?'#0d0a08':'#555',border:'none',borderRadius:10,padding:'16px',fontSize:16,cursor:lignes.length>0?'pointer':'not-allowed',fontWeight:700}}>{lignes.length>0?(typeDoc==='devis'?`📄 Valider le devis — ${fmt(totalNet)}`:`💳 Encaisser ${fmt(totalNet)}`):'Panier vide'}</button>
           ):(
             <div style={{display:'flex',gap:10}}>
               <button onClick={()=>{setShowPaiement(false);setPaiements([])}} style={{flex:1,background:'transparent',border:'0.5px solid rgba(255,255,255,0.15)',color:'rgba(232,224,213,0.5)',borderRadius:8,padding:'14px',fontSize:13,cursor:'pointer'}}>← Retour</button>
