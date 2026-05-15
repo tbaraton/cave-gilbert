@@ -12,7 +12,7 @@ const supabase = createBrowserClient(
 // ═══════════════════════════════════════════════════════════════
 // Types
 // ═══════════════════════════════════════════════════════════════
-type Onglet = 'dashboard' | 'achats' | 'ventes' | 'banque'
+type Onglet = 'dashboard' | 'achats' | 'ventes' | 'banque' | 'export'
 
 type Entreprise = {
   id: string
@@ -219,6 +219,7 @@ export default function ComptabilitePage() {
             { id: 'achats' as Onglet, label: 'Achats' },
             { id: 'ventes' as Onglet, label: 'Ventes & TVA' },
             { id: 'banque' as Onglet, label: 'Banque' },
+            { id: 'export' as Onglet, label: 'Export comptable' },
           ].map(t => (
             <button key={t.id} onClick={() => setOnglet(t.id)} style={{
               background: 'transparent', border: 'none',
@@ -234,6 +235,7 @@ export default function ComptabilitePage() {
         {onglet === 'achats' && <OngletAchats currentUser={currentUser} />}
         {onglet === 'ventes' && <OngletVentes />}
         {onglet === 'banque' && <OngletBanque currentUser={currentUser} />}
+        {onglet === 'export' && <OngletExport />}
       </main>
     </div>
   )
@@ -1837,6 +1839,187 @@ function MouvementRow({ mouvement: m, onRapprocher, onIgnorer }: {
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════
+// OngletExport — FEC + Envoi expert-comptable
+// ═══════════════════════════════════════════════════════════════
+function OngletExport() {
+  const today = new Date()
+  const [entreprises, setEntreprises] = useState<any[]>([])
+  const [entrepriseId, setEntrepriseId] = useState('')
+  const [annee, setAnnee] = useState(today.getFullYear())
+  const [mois, setMois] = useState(today.getMonth() + 1)
+  const [messagePerso, setMessagePerso] = useState('')
+  const [sending, setSending] = useState(false)
+  const [downloading, setDownloading] = useState(false)
+  const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
+  const [stats, setStats] = useState<any>(null)
+  const [loadingStats, setLoadingStats] = useState(false)
+
+  const moisNoms = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre']
+
+  useEffect(() => {
+    supabase.from('entreprises').select('id, code, raison_sociale, expert_comptable_email, expert_comptable_nom').order('code')
+      .then(({ data }) => {
+        setEntreprises(data || [])
+        if (data && data.length > 0) setEntrepriseId(data[0].id)
+      })
+  }, [])
+
+  useEffect(() => { if (entrepriseId) loadStats() }, [entrepriseId, annee, mois])
+
+  const loadStats = async () => {
+    setLoadingStats(true)
+    const m = mois.toString().padStart(2, '0')
+    const lastDay = new Date(annee, mois, 0).getDate()
+    const dateDebut = `${annee}-${m}-01`
+    const dateFin = `${annee}-${m}-${lastDay}`
+
+    const [{ count: nbEcritures }, { count: nbFactures }, tvaRes] = await Promise.all([
+      supabase.from('ecritures_comptables').select('*', { count: 'exact', head: true })
+        .eq('entreprise_id', entrepriseId).gte('date_ecriture', dateDebut).lte('date_ecriture', dateFin),
+      supabase.from('factures_achat').select('*', { count: 'exact', head: true })
+        .eq('entreprise_id', entrepriseId).gte('date_facture', dateDebut).lte('date_facture', dateFin),
+      supabase.rpc('calculer_tva_ca3', { p_entreprise_id: entrepriseId, p_annee: annee, p_mois: mois }),
+    ])
+
+    const totalHT = (tvaRes.data || []).reduce((s: number, t: any) => s + parseFloat(t.base_ht || 0), 0)
+    const totalTVA = (tvaRes.data || []).reduce((s: number, t: any) => s + parseFloat(t.tva_collectee || 0), 0)
+    setStats({ nbEcritures, nbFactures, totalHT, totalTVA })
+    setLoadingStats(false)
+  }
+
+  const handleDownloadFEC = async () => {
+    setDownloading(true); setMsg(null)
+    try {
+      const params = new URLSearchParams({ entreprise_id: entrepriseId, annee: annee.toString(), mois: mois.toString() })
+      const res = await fetch(`/api/export-fec?${params}`)
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error) }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = res.headers.get('Content-Disposition')?.split('filename="')[1]?.replace('"', '') || 'fec.txt'
+      a.click()
+      URL.revokeObjectURL(url)
+      setMsg({ type: 'ok', text: '✓ FEC téléchargé' })
+    } catch (e: any) { setMsg({ type: 'err', text: 'Erreur : ' + e.message }) }
+    setDownloading(false)
+  }
+
+  const handleEnvoyerComptable = async () => {
+    const entreprise = entreprises.find(e => e.id === entrepriseId)
+    if (!entreprise?.expert_comptable_email) {
+      setMsg({ type: 'err', text: 'Email expert-comptable non configuré pour cette entreprise' })
+      return
+    }
+    if (!confirm(`Envoyer les pièces de ${moisNoms[mois - 1]} ${annee} à ${entreprise.expert_comptable_email} ?`)) return
+
+    setSending(true); setMsg(null)
+    try {
+      const res = await fetch('/api/envoyer-comptable', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entreprise_id: entrepriseId, annee, mois, message_perso: messagePerso || null }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setMsg({ type: 'ok', text: `✓ Email envoyé à ${data.destinataire} — ${data.nb_ecritures} écritures, ${data.nb_pdfs_joints} PDF(s) joint(s)` })
+      setMessagePerso('')
+    } catch (e: any) { setMsg({ type: 'err', text: 'Erreur : ' + e.message }) }
+    setSending(false)
+  }
+
+  const entreprise = entreprises.find(e => e.id === entrepriseId)
+
+  return (
+    <div style={{ maxWidth: 740 }}>
+      {/* Sélecteurs */}
+      <div style={{ display: 'flex', gap: 12, marginBottom: 24, alignItems: 'end', flexWrap: 'wrap' as const }}>
+        <div>
+          <div style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, marginBottom: 6 }}>Entreprise</div>
+          <select value={entrepriseId} onChange={e => setEntrepriseId(e.target.value)} style={sel}>
+            {entreprises.map(e => <option key={e.id} value={e.id} style={{ background: '#1a1408' }}>{e.code} — {e.raison_sociale}</option>)}
+          </select>
+        </div>
+        <div>
+          <div style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, marginBottom: 6 }}>Mois</div>
+          <select value={mois} onChange={e => setMois(parseInt(e.target.value))} style={sel}>
+            {moisNoms.map((m, i) => <option key={i} value={i + 1} style={{ background: '#1a1408' }}>{m}</option>)}
+          </select>
+        </div>
+        <div>
+          <div style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, marginBottom: 6 }}>Année</div>
+          <select value={annee} onChange={e => setAnnee(parseInt(e.target.value))} style={sel}>
+            {[2024, 2025, 2026, 2027].map(a => <option key={a} value={a} style={{ background: '#1a1408' }}>{a}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* Stats période */}
+      {loadingStats ? (
+        <div style={{ color: 'rgba(232,224,213,0.4)', marginBottom: 20 }}>⟳ Chargement…</div>
+      ) : stats && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
+          {[
+            { label: 'Écritures', value: stats.nbEcritures, unit: '' },
+            { label: 'Factures achat', value: stats.nbFactures, unit: '' },
+            { label: 'CA HT', value: stats.totalHT.toFixed(2), unit: '€' },
+            { label: 'TVA collectée', value: stats.totalTVA.toFixed(2), unit: '€' },
+          ].map(({ label, value, unit }) => (
+            <div key={label} style={{ background: '#18130e', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 6, padding: '16px 18px' }}>
+              <div style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, marginBottom: 8 }}>{label}</div>
+              <div style={{ fontSize: 22, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{value}<span style={{ fontSize: 13, marginLeft: 4 }}>{unit}</span></div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {msg && (
+        <div style={{ marginBottom: 20, padding: '12px 16px', background: msg.type === 'ok' ? 'rgba(110,201,110,0.08)' : 'rgba(201,110,110,0.08)', border: '0.5px solid ' + (msg.type === 'ok' ? 'rgba(110,201,110,0.3)' : 'rgba(201,110,110,0.3)'), borderRadius: 4, fontSize: 13, color: msg.type === 'ok' ? '#6ec96e' : '#c96e6e' }}>{msg.text}</div>
+      )}
+
+      {/* Téléchargement FEC */}
+      <div style={{ background: '#18130e', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 6, padding: '20px 24px', marginBottom: 16 }}>
+        <div style={{ fontSize: 11, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 8 }}>FEC — Fichier des Écritures Comptables</div>
+        <p style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)', marginBottom: 16, lineHeight: 1.6 }}>
+          Format légal DGFiP (Art. A 47 A-1 LPF). Requis en cas de contrôle fiscal.
+          Séparateur pipe <code style={{ background: 'rgba(255,255,255,0.06)', padding: '1px 5px', borderRadius: 3 }}>|</code>, encodage UTF-8.
+        </p>
+        <button onClick={handleDownloadFEC} disabled={downloading || !entrepriseId} style={{ background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '10px 20px', fontSize: 11, letterSpacing: 1.5, fontWeight: 600, cursor: downloading ? 'wait' : 'pointer', opacity: downloading ? 0.7 : 1 }}>
+          {downloading ? '⟳ Génération...' : '↓ Télécharger le FEC'}
+        </button>
+      </div>
+
+      {/* Envoi expert-comptable */}
+      <div style={{ background: '#18130e', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 6, padding: '20px 24px' }}>
+        <div style={{ fontSize: 11, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 8 }}>Envoi à l'expert-comptable</div>
+        <div style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'center' }}>
+          <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.6)' }}>Destinataire :</div>
+          <div style={{ fontSize: 13, color: entreprise?.expert_comptable_email ? '#e8e0d5' : '#c96e6e' }}>
+            {entreprise?.expert_comptable_email || '⚠ Email non configuré'}
+          </div>
+        </div>
+        <p style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)', marginBottom: 14, lineHeight: 1.6 }}>
+          Envoie un email avec le FEC en pièce jointe + les PDFs des factures fournisseurs du mois (max 5).
+        </p>
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, marginBottom: 6 }}>Message personnalisé (optionnel)</div>
+          <textarea
+            value={messagePerso}
+            onChange={e => setMessagePerso(e.target.value)}
+            rows={3}
+            placeholder="Ex: TVA à déclarer avant le 24. Merci de traiter en priorité."
+            style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#e8e0d5', fontSize: 13, padding: '10px 12px', boxSizing: 'border-box' as const, resize: 'vertical' as const }}
+          />
+        </div>
+        <button onClick={handleEnvoyerComptable} disabled={sending || !entrepriseId || !entreprise?.expert_comptable_email} style={{ background: sending ? 'rgba(201,169,110,0.3)' : '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4, padding: '11px 24px', fontSize: 11, letterSpacing: 1.5, fontWeight: 600, cursor: (sending || !entreprise?.expert_comptable_email) ? 'not-allowed' : 'pointer', opacity: (sending || !entreprise?.expert_comptable_email) ? 0.6 : 1 }}>
+          {sending ? '⟳ Envoi en cours...' : `✉ Envoyer à ${entreprise?.expert_comptable_email || 'l\'expert-comptable'}`}
+        </button>
+      </div>
     </div>
   )
 }
