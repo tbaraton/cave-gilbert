@@ -743,26 +743,7 @@ function HistoriqueVentes({ session, onClose, onAddToCart }: {
     setTimeout(() => setDetail(null), 1500)
   }
 
-  const handleTransformerDevis = async (type: 'commande' | 'bl' | 'facture') => {
-    if (!detail) return
-    const prefix = type==='commande'?'CMD':type==='bl'?'BL':'FAC'
-    const numero = `${prefix}-${new Date().getFullYear()}${String(new Date().getMonth()+1).padStart(2,'0')}-${String(Math.floor(Math.random()*9999)).padStart(4,'0')}`
-    const labels: Record<string,string> = { commande:'commande', bl:'bon de livraison', facture:'facture' }
-    if (!confirm(`Transformer ce devis en ${labels[type]} — ${numero} ?`)) return
-    const { data: nouv } = await supabase.from('ventes').insert({ numero, user_id: detail.user?.id||null, customer_id: detail.customer?.id||null, site_id: session.site_id, type_doc: type, statut: 'validee', statut_paiement: 'non_regle', total_ht: parseFloat(detail.total_ttc)/1.20, total_ttc: parseFloat(detail.total_ttc), notes: detail.notes }).select('id').single()
-    if (nouv) {
-      await supabase.from('vente_lignes').insert(lignesDetail.map((l:any) => ({ vente_id:nouv.id, product_id:l.product_id, nom_produit:l.nom_produit, millesime:l.millesime, quantite:l.quantite, prix_unitaire_ttc:l.prix_unitaire_ttc, remise_pct:l.remise_pct, total_ttc:l.total_ttc })))
-      if (type==='bl'||type==='facture') {
-        for (const l of lignesDetail) {
-          if (l.product_id&&!String(l.product_id).startsWith('divers-')) await supabase.rpc('move_stock',{p_product_id:l.product_id,p_site_id:session.site_id,p_raison:'vente',p_quantite:l.quantite,p_note:`Devis ${detail.numero} → ${numero}`,p_order_id:null,p_transfer_id:null})
-        }
-      }
-      await supabase.from('ventes').update({statut:'annulee'}).eq('id',detail.id)
-      setActionMsg(`✓ Transformé en ${labels[type]} — ${numero}`)
-      loadVentes()
-      setTimeout(()=>setDetail(null),2000)
-    }
-  }
+  
 
   const handleTransformerDevis = async (type: 'commande' | 'bl' | 'facture') => {
     if (!detail) return
