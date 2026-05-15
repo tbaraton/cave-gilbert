@@ -112,8 +112,11 @@ export default function LocationPage() {
 
         // Somme des quantités demandées sur le même fût par les résas confirmées
         // qui chevauchent la période de celle-ci (incluant elle-même)
-        const qteAutresChevauchent = resasConfirmees.reduce((sum: number, other: any) => {
-          const ligne = (other.reservation_futs || []).find((x: any) => x.fut_catalogue_id === futId)
+        
+        const qteConsommeePrecedentes = resasConfirmees
+          .filter((_: any, j: number) => j < i)
+          .reduce((sum: number, other: any) => {
+            const ligne = (other.reservation_futs || []).find((x: any) => x.fut_catalogue_id === futId)
             return sum + (ligne?.quantite || 0)
           }, 0)
         const dispoPourMoi = fut.stock_actuel - qteConsommeePrecedentes
