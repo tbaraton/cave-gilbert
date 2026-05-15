@@ -70,14 +70,26 @@ function EcranLogin({ onLogin }: { onLogin: (u: User) => void }) {
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
-          {['1', '2', '3', '4', '5', '6', '7', '8', '9', '←', '0', '✓'].map(k => (
-            <button key={k} onClick={() => k === '✓' ? doLogin() : handleKey(k)} style={{
-              background: k === '✓' ? GOLD : 'rgba(255,255,255,0.07)',
-              border: `1px solid ${k === '✓' ? GOLD : 'rgba(255,255,255,0.1)'}`,
-              color: k === '✓' ? BG : '#e8e0d5',
-              borderRadius: 14, padding: '22px 0', fontSize: 24, cursor: 'pointer', fontWeight: k === '✓' ? 700 : 400, touchAction: 'manipulation',
-            }}>{k}</button>
-          ))}
+          {['1', '2', '3', '4', '5', '6', '7', '8', '9', '←', '0', '✓'].map(k => {
+            const action = () => k === '✓' ? doLogin() : handleKey(k)
+            return (
+              <button
+                key={k}
+                type="button"
+                onClick={action}
+                onTouchStart={e => { e.preventDefault(); action() }}
+                style={{
+                  background: k === '✓' ? GOLD : 'rgba(255,255,255,0.07)',
+                  border: `1px solid ${k === '✓' ? GOLD : 'rgba(255,255,255,0.1)'}`,
+                  color: k === '✓' ? BG : '#e8e0d5',
+                  borderRadius: 14, padding: '22px 0', fontSize: 24, cursor: 'pointer',
+                  fontWeight: k === '✓' ? 700 : 400,
+                  WebkitTapHighlightColor: 'transparent',
+                  outline: 'none',
+                }}
+              >{k}</button>
+            )
+          })}
         </div>
         {loading && <div style={{ textAlign: 'center', marginTop: 24, color: 'rgba(232,224,213,0.4)', fontSize: 16 }}>⟳ Connexion...</div>}
       </div>
@@ -164,12 +176,19 @@ function Numpad({ value, onChange }: { value: string; onChange: (v: string) => v
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
       {['7', '8', '9', '4', '5', '6', '1', '2', '3', '.', '0', '⌫'].map(k => (
-        <button key={k} onClick={() => tap(k)} style={{
-          background: k === '⌫' ? 'rgba(201,110,110,0.12)' : 'rgba(255,255,255,0.07)',
-          border: `0.5px solid ${k === '⌫' ? 'rgba(201,110,110,0.25)' : 'rgba(255,255,255,0.1)'}`,
-          color: k === '⌫' ? '#c96e6e' : '#e8e0d5',
-          borderRadius: 10, padding: '18px 0', fontSize: 22, cursor: 'pointer', fontWeight: 500, touchAction: 'manipulation', userSelect: 'none' as const, WebkitUserSelect: 'none' as const,
-        }}>{k}</button>
+        <button
+          key={k}
+          type="button"
+          onClick={() => tap(k)}
+          onTouchStart={e => { e.preventDefault(); tap(k) }}
+          style={{
+            background: k === '⌫' ? 'rgba(201,110,110,0.12)' : 'rgba(255,255,255,0.07)',
+            border: `0.5px solid ${k === '⌫' ? 'rgba(201,110,110,0.25)' : 'rgba(255,255,255,0.1)'}`,
+            color: k === '⌫' ? '#c96e6e' : '#e8e0d5',
+            borderRadius: 10, padding: '18px 0', fontSize: 22, cursor: 'pointer',
+            fontWeight: 500, WebkitTapHighlightColor: 'transparent', outline: 'none',
+          }}
+        >{k}</button>
       ))}
     </div>
   )
