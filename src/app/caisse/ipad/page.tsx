@@ -43,13 +43,21 @@ function EcranLogin({ onLogin }: { onLogin: (u: User) => void }) {
     onLogin(data)
   }, [prenom, pin])
 
+  // Ferme le clavier avant toute action PIN (Safari iPad : 1er tap = ferme clavier sinon)
+  const dismissKeyboard = () => {
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+  }
+
   const handleKey = (k: string) => {
+    dismissKeyboard()
     if (k === '←') { setPin(p => p.slice(0, -1)); return }
     if (pin.length >= 4) return
     const np = pin + k
     setPin(np)
-    if (np.length === 4) setTimeout(() => doLogin(np), 50)
+    if (np.length === 4) setTimeout(() => doLogin(np), 80)
   }
+
+  const [etapeLogin, setEtapeLogin] = useState<'prenom' | 'pin'>('prenom')
 
   return (
     <div style={{ minHeight: '100vh', background: BG, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'DM Sans', system-ui, sans-serif" }}>
@@ -62,35 +70,62 @@ function EcranLogin({ onLogin }: { onLogin: (u: User) => void }) {
 
         {error && <div style={{ background: 'rgba(201,110,110,0.15)', border: '0.5px solid rgba(201,110,110,0.4)', borderRadius: 10, padding: 14, marginBottom: 18, fontSize: 15, color: '#c96e6e', textAlign: 'center' }}>{error}</div>}
 
-        <input type="text" placeholder="Votre prénom" value={prenom} onChange={e => setPrenom(e.target.value)} autoCapitalize="words"
-          style={{ width: '100%', background: 'rgba(255,255,255,0.07)', border: '0.5px solid rgba(255,255,255,0.15)', borderRadius: 12, color: '#f0e8d8', fontSize: 20, padding: 18, boxSizing: 'border-box', marginBottom: 28, textAlign: 'center', outline: 'none' }} />
+        {/* Étape 1 : prénom */}
+        {etapeLogin === 'prenom' && (
+          <>
+            <input
+              type="text"
+              placeholder="Votre prénom"
+              value={prenom}
+              onChange={e => setPrenom(e.target.value)}
+              autoCapitalize="words"
+              onKeyDown={e => e.key === 'Enter' && prenom.trim() && setEtapeLogin('pin')}
+              style={{ width: '100%', background: 'rgba(255,255,255,0.07)', border: `0.5px solid rgba(255,255,255,0.15)`, borderRadius: 12, color: '#f0e8d8', fontSize: 20, padding: 18, boxSizing: 'border-box' as const, marginBottom: 16, textAlign: 'center', outline: 'none' }}
+            />
+            <button
+              type="button"
+              onClick={() => prenom.trim() && setEtapeLogin('pin')}
+              style={{ width: '100%', background: prenom.trim() ? GOLD : '#2a2a1e', color: prenom.trim() ? BG : '#555', border: 'none', borderRadius: 12, padding: '18px', fontSize: 18, cursor: prenom.trim() ? 'pointer' : 'not-allowed', fontWeight: 700, touchAction: 'manipulation' }}
+            >
+              Suivant →
+            </button>
+          </>
+        )}
 
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 20, marginBottom: 32 }}>
-          {[0, 1, 2, 3].map(i => <div key={i} style={{ width: 18, height: 18, borderRadius: '50%', background: i < pin.length ? GOLD : 'rgba(255,255,255,0.12)', transition: 'background 0.15s' }} />)}
-        </div>
+        {/* Étape 2 : PIN — pas de champ texte, donc pas de clavier logiciel */}
+        {etapeLogin === 'pin' && (
+          <>
+            <div style={{ textAlign: 'center', marginBottom: 20, fontSize: 18, color: '#f0e8d8' }}>
+              Bonjour <strong style={{ color: GOLD }}>{prenom}</strong> !
+              <button onClick={() => { setEtapeLogin('prenom'); setPin('') }} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.4)', fontSize: 13, cursor: 'pointer', marginLeft: 10 }}>Changer</button>
+            </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
-          {['1', '2', '3', '4', '5', '6', '7', '8', '9', '←', '0', '✓'].map(k => {
-            const action = () => k === '✓' ? doLogin() : handleKey(k)
-            return (
-              <button
-                key={k}
-                type="button"
-                onClick={action}
-                onTouchStart={e => { e.preventDefault(); action() }}
-                style={{
-                  background: k === '✓' ? GOLD : 'rgba(255,255,255,0.07)',
-                  border: `1px solid ${k === '✓' ? GOLD : 'rgba(255,255,255,0.1)'}`,
-                  color: k === '✓' ? BG : '#e8e0d5',
-                  borderRadius: 14, padding: '22px 0', fontSize: 24, cursor: 'pointer',
-                  fontWeight: k === '✓' ? 700 : 400,
-                  WebkitTapHighlightColor: 'transparent',
-                  outline: 'none',
-                }}
-              >{k}</button>
-            )
-          })}
-        </div>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 20, marginBottom: 32 }}>
+              {[0, 1, 2, 3].map(i => <div key={i} style={{ width: 18, height: 18, borderRadius: '50%', background: i < pin.length ? GOLD : 'rgba(255,255,255,0.12)', transition: 'background 0.15s' }} />)}
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
+              {['1', '2', '3', '4', '5', '6', '7', '8', '9', '←', '0', '✓'].map(k => (
+                <button
+                  key={k}
+                  type="button"
+                  onPointerDown={e => { e.preventDefault(); k === '✓' ? doLogin() : handleKey(k) }}
+                  style={{
+                    background: k === '✓' ? GOLD : 'rgba(255,255,255,0.09)',
+                    border: `1px solid ${k === '✓' ? GOLD : 'rgba(255,255,255,0.12)'}`,
+                    color: k === '✓' ? BG : '#e8e0d5',
+                    borderRadius: 14, padding: '22px 0', fontSize: 26, cursor: 'pointer',
+                    fontWeight: k === '✓' ? 700 : 400,
+                    WebkitTapHighlightColor: 'transparent',
+                    touchAction: 'manipulation',
+                    outline: 'none',
+                  }}
+                >{k}</button>
+              ))}
+            </div>
+          </>
+        )}
+
         {loading && <div style={{ textAlign: 'center', marginTop: 24, color: 'rgba(232,224,213,0.4)', fontSize: 16 }}>⟳ Connexion...</div>}
       </div>
     </div>
