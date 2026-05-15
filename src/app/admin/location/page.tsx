@@ -365,7 +365,7 @@ export default function LocationPage() {
                         <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 4, marginTop: 4 }}>
                           {a.manques.map((m: any, j: number) => (
                             <span key={j} style={{ fontSize: 10, background: 'rgba(201,110,110,0.1)', borderRadius: 3, padding: '1px 6px', color: '#e8a0a0' }}>
-                              -{m.manque} {m.fut.nom_cuvee} {m.fut.contenance_litres}L
+                              Manque {m.manque} × {m.fut.nom_cuvee} {m.fut.contenance_litres}L
                             </span>
                           ))}
                         </div>
@@ -504,7 +504,7 @@ export default function LocationPage() {
                             const alerteResa = alertes.find((a: any) => a.resa?.id === r.id)
                             return !alerteResa
                               ? <span style={{ fontSize: 10, background: 'rgba(110,201,110,0.1)', color: '#6ec96e', padding: '2px 8px', borderRadius: 3 }}>✓ Stock OK</span>
-                              : <span style={{ fontSize: 10, background: 'rgba(201,110,110,0.15)', color: '#c96e6e', padding: '2px 8px', borderRadius: 3 }}>⚠ {alerteResa.manques.length} fût(s) en rupture</span>
+                              : <span style={{ fontSize: 10, background: 'rgba(201,110,110,0.15)', color: '#c96e6e', padding: '2px 8px', borderRadius: 3 }}>⚠ {alerteResa.manques.reduce((s: number, m: any) => s + m.manque, 0)} fût(s) en rupture</span>
                           })()}
                         </div>
                       </div>
