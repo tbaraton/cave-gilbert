@@ -152,6 +152,7 @@ export function ModuleLivraisonLocation({ onClose }: Props) {
     const sigHtml = sig ? `<img src="${sig}" style="max-width:240px;max-height:80px;display:block;margin-top:8px" />` : '<div style="height:60px;border-bottom:1px solid rgba(201,169,110,0.3);margin-top:8px"></div>'
 
     return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data: https: blob: *; font-src *;">
 <title>Bon de livraison ${r.numero}</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -291,30 +292,10 @@ ${lignesFuts || lignesTireuses ? `
         .update({ statut: 'en_cours' })
         .eq('id', r.id)
 
-      // 3. Uploader la signature PNG + le bon HTML dans Supabase Storage
+      // 3. Uploader le bon de livraison signé dans Supabase Storage
+      // La signature base64 est embarquée directement dans le HTML (autosuffisant)
       try {
-        // 3a. Upload de la signature comme fichier PNG séparé
-        let sigUrl: string = signature! // fallback base64 pour impression locale
-        try {
-          const sigResponse = await fetch(signature!)
-          const sigBlob = await sigResponse.blob()
-          const sigFileName = `${r.numero}-signature.png`
-          const { error: sigError } = await supabase.storage
-            .from('documents-location')
-            .upload(sigFileName, sigBlob, { contentType: 'image/png', upsert: true })
-          if (!sigError) {
-            const { data: sigUrlData } = supabase.storage
-              .from('documents-location')
-              .getPublicUrl(sigFileName)
-            sigUrl = sigUrlData.publicUrl
-          }
-        } catch (sigErr) {
-          console.error('Erreur upload signature:', sigErr)
-          // On garde le base64 en fallback
-        }
-
-        // 3b. Générer le HTML avec l'URL publique de la signature (pas base64)
-        const html = genererBonLivraison(sigUrl)
+        const html = genererBonLivraison(signature!)
         const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
         const fileName = `${r.numero}-bon-livraison.html`
         const { data: uploadData, error: uploadError } = await supabase.storage
