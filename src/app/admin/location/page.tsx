@@ -1170,6 +1170,19 @@ function ModalDetailResa({ resa, onClose, futs, tireuses }: { resa: any; onClose
         <div style={{ marginBottom: 24 }}>
           <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', marginBottom: 10, letterSpacing: 1 }}>DOCUMENTS</div>
           <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
+            {/* Bon de livraison signé sauvegardé */}
+            {r.bon_livraison_url && (
+              <a href={r.bon_livraison_url} target="_blank" rel="noopener noreferrer"
+                style={{ background: 'rgba(110,201,110,0.12)', border: '1px solid rgba(110,201,110,0.4)', borderRadius: 8, color: '#6ec96e', padding: '12px 16px', fontSize: 13, cursor: 'pointer', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span>✅</span>
+                <div>
+                  <div style={{ fontSize: 13, color: '#6ec96e', fontWeight: 600 }}>Bon de livraison signé</div>
+                  <div style={{ fontSize: 11, color: 'rgba(110,201,110,0.7)', marginTop: 2 }}>Document original avec signature client — preuve de remise</div>
+                </div>
+                <span style={{ marginLeft: 'auto', fontSize: 16 }}>↗</span>
+              </a>
+            )}
+
             {/* Bon de confirmation */}
             <button onClick={() => {
               const clientN = r.customer?.est_societe ? r.customer.raison_sociale : `${r.customer?.prenom || ''} ${r.customer?.nom || ''}`.trim()

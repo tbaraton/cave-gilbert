@@ -291,6 +291,28 @@ ${lignesFuts || lignesTireuses ? `
         .update({ statut: 'en_cours' })
         .eq('id', r.id)
 
+      // 3. Uploader le bon de livraison signé dans Supabase Storage
+      try {
+        const html = genererBonLivraison(signature)
+        const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
+        const fileName = `${r.numero}-bon-livraison.html`
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('documents-location')
+          .upload(fileName, blob, { contentType: 'text/html', upsert: true })
+        if (!uploadError && uploadData) {
+          const { data: urlData } = supabase.storage
+            .from('documents-location')
+            .getPublicUrl(fileName)
+          await supabase
+            .from('reservations_location')
+            .update({ bon_livraison_url: urlData.publicUrl })
+            .eq('id', r.id)
+        }
+      } catch (uploadErr) {
+        console.error('Erreur upload bon livraison:', uploadErr)
+        // Non bloquant : la location est quand même validée
+      }
+
       setEtape('done')
     } catch (e) {
       alert('Erreur lors de la validation')
