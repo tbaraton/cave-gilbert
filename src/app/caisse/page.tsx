@@ -54,7 +54,7 @@ function EcranLogin({ onLogin }: { onLogin: (u: User) => void }) {
   }
 
   return (
-    <div style={{ minHeight: '100dvh', background: '#0d0a08', display: 'flex', flexDirection: 'column' as const, alignItems: 'center', justifyContent: 'center', padding: 24, fontFamily: "'DM Sans', system-ui, sans-serif" }}>
+    <div style={{ minHeight: '100vh', background: '#0d0a08', display: 'flex', flexDirection: 'column' as const, alignItems: 'center', justifyContent: 'center', padding: 24, fontFamily: "'DM Sans', system-ui, sans-serif" }}>
       <div style={{ width: '100%', maxWidth: 360 }}>
         <div style={{ textAlign: 'center' as const, marginBottom: 36 }}>
           <img src="/logo.png" alt="Cave de Gilbert" style={{ maxHeight: 64, maxWidth: '80%', objectFit: 'contain', marginBottom: 12 }} onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
@@ -133,13 +133,13 @@ function EcranOuverture({ user, onOuvrir }: { user: User; onOuvrir: (s: Session)
   }
 
   if (!ready) return (
-    <div style={{ minHeight: '100dvh', background: '#0d0a08', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div style={{ minHeight: '100vh', background: '#0d0a08', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ fontSize: 24, color: '#c9a96e' }}>⟳</div>
     </div>
   )
 
   return (
-    <div style={{ minHeight: '100dvh', background: '#0d0a08', display: 'flex', flexDirection: 'column' as const, alignItems: 'center', justifyContent: 'center', padding: 24, fontFamily: "'DM Sans', system-ui, sans-serif" }}>
+    <div style={{ minHeight: '100vh', background: '#0d0a08', display: 'flex', flexDirection: 'column' as const, alignItems: 'center', justifyContent: 'center', padding: 24, fontFamily: "'DM Sans', system-ui, sans-serif" }}>
       <div style={{ width: '100%', maxWidth: 400, background: '#18130e', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 16, padding: '32px 28px' }}>
         <div style={{ textAlign: 'center' as const, marginBottom: 20 }}>
           <img src={getLogoForSite(sites.find(s => s.id === siteId)?.nom || '')} alt="Logo" style={{ maxHeight: 56, maxWidth: '70%', objectFit: 'contain' }} onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
@@ -1336,7 +1336,7 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
   // ── Styles communs ──
   const btnPrimary = { background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 12, padding: '18px', fontSize: 16, cursor: 'pointer', fontWeight: 700, width: '100%', touchAction: 'manipulation' as const }
   const btnSecondary = { background: 'rgba(255,255,255,0.06)', color: '#e8e0d5', border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 12, padding: '16px', fontSize: 15, cursor: 'pointer', width: '100%', touchAction: 'manipulation' as const }
-  const container = { minHeight: '100dvh', background: '#0d0a08', fontFamily: "'DM Sans', system-ui, sans-serif", color: '#e8e0d5', display: 'flex', flexDirection: 'column' as const }
+  const container = { minHeight: '100vh', background: '#0d0a08', fontFamily: "'DM Sans', system-ui, sans-serif", color: '#e8e0d5', display: 'flex', flexDirection: 'column' as const }
   const header = { padding: '14px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', gap: 12, background: '#0d0a08', position: 'sticky' as const, top: 0, zIndex: 10 }
 
   // ── ÉTAPE CLIENT ──────────────────────────────────────────────
