@@ -1,12 +1,12 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { createBrowserClient } from '@supabase/ssr'
+import { createClient } from '@supabase/supabase-js'
 import { ModuleLocation } from '../caisse-location'
 import { ModuleRetourLocation } from '../retour-location'
 import { ModuleLivraisonLocation } from '../livraison-location'
 
-const supabase = createBrowserClient(
+const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
@@ -82,13 +82,13 @@ function EcranLogin({ onLogin }: { onLogin: (u: User) => void }) {
               onKeyDown={e => e.key === 'Enter' && prenom.trim() && setEtapeLogin('pin')}
               style={{ width: '100%', background: 'rgba(255,255,255,0.07)', border: `0.5px solid rgba(255,255,255,0.15)`, borderRadius: 12, color: '#f0e8d8', fontSize: 20, padding: 18, boxSizing: 'border-box' as const, marginBottom: 16, textAlign: 'center', outline: 'none' }}
             />
-            <button
-              type="button"
-              onClick={() => prenom.trim() && setEtapeLogin('pin')}
-              style={{ width: '100%', background: prenom.trim() ? GOLD : '#2a2a1e', color: prenom.trim() ? BG : '#555', border: 'none', borderRadius: 12, padding: '18px', fontSize: 18, cursor: prenom.trim() ? 'pointer' : 'not-allowed', fontWeight: 700, touchAction: 'manipulation' }}
+            <a
+              href="#"
+              onClick={e => { e.preventDefault(); if (prenom.trim()) setEtapeLogin('pin') }}
+              style={{ display: 'block', width: '100%', background: prenom.trim() ? GOLD : '#2a2a1e', color: prenom.trim() ? BG : '#555', border: 'none', borderRadius: 12, padding: '18px', fontSize: 18, cursor: prenom.trim() ? 'pointer' : 'not-allowed', fontWeight: 700, textAlign: 'center', textDecoration: 'none', boxSizing: 'border-box' as const }}
             >
               Suivant →
-            </button>
+            </a>
           </>
         )}
 
@@ -106,21 +106,20 @@ function EcranLogin({ onLogin }: { onLogin: (u: User) => void }) {
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
               {['1', '2', '3', '4', '5', '6', '7', '8', '9', '←', '0', '✓'].map(k => (
-                <button
+                <a
                   key={k}
-                  type="button"
-                  onPointerDown={e => { e.preventDefault(); k === '✓' ? doLogin() : handleKey(k) }}
+                  href="#"
+                  onClick={e => { e.preventDefault(); k === '✓' ? doLogin() : handleKey(k) }}
                   style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
                     background: k === '✓' ? GOLD : 'rgba(255,255,255,0.09)',
                     border: `1px solid ${k === '✓' ? GOLD : 'rgba(255,255,255,0.12)'}`,
                     color: k === '✓' ? BG : '#e8e0d5',
                     borderRadius: 14, padding: '22px 0', fontSize: 26, cursor: 'pointer',
                     fontWeight: k === '✓' ? 700 : 400,
-                    WebkitTapHighlightColor: 'transparent',
-                    touchAction: 'manipulation',
-                    outline: 'none',
+                    textDecoration: 'none',
                   }}
-                >{k}</button>
+                >{k}</a>
               ))}
             </div>
           </>
