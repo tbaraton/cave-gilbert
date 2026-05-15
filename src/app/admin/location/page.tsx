@@ -1130,11 +1130,31 @@ function ModalDetailResa({ resa, onClose, futs, tireuses }: { resa: any; onClose
         {/* Tireuses */}
         <div style={{ marginBottom: 20 }}>
           <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', marginBottom: 10, letterSpacing: 1 }}>TIREUSE(S)</div>
-          {r.reservation_tireuses?.map((rt: any) => (
-            <div key={rt.id} style={{ fontSize: 14, color: '#f0e8d8', padding: '6px 0' }}>
-              {rt.tireuse?.nom} — {rt.tireuse?.modele}
+          {['devis','confirmée','en_cours'].includes(r.statut) ? (
+            <div>
+              {r.reservation_tireuses?.map((rt: any) => (
+                <div key={rt.id} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                  <select defaultValue={rt.tireuse_id} onChange={async e => {
+                    await supabase.from('reservation_tireuses').update({ tireuse_id: e.target.value }).eq('id', rt.id)
+                    setR((prev: any) => ({ ...prev, reservation_tireuses: prev.reservation_tireuses.map((x: any) => x.id === rt.id ? { ...x, tireuse_id: e.target.value, tireuse: tireuses.find((t: any) => t.id === e.target.value) } : x) }))
+                  }} style={{ flex: 1, background: '#1a1408', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 8, color: '#f0e8d8', fontSize: 14, padding: '8px 12px', cursor: 'pointer' }}>
+                    {tireuses.map((t: any) => (
+                      <option key={t.id} value={t.id}>{t.nom} — {t.modele}</option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+              {r.reservation_tireuses?.length === 0 && (
+                <div style={{ fontSize: 13, color: 'rgba(232,224,213,0.3)', fontStyle: 'italic' }}>Aucune tireuse assignée</div>
+              )}
             </div>
-          ))}
+          ) : (
+            r.reservation_tireuses?.map((rt: any) => (
+              <div key={rt.id} style={{ fontSize: 14, color: '#f0e8d8', padding: '6px 0' }}>
+                {rt.tireuse?.nom} — {rt.tireuse?.modele}
+              </div>
+            ))
+          )}
           <div style={{ fontSize: 13, color: 'rgba(232,224,213,0.5)', marginTop: 6 }}>
             Caution : {fmt(r.caution_tireuse_ttc)} — {r.caution_payee ? '✓ Payée' : '⚠ Non payée'}
           </div>
