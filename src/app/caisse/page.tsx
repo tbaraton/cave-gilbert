@@ -1689,13 +1689,19 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
 
           {/* Location tireuse */}
           <button onClick={() => setShowLocation(true)} style={{ width: '100%', background: '#18130e', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 12, padding: '16px', cursor: 'pointer', textAlign: 'left' as const, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
-            <button onClick={() => setShowLivraison(true)} style={{ /* même style que location */ }}>
-  🚚 Livraisons
-</button>
             <span style={{ fontSize: 22 }}>🍺</span>
             <div>
               <div style={{ fontSize: 14, color: '#c9a96e' }}>Location tireuse & fûts</div>
               <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', marginTop: 2 }}>Créer une réservation de tireuse</div>
+            </div>
+            <span style={{ marginLeft: 'auto', color: 'rgba(232,224,213,0.3)', fontSize: 18 }}>→</span>
+          </button>
+
+          <button onClick={() => setShowLivraison(true)} style={{ width: '100%', background: '#18130e', border: '0.5px solid rgba(110,201,110,0.2)', borderRadius: 12, padding: '16px', cursor: 'pointer', textAlign: 'left' as const, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ fontSize: 22 }}>🚚</span>
+            <div>
+              <div style={{ fontSize: 14, color: '#6ec96e' }}>Livraisons du jour</div>
+              <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', marginTop: 2 }}>Bon de livraison + signature → en cours</div>
             </div>
             <span style={{ marginLeft: 'auto', color: 'rgba(232,224,213,0.3)', fontSize: 18 }}>→</span>
           </button>
@@ -1764,6 +1770,7 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
       {showHistorique && <HistoriqueVentes session={session} onClose={() => setShowHistorique(false)} onAddToCart={handleAddFromHistorique} />}
       {showAchatsClient && client && <HistoriqueAchatsClient client={client} onClose={() => setShowAchatsClient(false)} onAddToCart={handleAddSingleAchat} />}
       {showLocation && <div style={{ position: 'fixed' as const, inset: 0, zIndex: 600 }}><ModuleLocation session={session} user={vendeur} onClose={() => setShowLocation(false)} /></div>}
+      {showLivraison && <div style={{ position: 'fixed' as const, inset: 0, zIndex: 700 }}><ModuleLivraisonLocation onClose={() => setShowLivraison(false)} /></div>}
     </div>
   )
 
