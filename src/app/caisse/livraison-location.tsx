@@ -291,9 +291,30 @@ ${lignesFuts || lignesTireuses ? `
         .update({ statut: 'en_cours' })
         .eq('id', r.id)
 
-      // 3. Uploader le bon de livraison signé dans Supabase Storage
+      // 3. Uploader la signature PNG + le bon HTML dans Supabase Storage
       try {
-        const html = genererBonLivraison(signature)
+        // 3a. Upload de la signature comme fichier PNG séparé
+        let sigUrl: string = signature! // fallback base64 pour impression locale
+        try {
+          const sigResponse = await fetch(signature!)
+          const sigBlob = await sigResponse.blob()
+          const sigFileName = `${r.numero}-signature.png`
+          const { error: sigError } = await supabase.storage
+            .from('documents-location')
+            .upload(sigFileName, sigBlob, { contentType: 'image/png', upsert: true })
+          if (!sigError) {
+            const { data: sigUrlData } = supabase.storage
+              .from('documents-location')
+              .getPublicUrl(sigFileName)
+            sigUrl = sigUrlData.publicUrl
+          }
+        } catch (sigErr) {
+          console.error('Erreur upload signature:', sigErr)
+          // On garde le base64 en fallback
+        }
+
+        // 3b. Générer le HTML avec l'URL publique de la signature (pas base64)
+        const html = genererBonLivraison(sigUrl)
         const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
         const fileName = `${r.numero}-bon-livraison.html`
         const { data: uploadData, error: uploadError } = await supabase.storage
