@@ -447,17 +447,19 @@ function HistoriqueAchatsClient({ client, onClose, onAddToCart, onRetourDone }: 
   const [achats, setAchats] = useState<any[]>([])
   const [locations, setLocations] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [onglet, setOnglet] = useState<'achats' | 'locations'>('achats')
+  const [onglet, setOnglet] = useState<'achats' | 'devis' | 'locations'>('achats')
+  const [devisList, setDevisList] = useState<any[]>([])
   const [retourResa, setRetourResa] = useState<any>(null)
 
   const loadHistorique = async () => {
     setLoading(true)
-    const [{ data: ventes }, { data: resas }] = await Promise.all([
+    const [{ data: ventes }, { data: resas }, { data: devisData }] = await Promise.all([
       supabase
         .from('ventes')
         .select('id, numero, created_at, vente_lignes(id, product_id, nom_produit, millesime, quantite, prix_unitaire_ttc, remise_pct)')
         .eq('customer_id', client.id)
         .eq('statut', 'validee')
+        .neq('type_doc', 'devis')
         .order('created_at', { ascending: false })
         .limit(50),
       supabase
@@ -476,6 +478,7 @@ function HistoriqueAchatsClient({ client, onClose, onAddToCart, onRetourDone }: 
     }
     setAchats(lignes)
     setLocations(resas || [])
+    setDevisList(devisData || [])
     setLoading(false)
   }
 
@@ -520,7 +523,7 @@ function HistoriqueAchatsClient({ client, onClose, onAddToCart, onRetourDone }: 
 
       {/* Onglets */}
       <div style={{ display: 'flex', borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
-        {[{ id: 'achats', label: '🛒 Achats' }, { id: 'locations', label: '🍺 Locations' }].map(tab => (
+        {[{ id: 'achats', label: '🛒 Achats' }, { id: 'devis', label: '📄 Devis' }, { id: 'locations', label: '🍺 Locations' }].map(tab => (
           <button key={tab.id} onClick={() => setOnglet(tab.id as any)} style={{
             flex: 1, padding: '10px', fontSize: 12, cursor: 'pointer', border: 'none',
             background: onglet === tab.id ? 'rgba(201,169,110,0.1)' : 'transparent',
@@ -551,6 +554,21 @@ function HistoriqueAchatsClient({ client, onClose, onAddToCart, onRetourDone }: 
                 <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)' }}>/ bouteille</div>
               </div>
               <button onClick={() => onAddToCart(l)} style={{ background: 'rgba(201,169,110,0.1)', border: '0.5px solid rgba(201,169,110,0.3)', color: '#c9a96e', borderRadius: 6, padding: '6px 10px', fontSize: 12, cursor: 'pointer' }}>+</button>
+            </div>
+          ))
+        ) : onglet === 'devis' ? (
+          devisList.length === 0 ? (
+            <div style={{ textAlign: 'center' as const, padding: 48, color: 'rgba(232,224,213,0.3)' }}>Aucun devis enregistré</div>
+          ) : devisList.map((d: any) => (
+            <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.04)' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, color: '#6e9ec9', fontFamily: 'monospace' }}>{d.numero}</div>
+                <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', marginTop: 3 }}>{new Date(d.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}</div>
+              </div>
+              <div style={{ textAlign: 'right' as const }}>
+                <div style={{ fontSize: 16, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{parseFloat(d.total_ttc || 0).toFixed(2)} €</div>
+                <div style={{ fontSize: 11, color: d.statut === 'annulee' ? '#c96e6e' : 'rgba(232,224,213,0.35)' }}>{d.statut === 'annulee' ? 'Annulé' : 'En cours'}</div>
+              </div>
             </div>
           ))
         ) : (
@@ -723,6 +741,48 @@ function HistoriqueVentes({ session, onClose, onAddToCart }: {
     setActionMsg(`✓ Devis ${detail.numero} annulé`)
     loadVentes()
     setTimeout(() => setDetail(null), 1500)
+  }
+
+  const handleTransformerDevis = async (type: 'commande' | 'bl' | 'facture') => {
+    if (!detail) return
+    const prefix = type==='commande'?'CMD':type==='bl'?'BL':'FAC'
+    const numero = `${prefix}-${new Date().getFullYear()}${String(new Date().getMonth()+1).padStart(2,'0')}-${String(Math.floor(Math.random()*9999)).padStart(4,'0')}`
+    const labels: Record<string,string> = { commande:'commande', bl:'bon de livraison', facture:'facture' }
+    if (!confirm(`Transformer ce devis en ${labels[type]} — ${numero} ?`)) return
+    const { data: nouv } = await supabase.from('ventes').insert({ numero, user_id: detail.user?.id||null, customer_id: detail.customer?.id||null, site_id: session.site_id, type_doc: type, statut: 'validee', statut_paiement: 'non_regle', total_ht: parseFloat(detail.total_ttc)/1.20, total_ttc: parseFloat(detail.total_ttc), notes: detail.notes }).select('id').single()
+    if (nouv) {
+      await supabase.from('vente_lignes').insert(lignesDetail.map((l:any) => ({ vente_id:nouv.id, product_id:l.product_id, nom_produit:l.nom_produit, millesime:l.millesime, quantite:l.quantite, prix_unitaire_ttc:l.prix_unitaire_ttc, remise_pct:l.remise_pct, total_ttc:l.total_ttc })))
+      if (type==='bl'||type==='facture') {
+        for (const l of lignesDetail) {
+          if (l.product_id&&!String(l.product_id).startsWith('divers-')) await supabase.rpc('move_stock',{p_product_id:l.product_id,p_site_id:session.site_id,p_raison:'vente',p_quantite:l.quantite,p_note:`Devis ${detail.numero} → ${numero}`,p_order_id:null,p_transfer_id:null})
+        }
+      }
+      await supabase.from('ventes').update({statut:'annulee'}).eq('id',detail.id)
+      setActionMsg(`✓ Transformé en ${labels[type]} — ${numero}`)
+      loadVentes()
+      setTimeout(()=>setDetail(null),2000)
+    }
+  }
+
+  const handleTransformerDevis = async (type: 'commande' | 'bl' | 'facture') => {
+    if (!detail) return
+    const prefix = type==='commande'?'CMD':type==='bl'?'BL':'FAC'
+    const numero = `${prefix}-${new Date().getFullYear()}${String(new Date().getMonth()+1).padStart(2,'0')}-${String(Math.floor(Math.random()*9999)).padStart(4,'0')}`
+    const labels: Record<string,string> = { commande:'commande', bl:'bon de livraison', facture:'facture' }
+    if (!confirm(`Transformer ce devis en ${labels[type]} — ${numero} ?`)) return
+    const { data: nouv } = await supabase.from('ventes').insert({ numero, user_id: detail.user?.id||null, customer_id: detail.customer?.id||null, site_id: session.site_id, type_doc: type, statut: 'validee', statut_paiement: 'non_regle', total_ht: parseFloat(detail.total_ttc)/1.20, total_ttc: parseFloat(detail.total_ttc), notes: detail.notes }).select('id').single()
+    if (nouv) {
+      await supabase.from('vente_lignes').insert(lignesDetail.map((l:any) => ({ vente_id:nouv.id, product_id:l.product_id, nom_produit:l.nom_produit, millesime:l.millesime, quantite:l.quantite, prix_unitaire_ttc:l.prix_unitaire_ttc, remise_pct:l.remise_pct, total_ttc:l.total_ttc })))
+      if (type==='bl'||type==='facture') {
+        for (const l of lignesDetail) {
+          if (l.product_id&&!String(l.product_id).startsWith('divers-')) await supabase.rpc('move_stock',{p_product_id:l.product_id,p_site_id:session.site_id,p_raison:'vente',p_quantite:l.quantite,p_note:`Devis ${detail.numero} → ${numero}`,p_order_id:null,p_transfer_id:null})
+        }
+      }
+      await supabase.from('ventes').update({statut:'annulee'}).eq('id',detail.id)
+      setActionMsg(`✓ Transformé en ${labels[type]} — ${numero}`)
+      loadVentes()
+      setTimeout(()=>setDetail(null),2000)
+    }
   }
 
   const handleModifierDevis = () => {
@@ -909,6 +969,22 @@ function HistoriqueVentes({ session, onClose, onAddToCart }: {
               <button onClick={handleAnnulerDevis} style={{ background: 'rgba(201,110,110,0.08)', border: '0.5px solid rgba(201,110,110,0.25)', borderRadius: 8, color: '#c96e6e', padding: '12px 16px', fontSize: 14, cursor: 'pointer', textAlign: 'left' as const }}>
                 ✕ Annuler le devis
               </button>
+            )}
+            {/* Transformer devis */}
+            {detail.type_doc === 'devis' && detail.statut !== 'annulee' && (
+              <>
+                <button onClick={() => handleTransformerDevis('commande')} style={{ background: 'rgba(201,169,110,0.08)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 8, color: '#c9b06e', padding: '12px 16px', fontSize: 14, cursor: 'pointer', textAlign: 'left' as const }}>📦 Transformer en Commande (réservation stock)</button>
+                <button onClick={() => handleTransformerDevis('bl')} style={{ background: 'rgba(110,201,176,0.08)', border: '0.5px solid rgba(110,201,176,0.3)', borderRadius: 8, color: '#6ec9b0', padding: '12px 16px', fontSize: 14, cursor: 'pointer', textAlign: 'left' as const }}>🚚 Transformer en Bon de livraison (sortie stock)</button>
+                <button onClick={() => handleTransformerDevis('facture')} style={{ background: 'rgba(201,169,110,0.12)', border: '0.5px solid rgba(201,169,110,0.5)', borderRadius: 8, color: '#c9a96e', padding: '12px 16px', fontSize: 14, cursor: 'pointer', textAlign: 'left' as const }}>💼 Transformer en Facture (entrée compta)</button>
+              </>
+            )}
+            {/* Transformer devis */}
+            {detail.type_doc === 'devis' && detail.statut !== 'annulee' && (
+              <>
+                <button onClick={() => handleTransformerDevis('commande')} style={{ background: 'rgba(201,169,110,0.08)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 8, color: '#c9b06e', padding: '12px 16px', fontSize: 14, cursor: 'pointer', textAlign: 'left' as const }}>📦 Transformer en Commande (réservation stock)</button>
+                <button onClick={() => handleTransformerDevis('bl')} style={{ background: 'rgba(110,201,176,0.08)', border: '0.5px solid rgba(110,201,176,0.3)', borderRadius: 8, color: '#6ec9b0', padding: '12px 16px', fontSize: 14, cursor: 'pointer', textAlign: 'left' as const }}>🚚 Transformer en Bon de livraison (sortie stock)</button>
+                <button onClick={() => handleTransformerDevis('facture')} style={{ background: 'rgba(201,169,110,0.12)', border: '0.5px solid rgba(201,169,110,0.5)', borderRadius: 8, color: '#c9a96e', padding: '12px 16px', fontSize: 14, cursor: 'pointer', textAlign: 'left' as const }}>💼 Transformer en Facture (entrée compta)</button>
+              </>
             )}
 
             {/* Annuler facture + avoir */}
@@ -2169,6 +2245,15 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
     const lignesHtml = (vente.lignes||[]).map((l:any) => `<div class="ligne"><span>${l.qte}x ${l.nom_modifie||l.nom}${l.millesime?' '+l.millesime:''}</span><span>${l.total.toFixed(2)}€</span></div>`).join('')
     const html = `<html><head><style>body{font-family:monospace;font-size:12px;width:80mm;margin:0 auto}.header{text-align:center;border-bottom:1px dashed #000;padding-bottom:8px;margin-bottom:8px}.ligne{display:flex;justify-content:space-between;margin:3px 0}.total{border-top:1px dashed #000;padding-top:6px;margin-top:6px;font-weight:bold}.footer{text-align:center;margin-top:10px;font-size:10px}</style></head><body><div class="header"><b>Cave de Gilbert</b><br/>${new Date().toLocaleDateString('fr-FR')}<br/>N° ${vente.numero}</div>${noteGlobaleActive&&noteGlobale?`<div class="ligne"><span>${noteGlobale}</span><span>${vente.total.toFixed(2)}€</span></div>`:lignesHtml}<div class="total"><div class="ligne"><span>TOTAL TTC</span><span>${vente.total.toFixed(2)}€</span></div></div>${(vente.paiements||[]).map((p:any)=>`<div class="ligne"><span>${p.label}</span><span>${p.montant.toFixed(2)}€</span></div>`).join('')}<div class="footer">Merci de votre visite !</div></body></html>`
     const win = window.open('', '_blank'); if (win) { win.document.write(html); win.document.close(); win.print() }
+  }
+
+  const handleSauvegarderDevis = async () => {
+    const numero = `DEV-${new Date().getFullYear()}${String(new Date().getMonth()+1).padStart(2,'0')}-${String(Math.floor(Math.random()*9999)).padStart(4,'0')}`
+    const { data: v } = await supabase.from('ventes').insert({ numero, session_id: session.id, user_id: vendeur.id, customer_id: client?.id||null, site_id: session.site_id, type_doc: 'devis', statut: 'validee', statut_paiement: 'non_regle', total_ht: totalNet/1.20, total_ttc: totalNet, notes: noteGlobaleActive&&noteGlobale?noteGlobale:null }).select('id').single()
+    if (v) await supabase.from('vente_lignes').insert(lignes.map(l=>({vente_id:v.id,product_id:l.product_id,nom_produit:l.nom_modifie||l.nom,millesime:l.millesime,quantite:l.qte,prix_unitaire_ttc:l.prix_unit,remise_pct:l.remise_pct,total_ttc:l.total})))
+    setDerniereVente({numero,total:totalNet,lignes:[...lignes],paiements:[],isDevis:true})
+    setEmailVente(client?.email||'')
+    setVenteOk(true)
   }
 
   const handleValider = async () => {
