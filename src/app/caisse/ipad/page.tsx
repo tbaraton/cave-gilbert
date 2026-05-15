@@ -52,7 +52,7 @@ function EcranLogin({ onLogin }: { onLogin: (u: User) => void }) {
   }
 
   return (
-    <div style={{ minHeight: '100dvh', background: BG, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'DM Sans', system-ui, sans-serif" }}>
+    <div style={{ minHeight: '100vh', background: BG, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'DM Sans', system-ui, sans-serif" }}>
       <div style={{ width: 420 }}>
         <div style={{ textAlign: 'center', marginBottom: 40 }}>
           <img src="/logo.png" alt="" style={{ maxHeight: 72, maxWidth: '80%', objectFit: 'contain', marginBottom: 12 }} onError={e => (e.currentTarget.style.display = 'none')} />
@@ -116,12 +116,12 @@ function EcranOuverture({ user, onOuvrir }: { user: User; onOuvrir: (s: Session)
     setLoading(false)
   }
 
-  if (!ready) return <div style={{ minHeight: '100dvh', background: BG, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ fontSize: 32, color: GOLD }}>⟳</div></div>
+  if (!ready) return <div style={{ minHeight: '100vh', background: BG, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ fontSize: 32, color: GOLD }}>⟳</div></div>
 
   const isEntrepot = sites.find(s => s.id === siteId)?.nom?.toLowerCase().includes('entrepôt') || sites.find(s => s.id === siteId)?.nom?.toLowerCase().includes('entrepot')
 
   return (
-    <div style={{ minHeight: '100dvh', background: BG, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'DM Sans', system-ui, sans-serif" }}>
+    <div style={{ minHeight: '100vh', background: BG, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'DM Sans', system-ui, sans-serif" }}>
       <div style={{ width: 460, background: BG3, border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 20, padding: '40px 36px' }}>
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
           <img src={getLogo(sites.find(s => s.id === siteId)?.nom || '')} alt="" style={{ maxHeight: 64, maxWidth: '70%', objectFit: 'contain' }} onError={e => (e.currentTarget.style.display = 'none')} />
@@ -168,7 +168,7 @@ function Numpad({ value, onChange }: { value: string; onChange: (v: string) => v
           background: k === '⌫' ? 'rgba(201,110,110,0.12)' : 'rgba(255,255,255,0.07)',
           border: `0.5px solid ${k === '⌫' ? 'rgba(201,110,110,0.25)' : 'rgba(255,255,255,0.1)'}`,
           color: k === '⌫' ? '#c96e6e' : '#e8e0d5',
-          borderRadius: 10, padding: '18px 0', fontSize: 22, cursor: 'pointer', fontWeight: 500, touchAction: 'manipulation', userSelect: 'none',
+          borderRadius: 10, padding: '18px 0', fontSize: 22, cursor: 'pointer', fontWeight: 500, touchAction: 'manipulation', userSelect: 'none' as const, WebkitUserSelect: 'none' as const,
         }}>{k}</button>
       ))}
     </div>
@@ -378,7 +378,7 @@ function CaisseIpad({ user, session, onFermer }: { user: User; session: Session;
   const nomClient = client ? (client.est_societe ? client.raison_sociale : `${client.prenom} ${client.nom}`) : null
 
   return (
-    <div style={{ height: '100dvh', background: BG, fontFamily: "'DM Sans', system-ui, sans-serif", color: '#e8e0d5', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div style={{ height: '100vh', background: BG, fontFamily: "'DM Sans', system-ui, sans-serif", color: '#e8e0d5', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
       {/* ── Barre du haut ── */}
       <div style={{ height: 56, background: BG2, borderBottom: `0.5px solid ${BORDER}`, display: 'flex', alignItems: 'center', gap: 12, padding: '0 16px', flexShrink: 0 }}>
