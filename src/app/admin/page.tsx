@@ -2638,6 +2638,8 @@ function AdminPage() {
     { label: 'Assistant IA',  href: '/admin/ia',            icon: '✦',  groupe: 'gestion', perm: 'acces_assistant_ia' },
     { label: 'Location',      href: '/admin/location',      icon: '🍺', groupe: 'gestion', perm: 'acces_location' },
     { label: 'Import',        href: '/admin/import',        icon: '↑',  groupe: 'gestion', perm: 'acces_import' },
+    { label: 'Comptabilité',  href: '/admin/comptabilite',  icon: '€',  groupe: 'outils',  perm: 'acces_comptabilite' },
+    { label: 'Statistiques',  href: '/admin/statistiques',  icon: '📊', groupe: 'outils',  perm: 'acces_statistiques' },
     { label: 'Congés',        href: '/admin/conges',        icon: '🏖', groupe: 'rh',      perm: 'acces_conges' },
     { label: 'Planning',      href: '/admin/rh/planning',   icon: '📅', groupe: 'rh',      perm: 'acces_planning' },
     { label: 'Documents',     href: '/admin/rh/documents',  icon: '📂', groupe: 'rh',      perm: 'acces_documents' },
@@ -2709,6 +2711,7 @@ function AdminPage() {
             </div>
           ))}
           <NavGroup title="Gestion" items={navLinks.filter(l => l.groupe === 'gestion')} />
+          <NavGroup title="Outils" items={navLinks.filter(l => l.groupe === 'outils')} />
           <NavGroup title="Ressources Humaines" items={navLinks.filter(l => l.groupe === 'rh')} />
         </nav>
         <div style={{ padding: '16px 20px', borderTop: '0.5px solid rgba(255,255,255,0.06)' }}>
