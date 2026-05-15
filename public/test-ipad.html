@@ -3,56 +3,89 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Test iPad JS</title>
+  <title>Diagnostic iPad</title>
+  <!-- Eruda avant tout -->
+  <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
+  <script>eruda.init();</script>
   <style>
-    body { background: #111; color: #fff; font-family: sans-serif; padding: 30px; }
-    .btn { display: block; width: 100%; padding: 24px; font-size: 20px; border-radius: 12px; border: none; cursor: pointer; margin-bottom: 16px; font-weight: bold; }
-    .gold { background: #c9a96e; color: #000; }
-    .green { background: #2a6e4a; color: #fff; }
-    .red { background: #6e2a2a; color: #fff; }
-    #result { padding: 20px; border-radius: 10px; font-size: 18px; margin-top: 20px; display: none; }
-    .ok { background: #1a3a1a; border: 2px solid #6ec96e; color: #6ec96e; }
-    .ko { background: #3a1a1a; border: 2px solid #c96e6e; color: #c96e6e; }
+    body { background: #111; color: #fff; font-family: sans-serif; padding: 24px; font-size: 16px; }
+    .ok { color: #6ec96e; } .ko { color: #c96e6e; } .wait { color: #c9a96e; }
+    li { margin: 10px 0; }
+    #log { background: #1a1a1a; border-radius: 8px; padding: 16px; margin-top: 20px; }
   </style>
 </head>
 <body>
-  <h1 style="color:#c9a96e">Test JS pur (sans React)</h1>
-  <p style="color:#888; margin-bottom: 24px">Tape sur un bouton :</p>
-
-  <!-- Test 1 : onclick inline -->
-  <button class="btn gold" onclick="show('✅ JS inline fonctionne !')">
-    Test 1 — onclick inline
-  </button>
-
-  <!-- Test 2 : addEventListener -->
-  <button class="btn green" id="btn2">
-    Test 2 — addEventListener
-  </button>
-
-  <!-- Test 3 : alert -->
-  <button class="btn" style="background:#4a4a9e;color:#fff" onclick="alert('alert fonctionne !')">
-    Test 3 — alert()
-  </button>
-
-  <div id="result"></div>
+  <h2 style="color:#c9a96e">Diagnostic réseau</h2>
+  <p class="wait">Tests en cours...</p>
+  <ul id="log"></ul>
 
   <script>
-    // Test 2
-    document.getElementById('btn2').addEventListener('click', function() {
-      show('✅ addEventListener fonctionne !');
-    });
-
-    function show(msg) {
-      var el = document.getElementById('result');
-      el.textContent = msg;
-      el.className = 'ok';
-      el.style.display = 'block';
+    var log = document.getElementById('log');
+    function add(msg, cls) {
+      var li = document.createElement('li');
+      li.textContent = msg;
+      if (cls) li.className = cls;
+      log.appendChild(li);
     }
 
-    // Afficher que la page a chargé
-    document.addEventListener('DOMContentLoaded', function() {
-      document.querySelector('p').textContent = 'JS chargé ✓ — Tape sur un bouton :';
-    });
+    add('✓ JS inline fonctionne', 'ok');
+    add('✓ Eruda chargé : ' + (typeof eruda !== 'undefined' ? 'oui' : 'non'), 'ok');
+
+    // Test 1 : le manifest Next.js
+    fetch('/_next/static/chunks/webpack.js')
+      .then(function(r) {
+        add('webpack.js : HTTP ' + r.status + (r.ok ? ' ✓' : ' ✗'), r.ok ? 'ok' : 'ko');
+      })
+      .catch(function(e) { add('webpack.js ERREUR : ' + e.message, 'ko'); });
+
+    // Test 2 : fichier manifest
+    fetch('/_next/static/development/_devMiddlewareManifest.json')
+      .then(function(r) { add('manifest dev : HTTP ' + r.status, r.ok ? 'ok' : 'wait'); })
+      .catch(function(e) { add('manifest dev : ' + e.message, 'ko'); });
+
+    // Test 3 : un chunk connu
+    fetch('/_next/static/chunks/main-app.js')
+      .then(function(r) {
+        add('main-app.js : HTTP ' + r.status + (r.ok ? ' ✓' : ' ✗'), r.ok ? 'ok' : 'ko');
+        if (r.ok) {
+          return r.text().then(function(t) {
+            add('Taille bundle : ' + Math.round(t.length/1024) + ' KB', 'wait');
+            // Essayer d'évaluer
+            try {
+              // Just check first 200 chars for syntax issues
+              add('Début bundle : ' + t.substring(0, 80).replace(/\n/g, ' '), 'wait');
+            } catch(e2) { add('Parse erreur : ' + e2.message, 'ko'); }
+          });
+        }
+      })
+      .catch(function(e) { add('main-app.js ERREUR : ' + e.message, 'ko'); });
+
+    // Test 4 : headers CSP
+    fetch('/caisse')
+      .then(function(r) {
+        var csp = r.headers.get('content-security-policy');
+        var xfo = r.headers.get('x-frame-options');
+        add('CSP header : ' + (csp ? csp.substring(0, 60) : 'aucun'), csp ? 'ko' : 'ok');
+        add('X-Frame-Options : ' + (xfo || 'aucun'), 'wait');
+        return r.text();
+      })
+      .then(function(html) {
+        // Chercher le chunk principal dans le HTML
+        var match = html.match(/\/_next\/static\/chunks\/([^"]+\.js)/);
+        if (match) {
+          add('Chunk trouvé dans HTML : ' + match[1], 'wait');
+          // Charger ce chunk
+          return fetch('/_next/static/chunks/' + match[1])
+            .then(function(r2) {
+              add('Chunk principal : HTTP ' + r2.status + (r2.ok ? ' ✓' : ' ✗'), r2.ok ? 'ok' : 'ko');
+            });
+        } else {
+          add('Aucun chunk trouvé dans HTML /caisse', 'ko');
+        }
+      })
+      .catch(function(e) { add('Fetch /caisse ERREUR : ' + e.message, 'ko'); });
+
+    add('— consulte aussi la console Eruda (bouton rond) pour les erreurs JS —', 'wait');
   </script>
 </body>
 </html>
