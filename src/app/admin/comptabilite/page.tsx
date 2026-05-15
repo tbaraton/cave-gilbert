@@ -12,7 +12,7 @@ const supabase = createBrowserClient(
 // ═══════════════════════════════════════════════════════════════
 // Types
 // ═══════════════════════════════════════════════════════════════
-type Onglet = 'dashboard' | 'achats' | 'ventes'
+type Onglet = 'dashboard' | 'achats' | 'ventes' | 'banque'
 
 type Entreprise = {
   id: string
@@ -218,6 +218,7 @@ export default function ComptabilitePage() {
             { id: 'dashboard' as Onglet, label: 'Tableau de bord' },
             { id: 'achats' as Onglet, label: 'Achats' },
             { id: 'ventes' as Onglet, label: 'Ventes & TVA' },
+            { id: 'banque' as Onglet, label: 'Banque' },
           ].map(t => (
             <button key={t.id} onClick={() => setOnglet(t.id)} style={{
               background: 'transparent', border: 'none',
@@ -232,6 +233,7 @@ export default function ComptabilitePage() {
         {onglet === 'dashboard' && <DashboardCompta />}
         {onglet === 'achats' && <OngletAchats currentUser={currentUser} />}
         {onglet === 'ventes' && <OngletVentes />}
+        {onglet === 'banque' && <OngletBanque currentUser={currentUser} />}
       </main>
     </div>
   )
@@ -1454,6 +1456,386 @@ function OngletVentes() {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════
+// OngletBanque — Import CSV Crédit Mutuel + Rapprochement
+// ═══════════════════════════════════════════════════════════════
+function OngletBanque({ currentUser }: { currentUser: any }) {
+  const [entreprises, setEntreprises] = useState<any[]>([])
+  const [entrepriseId, setEntrepriseId] = useState('')
+  const [comptes, setComptes] = useState<any[]>([])
+  const [compteId, setCompteId] = useState('')
+  const [releves, setReleves] = useState<any[]>([])
+  const [releveActif, setReleveActif] = useState<any>(null)
+  const [mouvements, setMouvements] = useState<any[]>([])
+  const [loading, setLoading] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
+  const [filtreStatut, setFiltreStatut] = useState<'tous' | 'non_rapproche' | 'rapproche'>('tous')
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    supabase.from('entreprises').select('id, code, raison_sociale').order('code')
+      .then(({ data }) => {
+        setEntreprises(data || [])
+        if (data && data.length > 0) setEntrepriseId(data[0].id)
+      })
+    // Comptes bancaires du plan comptable
+    supabase.from('plan_comptable').select('id, numero, libelle')
+      .like('numero', '512%').order('numero')
+      .then(({ data }) => {
+        setComptes(data || [])
+        if (data && data.length > 0) setCompteId(data[0].id)
+      })
+  }, [])
+
+  useEffect(() => {
+    if (!entrepriseId) return
+    loadReleves()
+  }, [entrepriseId])
+
+  const loadReleves = async () => {
+    const { data } = await supabase.from('releves_bancaires')
+      .select('*').eq('entreprise_id', entrepriseId)
+      .order('periode_fin', { ascending: false }).limit(12)
+    setReleves(data || [])
+  }
+
+  const loadMouvements = async (releveId: string) => {
+    setLoading(true)
+    const { data } = await supabase.from('mouvements_bancaires')
+      .select('*').eq('releve_id', releveId)
+      .order('date_operation', { ascending: false })
+    setMouvements(data || [])
+    setLoading(false)
+  }
+
+  // Parser CSV Crédit Mutuel
+  // Format: Date;Date de valeur;Débit;Crédit;Libellé;Solde
+  const parseCreditMutuelCSV = (text: string) => {
+    const lines = text.trim().split('\n').filter(l => l.trim())
+    if (lines.length < 2) throw new Error('Fichier vide')
+
+    const rows: any[] = []
+    let soldeDebut: number | null = null
+    let soldeFin: number | null = null
+    let periodeDebut: string | null = null
+    let periodeFin: string | null = null
+
+    for (let i = 1; i < lines.length; i++) {
+      const cols = lines[i].split(';')
+      if (cols.length < 5) continue
+
+      const parseDate = (d: string) => {
+        const [day, month, year] = d.trim().split('/')
+        return `${year}-${month}-${day}`
+      }
+      const parseMontant = (s: string) => {
+        if (!s || !s.trim()) return null
+        return parseFloat(s.trim().replace(',', '.').replace(/\s/g, ''))
+      }
+
+      const dateOp = parseDate(cols[0])
+      const dateVal = cols[1]?.trim() ? parseDate(cols[1]) : null
+      const debit = parseMontant(cols[2])
+      const credit = parseMontant(cols[3])
+      const libelle = cols[4]?.trim() || ''
+      const solde = parseMontant(cols[5])
+
+      const montant = credit !== null ? credit : (debit !== null ? debit : 0)
+
+      if (!periodeDebut || dateOp < periodeDebut) periodeDebut = dateOp
+      if (!periodeFin || dateOp > periodeFin) periodeFin = dateOp
+      if (solde !== null) {
+        if (soldeDebut === null) soldeDebut = solde
+        soldeFin = solde
+      }
+
+      rows.push({ date_operation: dateOp, date_valeur: dateVal, libelle, montant, solde_apres: solde })
+    }
+
+    // Remettre solde dans l'ordre (le 1er du fichier = le plus récent)
+    const premierSolde = rows[0]?.solde_apres ?? null
+    const dernierSolde = rows[rows.length - 1]?.solde_apres ?? null
+
+    return { rows, periodeDebut, periodeFin, soldeDebut: dernierSolde, soldeFin: premierSolde, nbLignes: rows.length }
+  }
+
+  const handleImportCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !entrepriseId || !compteId) return
+    setImporting(true); setMsg(null)
+
+    try {
+      const text = await file.text()
+      const { rows, periodeDebut, periodeFin, soldeDebut, soldeFin, nbLignes } = parseCreditMutuelCSV(text)
+      if (!periodeDebut || !periodeFin) throw new Error('Impossible de lire les dates')
+
+      // Créer le relevé
+      const { data: releve, error: errR } = await supabase.from('releves_bancaires').insert({
+        entreprise_id: entrepriseId,
+        compte_comptable_id: compteId,
+        banque: 'Crédit Mutuel',
+        periode_debut: periodeDebut,
+        periode_fin: periodeFin,
+        solde_debut: soldeDebut,
+        solde_fin: soldeFin,
+        nb_mouvements: nbLignes,
+        importe_par: currentUser?.id,
+      }).select().single()
+      if (errR) throw new Error(errR.message)
+
+      // Insérer les mouvements par batch de 100
+      for (let i = 0; i < rows.length; i += 100) {
+        const batch = rows.slice(i, i + 100).map(r => ({
+          ...r, releve_id: releve.id, entreprise_id: entrepriseId,
+        }))
+        const { error: errM } = await supabase.from('mouvements_bancaires').insert(batch)
+        if (errM) throw new Error(errM.message)
+      }
+
+      setMsg({ type: 'ok', text: `✓ ${nbLignes} mouvements importés (${periodeDebut} → ${periodeFin})` })
+      await loadReleves()
+      setReleveActif(releve)
+      await loadMouvements(releve.id)
+    } catch (err: any) {
+      setMsg({ type: 'err', text: 'Erreur : ' + err.message })
+    }
+
+    setImporting(false)
+    if (fileRef.current) fileRef.current.value = ''
+  }
+
+  const handleRapprocher = async (mouvementId: string, type: string, sourceId: string) => {
+    const args: any = { p_mouvement_id: mouvementId, p_user_id: currentUser?.id }
+    if (type === 'vente') args.p_vente_id = sourceId
+    else if (type === 'facture_achat') args.p_facture_id = sourceId
+    const { error } = await supabase.rpc('rapprocher_mouvement', args)
+    if (error) { setMsg({ type: 'err', text: error.message }); return }
+    if (releveActif) loadMouvements(releveActif.id)
+  }
+
+  const handleIgnorer = async (mouvementId: string) => {
+    await supabase.from('mouvements_bancaires').update({ statut: 'ignore' }).eq('id', mouvementId)
+    if (releveActif) loadMouvements(releveActif.id)
+  }
+
+  const mouvementsFiltres = mouvements.filter(m =>
+    filtreStatut === 'tous' ? true : m.statut === filtreStatut
+  )
+  const nbNonRapproches = mouvements.filter(m => m.statut === 'non_rapproche').length
+  const nbRapproches = mouvements.filter(m => m.statut === 'rapproche').length
+
+  const statutColor: Record<string, string> = {
+    non_rapproche: '#c9b06e',
+    rapproche: '#6ec96e',
+    ignore: '#555',
+  }
+  const statutLabel: Record<string, string> = {
+    non_rapproche: 'À rapprocher',
+    rapproche: '✓ Rapproché',
+    ignore: 'Ignoré',
+  }
+
+  return (
+    <div>
+      {/* En-tête + import */}
+      <div style={{ display: 'flex', gap: 12, marginBottom: 24, alignItems: 'end', flexWrap: 'wrap' as const }}>
+        <div>
+          <div style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, marginBottom: 6 }}>Entreprise</div>
+          <select value={entrepriseId} onChange={e => setEntrepriseId(e.target.value)} style={sel}>
+            {entreprises.map(e => <option key={e.id} value={e.id} style={{ background: '#1a1408' }}>{e.code} — {e.raison_sociale}</option>)}
+          </select>
+        </div>
+        <div>
+          <div style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, marginBottom: 6 }}>Compte bancaire</div>
+          <select value={compteId} onChange={e => setCompteId(e.target.value)} style={sel}>
+            {comptes.map(c => <option key={c.id} value={c.id} style={{ background: '#1a1408' }}>{c.numero} — {c.libelle}</option>)}
+          </select>
+        </div>
+        <div style={{ marginLeft: 'auto' }}>
+          <div style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, marginBottom: 6 }}>Import CSV Crédit Mutuel</div>
+          <label style={{ display: 'inline-block', background: '#c9a96e', color: '#0d0a08', borderRadius: 4, padding: '9px 18px', fontSize: 11, letterSpacing: 1.5, fontWeight: 600, cursor: importing ? 'wait' : 'pointer', opacity: importing ? 0.7 : 1 }}>
+            {importing ? '⟳ Import...' : '↑ Importer un relevé CSV'}
+            <input ref={fileRef} type="file" accept=".csv,.txt" onChange={handleImportCSV} style={{ display: 'none' }} />
+          </label>
+        </div>
+      </div>
+
+      {msg && (
+        <div style={{ marginBottom: 16, padding: '10px 14px', background: msg.type === 'ok' ? 'rgba(110,201,110,0.08)' : 'rgba(201,110,110,0.08)', border: '0.5px solid ' + (msg.type === 'ok' ? 'rgba(110,201,110,0.3)' : 'rgba(201,110,110,0.3)'), borderRadius: 4, fontSize: 12, color: msg.type === 'ok' ? '#6ec96e' : '#c96e6e' }}>{msg.text}</div>
+      )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 16 }}>
+        {/* Liste des relevés */}
+        <div>
+          <div style={{ fontSize: 10, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 10 }}>Relevés importés</div>
+          {releves.length === 0 ? (
+            <div style={{ background: '#18130e', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 6, padding: 24, textAlign: 'center' as const, fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>
+              Aucun relevé<br />
+              <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.25)' }}>Importez un CSV pour commencer</span>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 6 }}>
+              {releves.map(r => (
+                <div key={r.id} onClick={() => { setReleveActif(r); loadMouvements(r.id) }}
+                  style={{ background: releveActif?.id === r.id ? 'rgba(201,169,110,0.1)' : '#18130e', border: '0.5px solid ' + (releveActif?.id === r.id ? 'rgba(201,169,110,0.4)' : 'rgba(255,255,255,0.07)'), borderRadius: 6, padding: '12px 14px', cursor: 'pointer' }}>
+                  <div style={{ fontSize: 12, color: '#c9a96e', marginBottom: 3 }}>{r.banque}</div>
+                  <div style={{ fontSize: 11, color: '#e8e0d5', marginBottom: 3 }}>
+                    {new Date(r.periode_debut).toLocaleDateString('fr-FR')} → {new Date(r.periode_fin).toLocaleDateString('fr-FR')}
+                  </div>
+                  <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.4)' }}>{r.nb_mouvements} mouvements</div>
+                  {r.solde_fin != null && (
+                    <div style={{ fontSize: 12, color: r.solde_fin >= 0 ? '#6ec96e' : '#c96e6e', fontFamily: 'Georgia, serif', marginTop: 4 }}>
+                      Solde : {parseFloat(r.solde_fin).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Mouvements du relevé sélectionné */}
+        <div>
+          {!releveActif ? (
+            <div style={{ background: '#18130e', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 6, padding: 48, textAlign: 'center' as const, fontSize: 13, color: 'rgba(232,224,213,0.4)' }}>
+              Sélectionnez un relevé pour voir les mouvements
+            </div>
+          ) : (
+            <>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 14, alignItems: 'center' }}>
+                <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.4)', marginRight: 8 }}>
+                  <span style={{ color: '#6ec96e' }}>{nbRapproches}</span> rapprochés ·{' '}
+                  <span style={{ color: '#c9b06e' }}>{nbNonRapproches}</span> à traiter
+                </div>
+                {(['tous', 'non_rapproche', 'rapproche'] as const).map(s => (
+                  <button key={s} onClick={() => setFiltreStatut(s)} style={{ background: filtreStatut === s ? 'rgba(201,169,110,0.15)' : 'transparent', border: '0.5px solid ' + (filtreStatut === s ? 'rgba(201,169,110,0.4)' : 'rgba(255,255,255,0.1)'), color: filtreStatut === s ? '#c9a96e' : 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '5px 12px', fontSize: 11, cursor: 'pointer' }}>
+                    {s === 'tous' ? 'Tous' : s === 'non_rapproche' ? 'À rapprocher' : 'Rapprochés'}
+                  </button>
+                ))}
+              </div>
+
+              {loading ? (
+                <div style={{ padding: 40, textAlign: 'center' as const, color: 'rgba(232,224,213,0.4)' }}>⟳ Chargement…</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 4 }}>
+                  {mouvementsFiltres.map(m => (
+                    <MouvementRow key={m.id} mouvement={m} onRapprocher={handleRapprocher} onIgnorer={handleIgnorer} />
+                  ))}
+                  {mouvementsFiltres.length === 0 && (
+                    <div style={{ padding: 32, textAlign: 'center' as const, color: 'rgba(232,224,213,0.4)', fontSize: 13 }}>Aucun mouvement</div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function MouvementRow({ mouvement: m, onRapprocher, onIgnorer }: {
+  mouvement: any
+  onRapprocher: (id: string, type: string, sourceId: string) => void
+  onIgnorer: (id: string) => void
+}) {
+  const [suggestions, setSuggestions] = useState<any[]>([])
+  const [loadingSugg, setLoadingSugg] = useState(false)
+  const [showSugg, setShowSugg] = useState(false)
+
+  const loadSuggestions = async () => {
+    if (showSugg) { setShowSugg(false); return }
+    setLoadingSugg(true)
+    const { data } = await supabase.rpc('suggestions_rapprochement', { p_mouvement_id: m.id })
+    setSuggestions(data || [])
+    setLoadingSugg(false)
+    setShowSugg(true)
+  }
+
+  const isDebit = m.montant < 0
+  const statutColor: Record<string, string> = { non_rapproche: '#c9b06e', rapproche: '#6ec96e', ignore: '#555' }
+
+  return (
+    <div style={{ background: '#18130e', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 6, overflow: 'hidden' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr 130px auto', gap: 12, alignItems: 'center', padding: '12px 16px' }}>
+        <div>
+          <div style={{ fontSize: 12, color: '#e8e0d5' }}>{new Date(m.date_operation).toLocaleDateString('fr-FR')}</div>
+          <span style={{ fontSize: 10, color: statutColor[m.statut] || '#888', letterSpacing: 1 }}>
+            {m.statut === 'rapproche' ? '✓' : m.statut === 'ignore' ? '—' : '○'}
+          </span>
+        </div>
+        <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.7)', lineHeight: 1.4 }}>{m.libelle}</div>
+        <div style={{ textAlign: 'right' as const }}>
+          <div style={{ fontSize: 15, fontFamily: 'Georgia, serif', color: isDebit ? '#c96e6e' : '#6ec96e', fontWeight: 600 }}>
+            {isDebit ? '' : '+'}{parseFloat(m.montant).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €
+          </div>
+          {m.solde_apres != null && (
+            <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.3)' }}>
+              Solde : {parseFloat(m.solde_apres).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €
+            </div>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+          {m.statut === 'non_rapproche' && (
+            <>
+              <button onClick={loadSuggestions} disabled={loadingSugg} style={{ background: showSugg ? 'rgba(201,169,110,0.15)' : 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(201,169,110,0.3)', color: '#c9a96e', borderRadius: 4, padding: '5px 10px', fontSize: 11, cursor: 'pointer' }}>
+                {loadingSugg ? '⟳' : showSugg ? '▲ Suggestions' : '▼ Suggestions'}
+              </button>
+              <button onClick={() => onIgnorer(m.id)} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '5px 10px', fontSize: 11, cursor: 'pointer' }}>
+                Ignorer
+              </button>
+            </>
+          )}
+          {m.statut === 'rapproche' && (
+            <span style={{ fontSize: 11, color: '#6ec96e', padding: '5px 0' }}>✓ Rapproché</span>
+          )}
+        </div>
+      </div>
+
+      {showSugg && (
+        <div style={{ borderTop: '0.5px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)', padding: '12px 16px' }}>
+          {suggestions.length === 0 ? (
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>Aucune suggestion trouvée</span>
+              <button onClick={() => onRapprocher(m.id, 'manuel', '')} style={{ background: 'rgba(201,169,110,0.1)', border: '0.5px solid rgba(201,169,110,0.3)', color: '#c9a96e', borderRadius: 4, padding: '5px 12px', fontSize: 11, cursor: 'pointer' }}>
+                ✓ Rapprocher sans lien
+              </button>
+            </div>
+          ) : (
+            <div>
+              <div style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', textTransform: 'uppercase' as const, marginBottom: 8 }}>Suggestions de rapprochement</div>
+              <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 6 }}>
+                {suggestions.map((s, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.03)', borderRadius: 4, padding: '8px 12px' }}>
+                    <div>
+                      <span style={{ fontSize: 10, background: s.type_source === 'vente' ? 'rgba(110,201,110,0.15)' : 'rgba(110,158,201,0.15)', color: s.type_source === 'vente' ? '#6ec96e' : '#6e9ec9', padding: '2px 6px', borderRadius: 3, marginRight: 8 }}>
+                        {s.type_source === 'vente' ? 'VENTE' : 'FACTURE'}
+                      </span>
+                      <span style={{ fontSize: 12, color: '#e8e0d5' }}>{s.source_ref}</span>
+                      <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', marginLeft: 8 }}>{new Date(s.source_date).toLocaleDateString('fr-FR')}</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <span style={{ fontSize: 13, fontFamily: 'Georgia, serif', color: '#c9a96e' }}>{parseFloat(s.source_montant).toFixed(2)} €</span>
+                      {parseFloat(s.ecart) > 0 && <span style={{ fontSize: 10, color: '#c9b06e' }}>écart {parseFloat(s.ecart).toFixed(2)} €</span>}
+                      <button onClick={() => onRapprocher(m.id, s.type_source, s.source_id)} style={{ background: '#6ec96e', color: '#0a1a0a', border: 'none', borderRadius: 4, padding: '5px 12px', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}>
+                        ✓
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                <button onClick={() => onRapprocher(m.id, 'manuel', '')} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 4, padding: '5px 12px', fontSize: 11, cursor: 'pointer', alignSelf: 'flex-start' as const }}>
+                  Rapprocher sans lien
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
