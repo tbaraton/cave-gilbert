@@ -107,16 +107,18 @@ export default function LocationPage() {
 
         // Somme des quantités demandées sur le même fût par les résas confirmées
         // qui chevauchent la période de celle-ci (incluant elle-même)
-        const totalSimultane = resasConfirmees.reduce((sum: number, other: any) => {
+        const qteAutresChevauchent = resasConfirmees.reduce((sum: number, other: any) => {
+          if (other.id === resa.id) return sum
           const overlap = new Date(other.date_debut) <= new Date(resa.date_fin)
                        && new Date(other.date_fin)  >= new Date(resa.date_debut)
           if (!overlap) return sum
           const ligne = (other.reservation_futs || []).find((x: any) => x.fut_catalogue_id === futId)
           return sum + (ligne?.quantite || 0)
         }, 0)
+        const dispoPourMoi = fut.stock_actuel - qteAutresChevauchent
 
-        if (totalSimultane > fut.stock_actuel) {
-          const manque = totalSimultane - fut.stock_actuel
+        if (dispoPourMoi < monLigne.quantite) {
+          const manque = dispoPourMoi <= 0 ? monLigne.quantite : (monLigne.quantite - dispoPourMoi)
           if (!alertesParResa[resa.id]) alertesParResa[resa.id] = { resa, manques: [] }
           alertesParResa[resa.id].manques.push({ fut, manque, quantite: monLigne.quantite })
         }
