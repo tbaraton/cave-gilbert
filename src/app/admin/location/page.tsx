@@ -91,28 +91,35 @@ export default function LocationPage() {
     setCommandesLoupiote(commandesData || [])
     setConsignes(consignesData || [])
 
-    // Calcul FIFO : réservations confirmées seulement (en_cours = stock déjà sorti)
+    // Calcul des alertes : pour chaque réservation confirmée, vérifier que la somme
+    // des fûts demandés sur la même période (chevauchement de dates) ne dépasse pas
+    // le stock disponible. Les réservations 'en_cours' ont déjà décrémenté physiquement
+    // stock_actuel, donc on les exclut du calcul.
     const resasActives = (resasData || []).filter((r: any) => !['annulée', 'terminée'].includes(r.statut))
     const resasConfirmees = resasActives.filter((r: any) => r.statut !== 'en_cours')
-      .sort((a: any, b: any) => new Date(a.created_at || a.date_debut).getTime() - new Date(b.created_at || b.date_debut).getTime())
     const alertesParResa: Record<string, any> = {}
 
-    const stockRestant: Record<string, number> = {}
-    for (const fut of (futsData || [])) {
-      stockRestant[fut.id] = fut.stock_actuel
-    }
-
     for (const resa of resasConfirmees) {
-      for (const ligne of (resa.reservation_futs || [])) {
-        const fut = (futsData || []).find((f: any) => f.id === ligne.fut_catalogue_id)
+      for (const monLigne of (resa.reservation_futs || [])) {
+        const futId = monLigne.fut_catalogue_id
+        const fut = (futsData || []).find((f: any) => f.id === futId)
         if (!fut) continue
-        const dispo = stockRestant[ligne.fut_catalogue_id] ?? 0
-        if (dispo < ligne.quantite) {
-          const manque = ligne.quantite - Math.max(0, dispo)
+
+        // Somme des quantités demandées sur le même fût par les résas confirmées
+        // qui chevauchent la période de celle-ci (incluant elle-même)
+        const totalSimultane = resasConfirmees.reduce((sum: number, other: any) => {
+          const overlap = new Date(other.date_debut) <= new Date(resa.date_fin)
+                       && new Date(other.date_fin)  >= new Date(resa.date_debut)
+          if (!overlap) return sum
+          const ligne = (other.reservation_futs || []).find((x: any) => x.fut_catalogue_id === futId)
+          return sum + (ligne?.quantite || 0)
+        }, 0)
+
+        if (totalSimultane > fut.stock_actuel) {
+          const manque = totalSimultane - fut.stock_actuel
           if (!alertesParResa[resa.id]) alertesParResa[resa.id] = { resa, manques: [] }
-          alertesParResa[resa.id].manques.push({ fut, manque, quantite: ligne.quantite })
+          alertesParResa[resa.id].manques.push({ fut, manque, quantite: monLigne.quantite })
         }
-        stockRestant[ligne.fut_catalogue_id] = dispo - ligne.quantite
       }
     }
     setAlertes(Object.values(alertesParResa).sort((a: any, b: any) =>
