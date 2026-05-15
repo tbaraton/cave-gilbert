@@ -1817,6 +1817,7 @@ function MouvementRow({ mouvement: m, onRapprocher, onIgnorer }: {
                         {s.type_source === 'vente' ? 'VENTE' : 'FACTURE'}
                       </span>
                       <span style={{ fontSize: 12, color: '#e8e0d5' }}>{s.source_ref}</span>
+                      {s.source_label && <span style={{ fontSize: 12, color: '#c9a96e', marginLeft: 8 }}>{s.source_label}</span>}
                       <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', marginLeft: 8 }}>{new Date(s.source_date).toLocaleDateString('fr-FR')}</span>
                     </div>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
