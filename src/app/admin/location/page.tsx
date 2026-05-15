@@ -97,9 +97,14 @@ export default function LocationPage() {
     // stock_actuel, donc on les exclut du calcul.
     const resasActives = (resasData || []).filter((r: any) => !['annulée', 'terminée'].includes(r.statut))
     const resasConfirmees = resasActives.filter((r: any) => r.statut !== 'en_cours')
+      .sort((a: any, b: any) => {
+        const d = new Date(a.date_debut).getTime() - new Date(b.date_debut).getTime()
+        return d !== 0 ? d : new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      })
     const alertesParResa: Record<string, any> = {}
 
-    for (const resa of resasConfirmees) {
+    for (let i = 0; i < resasConfirmees.length; i++) {
+      const resa = resasConfirmees[i]
       for (const monLigne of (resa.reservation_futs || [])) {
         const futId = monLigne.fut_catalogue_id
         const fut = (futsData || []).find((f: any) => f.id === futId)
