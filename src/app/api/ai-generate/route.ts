@@ -26,29 +26,31 @@ ${millesime ? `- Millésime : ${millesime}` : ''}
 Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks, avec exactement cette structure :
 {"description_courte":"1 phrase percutante de 15 mots max","description_longue":"Paragraphe de 80 mots","cepages":["Cépage1"],"alcool":13.5,"aromes":["Arôme1","Arôme2","Arôme3","Arôme4","Arôme5"],"accords":["Accord1","Accord2","Accord3"],"temp_service_min":14,"temp_service_max":17,"decantation_min":30,"type_verre":"Bordeaux","apogee_debut":2026,"apogee_fin":2035,"profil":{"acidite":65,"tanins":78,"corps":82,"mineralite":55,"sucrosite":15,"longueur":88,"complexite":85}}`
 
-    const apiKey = process.env.GEMINI_API_KEY
-    if (!apiKey) return NextResponse.json({ error: 'Clé GEMINI_API_KEY manquante' }, { status: 500 })
+    const apiKey = process.env.ANTHROPIC_API_KEY
+    if (!apiKey) return NextResponse.json({ error: 'Clé ANTHROPIC_API_KEY manquante' }, { status: 500 })
 
-    const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.7, maxOutputTokens: 1000 },
-        }),
-      }
-    )
+    const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-5',
+        max_tokens: 1024,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    })
 
-    if (!geminiRes.ok) {
-      const err = await geminiRes.json()
-      return NextResponse.json({ error: `Erreur Gemini : ${err.error?.message ?? geminiRes.statusText}` }, { status: 500 })
+    if (!claudeRes.ok) {
+      const err = await claudeRes.json()
+      return NextResponse.json({ error: `Erreur Claude : ${err.error?.message ?? claudeRes.statusText}` }, { status: 500 })
     }
 
-    const geminiData = await geminiRes.json()
-    const text = geminiData.candidates?.[0]?.content?.parts?.[0]?.text
-    if (!text) return NextResponse.json({ error: 'Réponse Gemini vide' }, { status: 500 })
+    const claudeData = await claudeRes.json()
+    const text = claudeData.content?.[0]?.text
+    if (!text) return NextResponse.json({ error: 'Réponse Claude vide' }, { status: 500 })
 
     const clean = text.replace(/```json|```/g, '').trim()
     const aiData = JSON.parse(clean)

@@ -228,7 +228,7 @@ function ModalAjoutProduit({ sites, onClose, onSaved }: {
               padding: '13px 20px', fontSize: 11, letterSpacing: 2, textTransform: 'uppercase' as const,
               cursor: (form.nom && form.prix) ? 'pointer' : 'not-allowed',
               opacity: (form.nom && form.prix) ? 1 : 0.5, fontWeight: 500,
-            }}>✦ Générer la fiche par IA (Gemini)</button>
+            }}>✦ Générer la fiche par IA (Claude)</button>
             <p style={{ fontSize: 11, color: 'rgba(232,224,213,0.3)', textAlign: 'center' as const, marginTop: 10 }}>Gratuit · Description, arômes, accords et profil générés automatiquement</p>
           </>
         )}
@@ -236,7 +236,7 @@ function ModalAjoutProduit({ sites, onClose, onSaved }: {
         {step === 'generating' && (
           <div style={{ textAlign: 'center' as const, padding: '48px 0' }}>
             <div style={{ fontSize: 32, marginBottom: 16, animation: 'spin 2s linear infinite' }}>⟳</div>
-            <p style={{ color: '#c9a96e', letterSpacing: 1 }}>Gemini analyse le vin...</p>
+            <p style={{ color: '#c9a96e', letterSpacing: 1 }}>Claude analyse le vin...</p>
             <p style={{ color: 'rgba(232,224,213,0.3)', fontSize: 12, marginTop: 8 }}>Description · Arômes · Accords · Profil gustatif</p>
             <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
           </div>
