@@ -12,7 +12,7 @@ const supabase = createBrowserClient(
 // ═══════════════════════════════════════════════════════════════
 // Types
 // ═══════════════════════════════════════════════════════════════
-type Onglet = 'dashboard' | 'achats'
+type Onglet = 'dashboard' | 'achats' | 'ventes'
 
 type Entreprise = {
   id: string
@@ -217,6 +217,7 @@ export default function ComptabilitePage() {
           {[
             { id: 'dashboard' as Onglet, label: 'Tableau de bord' },
             { id: 'achats' as Onglet, label: 'Achats' },
+            { id: 'ventes' as Onglet, label: 'Ventes & TVA' },
           ].map(t => (
             <button key={t.id} onClick={() => setOnglet(t.id)} style={{
               background: 'transparent', border: 'none',
@@ -230,6 +231,7 @@ export default function ComptabilitePage() {
 
         {onglet === 'dashboard' && <DashboardCompta />}
         {onglet === 'achats' && <OngletAchats currentUser={currentUser} />}
+        {onglet === 'ventes' && <OngletVentes />}
       </main>
     </div>
   )
@@ -1276,4 +1278,182 @@ const modalStyle: any = {
 const modalHeader: any = {
   display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
   borderBottom: '0.5px solid rgba(255,255,255,0.07)', paddingBottom: 16, marginBottom: 20,
+}
+
+// ═══════════════════════════════════════════════════════════════
+// OngletVentes — Écritures comptables des ventes + TVA CA3
+// ═══════════════════════════════════════════════════════════════
+function OngletVentes() {
+  const today = new Date()
+  const [entreprises, setEntreprises] = useState<any[]>([])
+  const [entrepriseId, setEntrepriseId] = useState<string>('')
+  const [annee, setAnnee] = useState<number>(today.getFullYear())
+  const [mois, setMois] = useState<number>(today.getMonth() + 1)
+  const [ecritures, setEcritures] = useState<any[]>([])
+  const [tva, setTva] = useState<any[]>([])
+  const [loading, setLoading] = useState(false)
+  const [regenerating, setRegenerating] = useState(false)
+  const [msg, setMsg] = useState('')
+
+  useEffect(() => {
+    supabase.from('entreprises').select('id, code, raison_sociale').order('code').then(({ data }) => {
+      setEntreprises(data || [])
+      if (data && data.length > 0 && !entrepriseId) setEntrepriseId(data[0].id)
+    })
+  }, [])
+
+  const loadData = async () => {
+    if (!entrepriseId) return
+    setLoading(true); setMsg('')
+    const dateDebut = new Date(annee, mois - 1, 1).toISOString().split('T')[0]
+    const dateFin = new Date(annee, mois, 0).toISOString().split('T')[0]
+    const [{ data: ecr }, { data: tvaData }] = await Promise.all([
+      supabase.from('ecritures_comptables')
+        .select('*, compte:plan_comptable(numero, libelle), vente:ventes(numero, type_doc)')
+        .eq('entreprise_id', entrepriseId)
+        .eq('journal', 'VE')
+        .gte('date_ecriture', dateDebut)
+        .lte('date_ecriture', dateFin)
+        .order('date_ecriture', { ascending: true })
+        .order('numero_piece', { ascending: true })
+        .order('ordre', { ascending: true }),
+      supabase.rpc('calculer_tva_ca3', { p_entreprise_id: entrepriseId, p_annee: annee, p_mois: mois }),
+    ])
+    setEcritures(ecr || [])
+    setTva(tvaData || [])
+    setLoading(false)
+  }
+
+  useEffect(() => { loadData() }, [entrepriseId, annee, mois])
+
+  const handleRegenerer = async () => {
+    if (!confirm('Régénérer toutes les écritures de ventes manquantes ?\n(Aucune écriture existante ne sera modifiée)')) return
+    setRegenerating(true); setMsg('')
+    const { data, error } = await supabase.rpc('backfill_ecritures_ventes')
+    setRegenerating(false)
+    if (error) { setMsg('Erreur : ' + error.message); return }
+    setMsg('✓ ' + data + ' vente(s) traitée(s)')
+    loadData()
+  }
+
+  const totalDebit = ecritures.reduce((s, e) => s + parseFloat(e.debit || 0), 0)
+  const totalCredit = ecritures.reduce((s, e) => s + parseFloat(e.credit || 0), 0)
+  const totalBaseHT = tva.reduce((s, t) => s + parseFloat(t.base_ht || 0), 0)
+  const totalTVA = tva.reduce((s, t) => s + parseFloat(t.tva_collectee || 0), 0)
+  const moisNoms = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre']
+
+  return (
+    <div>
+      {/* Filtres */}
+      <div style={{ display: 'flex', gap: 12, marginBottom: 24, alignItems: 'end', flexWrap: 'wrap' as const }}>
+        <div>
+          <div style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, marginBottom: 6 }}>Entreprise</div>
+          <select value={entrepriseId} onChange={e => setEntrepriseId(e.target.value)} style={sel}>
+            {entreprises.map(e => <option key={e.id} value={e.id} style={{ background: '#1a1408' }}>{e.code} — {e.raison_sociale}</option>)}
+          </select>
+        </div>
+        <div>
+          <div style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, marginBottom: 6 }}>Mois</div>
+          <select value={mois} onChange={e => setMois(parseInt(e.target.value))} style={sel}>
+            {moisNoms.map((m, i) => <option key={i} value={i + 1} style={{ background: '#1a1408' }}>{m}</option>)}
+          </select>
+        </div>
+        <div>
+          <div style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, marginBottom: 6 }}>Année</div>
+          <select value={annee} onChange={e => setAnnee(parseInt(e.target.value))} style={sel}>
+            {[2024, 2025, 2026, 2027].map(a => <option key={a} value={a} style={{ background: '#1a1408' }}>{a}</option>)}
+          </select>
+        </div>
+        <button onClick={handleRegenerer} disabled={regenerating} style={{ background: 'rgba(201,169,110,0.1)', border: '0.5px solid rgba(201,169,110,0.3)', color: '#c9a96e', borderRadius: 4, padding: '9px 16px', fontSize: 11, cursor: regenerating ? 'wait' : 'pointer', letterSpacing: 1, marginLeft: 'auto' }}>
+          {regenerating ? '⟳ ...' : '↻ Régénérer écritures manquantes'}
+        </button>
+      </div>
+      {msg && <div style={{ marginBottom: 16, padding: '10px 14px', background: 'rgba(110,201,110,0.08)', border: '0.5px solid rgba(110,201,110,0.3)', borderRadius: 4, fontSize: 12, color: '#6ec96e' }}>{msg}</div>}
+
+      {/* TVA CA3 */}
+      <div style={{ background: '#18130e', border: '0.5px solid rgba(201,169,110,0.2)', borderRadius: 6, padding: '20px 24px', marginBottom: 24 }}>
+        <div style={{ fontSize: 11, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 16 }}>
+          Brouillon CA3 — {moisNoms[mois - 1]} {annee}
+        </div>
+        <table style={{ width: '100%', borderCollapse: 'collapse' as const, fontSize: 13 }}>
+          <thead>
+            <tr style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
+              <th style={{ textAlign: 'left' as const, padding: '8px 12px', fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const }}>Taux</th>
+              <th style={{ textAlign: 'right' as const, padding: '8px 12px', fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const }}>Base HT</th>
+              <th style={{ textAlign: 'right' as const, padding: '8px 12px', fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const }}>TVA collectée</th>
+            </tr>
+          </thead>
+          <tbody>
+            {tva.map((t, i) => (
+              <tr key={i} style={{ borderBottom: '0.5px solid rgba(255,255,255,0.04)' }}>
+                <td style={{ padding: '10px 12px', color: '#e8e0d5' }}>{parseFloat(t.taux).toFixed(1)} %</td>
+                <td style={{ padding: '10px 12px', textAlign: 'right' as const, color: '#e8e0d5', fontFamily: 'Georgia, serif' }}>{parseFloat(t.base_ht).toFixed(2)} €</td>
+                <td style={{ padding: '10px 12px', textAlign: 'right' as const, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{parseFloat(t.tva_collectee).toFixed(2)} €</td>
+              </tr>
+            ))}
+            <tr style={{ borderTop: '1px solid rgba(201,169,110,0.3)' }}>
+              <td style={{ padding: '12px', fontSize: 11, letterSpacing: 1.5, color: '#c9a96e', textTransform: 'uppercase' as const, fontWeight: 600 }}>Total</td>
+              <td style={{ padding: '12px', textAlign: 'right' as const, color: '#f0e8d8', fontFamily: 'Georgia, serif', fontWeight: 600 }}>{totalBaseHT.toFixed(2)} €</td>
+              <td style={{ padding: '12px', textAlign: 'right' as const, color: '#c9a96e', fontFamily: 'Georgia, serif', fontWeight: 600 }}>{totalTVA.toFixed(2)} €</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      {/* Journal des ventes */}
+      <div style={{ background: '#18130e', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 6, overflow: 'hidden' }}>
+        <div style={{ padding: '16px 24px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontSize: 11, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const }}>
+            Journal des ventes — {ecritures.length} écriture{ecritures.length > 1 ? 's' : ''}
+          </div>
+          <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>
+            Débit : <span style={{ color: '#e8e0d5', fontFamily: 'Georgia, serif' }}>{totalDebit.toFixed(2)} €</span>
+            <span style={{ margin: '0 12px', color: 'rgba(232,224,213,0.2)' }}>·</span>
+            Crédit : <span style={{ color: '#e8e0d5', fontFamily: 'Georgia, serif' }}>{totalCredit.toFixed(2)} €</span>
+          </div>
+        </div>
+        {loading ? (
+          <div style={{ padding: 40, textAlign: 'center' as const, color: 'rgba(232,224,213,0.4)' }}>⟳ Chargement…</div>
+        ) : ecritures.length === 0 ? (
+          <div style={{ padding: 40, textAlign: 'center' as const, color: 'rgba(232,224,213,0.4)', fontSize: 13 }}>
+            Aucune écriture pour cette période
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' as const }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' as const, fontSize: 12 }}>
+              <thead>
+                <tr style={{ borderBottom: '0.5px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.02)' }}>
+                  {['Date', 'Pièce', 'Compte', 'Libellé', 'Débit', 'Crédit'].map(h => (
+                    <th key={h} style={{ textAlign: h === 'Débit' || h === 'Crédit' ? 'right' as const : 'left' as const, padding: '10px 14px', fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const, fontWeight: 400 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {ecritures.map((e, i) => {
+                  const isNewPiece = i === 0 || ecritures[i - 1].numero_piece !== e.numero_piece
+                  return (
+                    <tr key={e.id} style={{ borderTop: isNewPiece && i > 0 ? '0.5px solid rgba(255,255,255,0.06)' : 'none' }}>
+                      <td style={{ padding: '8px 14px', color: 'rgba(232,224,213,0.6)' }}>{isNewPiece ? new Date(e.date_ecriture).toLocaleDateString('fr-FR') : ''}</td>
+                      <td style={{ padding: '8px 14px', color: isNewPiece ? '#c9a96e' : 'rgba(201,169,110,0.4)', fontFamily: 'monospace', fontSize: 11 }}>{isNewPiece ? e.numero_piece : ''}</td>
+                      <td style={{ padding: '8px 14px', color: '#e8e0d5' }}>
+                        <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#c9a96e' }}>{e.compte?.numero}</span>
+                        <span style={{ marginLeft: 8, color: 'rgba(232,224,213,0.5)' }}>{e.compte?.libelle}</span>
+                      </td>
+                      <td style={{ padding: '8px 14px', color: 'rgba(232,224,213,0.6)' }}>{e.libelle}</td>
+                      <td style={{ padding: '8px 14px', textAlign: 'right' as const, color: parseFloat(e.debit) > 0 ? '#e8e0d5' : 'rgba(232,224,213,0.2)', fontFamily: 'Georgia, serif' }}>
+                        {parseFloat(e.debit) > 0 ? parseFloat(e.debit).toFixed(2) + ' €' : '—'}
+                      </td>
+                      <td style={{ padding: '8px 14px', textAlign: 'right' as const, color: parseFloat(e.credit) > 0 ? '#c9a96e' : 'rgba(232,224,213,0.2)', fontFamily: 'Georgia, serif' }}>
+                        {parseFloat(e.credit) > 0 ? parseFloat(e.credit).toFixed(2) + ' €' : '—'}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }
