@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Diagnostic bundle</title>
+  <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
+  <script>eruda.init();</script>
+  <style>
+    body { background:#111; color:#fff; font-family:sans-serif; padding:20px; font-size:15px; }
+    .ok{color:#6ec96e} .ko{color:#c96e6e} .wait{color:#c9a96e}
+    li{margin:8px 0; list-style:none; padding:8px; background:#1a1a1a; border-radius:6px}
+  </style>
+</head>
+<body>
+<h2 style="color:#c9a96e">Diagnostic bundle Next.js</h2>
+<ul id="log"></ul>
+
+<script>
+var log = document.getElementById('log');
+function add(msg, cls) {
+  var li = document.createElement('li');
+  li.textContent = msg;
+  if(cls) li.className = cls;
+  log.appendChild(li);
+  console.log(msg);
+}
+
+// Attraper TOUTES les erreurs
+window.onerror = function(msg, src, line, col, err) {
+  add('❌ ERREUR JS: ' + msg + ' | ' + (src||'').split('/').pop() + ':' + line, 'ko');
+  return false;
+};
+window.addEventListener('unhandledrejection', function(e) {
+  add('❌ PROMISE REJETÉE: ' + String(e.reason), 'ko');
+});
+
+add('✓ HTML chargé, Eruda actif', 'ok');
+add('Vérification support ES modules...', 'wait');
+
+// Test 1 : ES modules supportés ?
+var s = document.createElement('script');
+s.type = 'module';
+s.textContent = 'window.__esm = true; console.log("ESM OK");';
+document.head.appendChild(s);
+
+setTimeout(function() {
+  if(window.__esm) {
+    add('✓ ES modules supportés', 'ok');
+  } else {
+    add('❌ ES modules NON supportés - cause probable !', 'ko');
+  }
+
+  // Test 2 : Charger le chunk Next.js principal
+  add('Chargement du bundle Next.js...', 'wait');
+  fetch('/caisse')
+    .then(function(r){ return r.text(); })
+    .then(function(html) {
+      // Extraire tous les scripts Next.js
+      var matches = html.match(/src="(\/_next\/static\/chunks\/[^"]+\.js)"/g) || [];
+      add('Scripts trouvés dans /caisse : ' + matches.length, 'wait');
+      
+      if(matches.length === 0) {
+        add('❌ Aucun chunk trouvé dans le HTML', 'ko');
+        return;
+      }
+
+      // Charger le premier chunk via script tag (pas fetch)
+      var firstSrc = matches[0].replace('src="', '').replace('"', '');
+      add('Chargement : ' + firstSrc.split('/').pop(), 'wait');
+      
+      var script = document.createElement('script');
+      script.type = 'module'; // Next.js utilise des ES modules
+      script.src = firstSrc;
+      script.onload = function() {
+        add('✓ Chunk chargé avec succès', 'ok');
+      };
+      script.onerror = function(e) {
+        add('❌ Erreur chargement chunk : ' + JSON.stringify(e.type), 'ko');
+      };
+      document.head.appendChild(script);
+
+      // Charger aussi sans type=module pour comparer
+      setTimeout(function() {
+        var script2 = document.createElement('script');
+        script2.src = firstSrc; // sans type=module
+        script2.onload = function() { add('✓ Chunk chargé sans module tag', 'ok'); };
+        script2.onerror = function() { add('❌ Erreur sans module tag aussi', 'ko'); };
+        document.head.appendChild(script2);
+      }, 1000);
+    })
+    .catch(function(e) {
+      add('❌ Fetch /caisse erreur: ' + e.message, 'ko');
+    });
+}, 500);
+
+add('(Ouvre aussi Eruda → Console pour plus de détails)', 'wait');
+</script>
+</body>
+</html>
