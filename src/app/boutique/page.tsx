@@ -113,24 +113,12 @@ export default function BoutiquePage() {
   return (
     <div style={{ background: '#ffffff', minHeight: '100vh', fontFamily: "'DM Sans', system-ui, sans-serif", color: '#1a1a1a' }}>
 
-      {/* Nav */}
-      <nav style={{ padding: '16px 40px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '0.5px solid rgba(0,0,0,0.08)', position: 'sticky' as const, top: 0, background: '#ffffff', zIndex: 50 }}>
-        <a href="/" style={{ fontFamily: 'Georgia, serif', fontSize: 16, color: '#8a6a3e', letterSpacing: 4, textTransform: 'uppercase' as const, textDecoration: 'none', fontWeight: 300 }}>Cave de Gilbert</a>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <input
-            placeholder="Rechercher un vin..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            style={{ background: 'rgba(0,0,0,0.05)', border: '0.5px solid rgba(0,0,0,0.12)', borderRadius: 3, color: '#1a1a1a', fontSize: 12, padding: '8px 14px', width: 220 }}
-          />
-        </div>
-        <a href="/panier" style={{ fontSize: 11, color: '#8a6a3e', textDecoration: 'none', letterSpacing: 1.5, border: '0.5px solid rgba(201,169,110,0.4)', padding: '8px 16px', borderRadius: 2 }}>Panier</a>
-      </nav>
+      {/* Nav principal géré par layout.tsx (sticky avec recherche typeahead) */}
 
       <div style={{ display: 'flex', maxWidth: 1400, margin: '0 auto' }}>
 
         {/* ── SIDEBAR FILTRES ── */}
-        <aside style={{ width: 220, padding: '32px 24px', borderRight: '0.5px solid rgba(0,0,0,0.08)', flexShrink: 0, position: 'sticky' as const, top: 53, alignSelf: 'start', height: 'calc(100vh - 53px)', overflowY: 'auto' as const }}>
+        <aside style={{ width: 220, padding: '32px 24px', borderRight: '0.5px solid rgba(0,0,0,0.08)', flexShrink: 0, position: 'sticky' as const, top: 64, alignSelf: 'start', height: 'calc(100vh - 64px)', overflowY: 'auto' as const }}>
 
           <div style={{ fontSize: 10, letterSpacing: 2, color: 'rgba(0,0,0,0.4)', textTransform: 'uppercase' as const, marginBottom: 20 }}>Filtres</div>
 
