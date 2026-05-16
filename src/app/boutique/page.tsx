@@ -44,11 +44,12 @@ export default function BoutiquePage() {
       const ID_ENTREPOT = 'e12d7e47-23dc-4011-95fc-e9e975fc4307'
       const ID_ARBRESLE = '3097e864-f452-4c2e-9af3-21e26f0330b7'
 
-      // 1) Catalogue de base (filtré sur les produits actifs)
+      // 1) Catalogue direct sur products (sans passer par la vue qui filtre trop)
       let query = supabase
-        .from('v_catalogue_complet')
-        .select('id, nom, millesime, couleur, prix_vente_ttc, image_url, slug, domaine, appellation, region, stock_total, stock_statut, bio, ia_generated, description_courte, aromes, accords')
+        .from('products')
+        .select('id, nom, millesime, couleur, prix_vente_ttc, image_url, slug, bio, ia_generated, description_courte, mis_en_avant, domaine:domaines(nom), appellation:appellations(nom), region:regions(nom), tasting_notes(aromes, accords)')
         .eq('actif', true)
+        .eq('visible_boutique', true)
       if (couleur) query = query.eq('couleur', couleur)
       if (bioOnly) query = query.eq('bio', true)
       if (prixMax) query = query.lte('prix_vente_ttc', prixMax)
@@ -60,25 +61,17 @@ export default function BoutiquePage() {
         case 'nom_asc':        query = query.order('nom', { ascending: true }); break
         default:               query = query.order('mis_en_avant', { ascending: false }).order('nom')
       }
-      const { data: catalog } = await query.limit(500)
+      const { data: catalog, error: errCat } = await query.limit(500)
+      if (errCat) { console.error('[boutique] catalog error', errCat); setProduits([]); setLoading(false); return }
       const ids = (catalog || []).map((p: any) => p.id)
       if (ids.length === 0) { setProduits([]); setLoading(false); return }
 
-      // 2) Filtre boutique : on garde uniquement les produits avec visible_boutique=true
-      const { data: visibles } = await supabase
-        .from('products')
-        .select('id')
-        .in('id', ids)
-        .eq('visible_boutique', true)
-      const visibleIds = new Set((visibles || []).map((v: any) => v.id))
-      let filtered = (catalog || []).filter((p: any) => visibleIds.has(p.id))
-
-      // 3) Fetch stock des 3 sites (entrepôt = livraison, Marcy/Arbresle = retrait 2h)
+      // 2) Fetch stock des 3 sites (entrepôt = livraison, Marcy/Arbresle = retrait 2h)
       const { data: allStock } = await supabase
         .from('stock')
         .select('product_id, site_id, quantite')
         .in('site_id', [ID_MARCY, ID_ENTREPOT, ID_ARBRESLE])
-        .in('product_id', Array.from(visibleIds))
+        .in('product_id', ids)
       const stockByProd = new Map<string, { entrepot: number; marcy: number; arbresle: number }>()
       for (const s of (allStock || [])) {
         const cur = stockByProd.get(s.product_id) || { entrepot: 0, marcy: 0, arbresle: 0 }
@@ -87,11 +80,19 @@ export default function BoutiquePage() {
         else if (s.site_id === ID_ARBRESLE) cur.arbresle = s.quantite
         stockByProd.set(s.product_id, cur)
       }
-      filtered = filtered.map((p: any) => {
+
+      // 3) Aplatir les joins et enrichir avec le stock
+      let filtered = (catalog || []).map((p: any) => {
         const s = stockByProd.get(p.id) || { entrepot: 0, marcy: 0, arbresle: 0 }
         const total = s.entrepot + s.marcy + s.arbresle
+        const tn = Array.isArray(p.tasting_notes) ? p.tasting_notes[0] : p.tasting_notes
         return {
           ...p,
+          domaine: p.domaine?.nom || null,
+          appellation: p.appellation?.nom || null,
+          region: p.region?.nom || null,
+          aromes: tn?.aromes || null,
+          accords: tn?.accords || null,
           stock_total: total,
           stock_entrepot: s.entrepot,
           stock_retrait: s.marcy + s.arbresle,
