@@ -1,6 +1,7 @@
 'use client'
 
 import { CartProvider, useCart, FRANCO_PORT, FRAIS_PORT } from './CartContext'
+import { AuthProvider, useAuth } from './AuthContext'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useState, useEffect, useRef } from 'react'
@@ -292,6 +293,132 @@ function CartDrawer() {
 }
 
 // ── Nav ───────────────────────────────────────────────────────
+// ── Modal Login pro ──────────────────────────────────────────
+function LoginModal({ onClose }: { onClose: () => void }) {
+  const { signIn, signUp } = useAuth()
+  const [mode, setMode] = useState<'login' | 'signup'>('login')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [prenom, setPrenom] = useState('')
+  const [nom, setNom] = useState('')
+  const [err, setErr] = useState('')
+  const [msg, setMsg] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true); setErr(''); setMsg('')
+    try {
+      if (mode === 'login') {
+        const { error } = await signIn(email, password)
+        if (error) { setErr(error); return }
+        onClose()
+      } else {
+        if (!prenom.trim() || !nom.trim()) { setErr('Prénom et nom requis'); return }
+        const { error, needsValidation } = await signUp(email, password, prenom, nom)
+        if (error) { setErr(error); return }
+        if (needsValidation) {
+          setMsg('Compte créé ! Un email de confirmation t\'a été envoyé. Tu pourras te connecter ensuite. Note : l\'accès aux infos stock pro nécessite une validation par notre équipe.')
+        }
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 850, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 6, padding: '32px 36px', maxWidth: 420, width: '100%', boxShadow: '0 24px 48px rgba(0,0,0,0.15)' }}>
+        <div style={{ fontFamily: 'Georgia, serif', fontSize: 22, color: '#0a0a0a', marginBottom: 6 }}>
+          {mode === 'login' ? 'Connexion pro' : 'Créer un compte pro'}
+        </div>
+        <div style={{ fontSize: 11, color: 'rgba(0,0,0,0.5)', marginBottom: 20 }}>
+          {mode === 'login' ? 'Accède aux stocks détaillés et tarifs pro.' : 'Inscris-toi puis demande la validation à l\'équipe pour l\'accès pro.'}
+        </div>
+        <form onSubmit={handleSubmit}>
+          {mode === 'signup' && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+              <input value={prenom} onChange={e => setPrenom(e.target.value)} placeholder="Prénom" required style={loginInput} />
+              <input value={nom} onChange={e => setNom(e.target.value)} placeholder="Nom" required style={loginInput} />
+            </div>
+          )}
+          <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" required style={{ ...loginInput, marginBottom: 12 }} />
+          <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder={mode === 'signup' ? 'Mot de passe (8+ caractères)' : 'Mot de passe'} required minLength={8} style={{ ...loginInput, marginBottom: 16 }} />
+          {err && <div style={{ fontSize: 12, color: '#a04444', marginBottom: 12, padding: '8px 12px', background: 'rgba(160,68,68,0.06)', borderRadius: 3 }}>{err}</div>}
+          {msg && <div style={{ fontSize: 12, color: '#2a8a2a', marginBottom: 12, padding: '8px 12px', background: 'rgba(42,138,42,0.08)', borderRadius: 3, lineHeight: 1.5 }}>{msg}</div>}
+          <button type="submit" disabled={loading} style={{
+            width: '100%', background: loading ? '#ccc' : '#8a6a3e', color: '#fff', border: 'none',
+            padding: '12px', fontSize: 12, letterSpacing: 1, textTransform: 'uppercase' as const,
+            cursor: loading ? 'wait' : 'pointer', borderRadius: 3, fontWeight: 600,
+          }}>
+            {loading ? '⟳' : mode === 'login' ? 'Se connecter' : 'Créer mon compte'}
+          </button>
+        </form>
+        <div style={{ marginTop: 16, fontSize: 12, color: 'rgba(0,0,0,0.55)', textAlign: 'center' as const }}>
+          {mode === 'login' ? (
+            <>Pas encore inscrit ? <button onClick={() => { setMode('signup'); setErr(''); setMsg('') }} style={{ background: 'transparent', border: 'none', color: '#8a6a3e', cursor: 'pointer', fontSize: 12, fontWeight: 600, padding: 0 }}>Créer un compte</button></>
+          ) : (
+            <>Déjà un compte ? <button onClick={() => { setMode('login'); setErr(''); setMsg('') }} style={{ background: 'transparent', border: 'none', color: '#8a6a3e', cursor: 'pointer', fontSize: 12, fontWeight: 600, padding: 0 }}>Se connecter</button></>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+const loginInput: any = { width: '100%', background: '#fbfaf6', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 3, padding: '10px 14px', fontSize: 13, color: '#1a1a1a', boxSizing: 'border-box' as const, outline: 'none' }
+
+// ── Bouton compte (login / mon compte / déconnexion) ─────────
+function AccountButton() {
+  const { user, isPro, signOut, loading } = useAuth()
+  const [showLogin, setShowLogin] = useState(false)
+  const [showMenu, setShowMenu] = useState(false)
+
+  if (loading) return null
+
+  if (!user) {
+    return (
+      <>
+        <button onClick={() => setShowLogin(true)} style={{
+          background: 'transparent', border: '0.5px solid rgba(0,0,0,0.15)',
+          color: 'rgba(0,0,0,0.6)', borderRadius: 8, padding: '8px 14px',
+          fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' as const,
+        }}>
+          🔑 Espace pro
+        </button>
+        {showLogin && <LoginModal onClose={() => setShowLogin(false)} />}
+      </>
+    )
+  }
+
+  const nom = user.prenom ? `${user.prenom} ${user.nom || ''}`.trim() : user.email.split('@')[0]
+  return (
+    <div style={{ position: 'relative' as const }}>
+      <button onClick={() => setShowMenu(!showMenu)} style={{
+        background: isPro ? 'rgba(138,106,62,0.08)' : 'transparent',
+        border: '0.5px solid rgba(138,106,62,0.4)',
+        color: '#8a6a3e', borderRadius: 8, padding: '8px 14px',
+        fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
+      }}>
+        <span>👤 {nom}</span>
+        {isPro && <span style={{ fontSize: 9, background: '#8a6a3e', color: '#fff', padding: '1px 6px', borderRadius: 2, letterSpacing: 0.5, fontWeight: 600 }}>PRO</span>}
+      </button>
+      {showMenu && (
+        <div style={{ position: 'absolute' as const, top: 'calc(100% + 6px)', right: 0, background: '#fff', border: '0.5px solid rgba(0,0,0,0.1)', borderRadius: 6, boxShadow: '0 8px 20px rgba(0,0,0,0.1)', minWidth: 200, zIndex: 100 }}>
+          <div style={{ padding: '12px 16px', borderBottom: '0.5px solid rgba(0,0,0,0.06)' }}>
+            <div style={{ fontSize: 12, color: '#0a0a0a' }}>{user.email}</div>
+            <div style={{ fontSize: 11, color: isPro ? '#2a8a2a' : 'rgba(0,0,0,0.5)', marginTop: 4 }}>
+              {isPro ? '✓ Compte pro validé' : 'Compte particulier (en attente de validation pro)'}
+            </div>
+          </div>
+          <button onClick={() => { setShowMenu(false); signOut() }} style={{ width: '100%', textAlign: 'left' as const, background: 'transparent', border: 'none', padding: '10px 16px', fontSize: 12, color: '#a04444', cursor: 'pointer' }}>
+            ↩ Se déconnecter
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function BoutiqueNav() {
   const { totalItems, openCart } = useCart()
   const pathname = usePathname()
@@ -343,6 +470,8 @@ function BoutiqueNav() {
           </div>
         )}
 
+        <AccountButton />
+
         <button onClick={openCart} style={{
           background: 'transparent', border: '0.5px solid rgba(138,106,62,0.4)',
           borderRadius: 8, padding: '8px 14px', cursor: 'pointer',
@@ -369,14 +498,15 @@ function BoutiqueNav() {
 // ── Layout ────────────────────────────────────────────────────
 export default function BoutiqueLayout({ children }: { children: React.ReactNode }) {
   return (
-    <CartProvider>
-      <div style={{
-        minHeight: '100vh', background: '#ffffff',
-        color: '#1a1a1a', fontFamily: "'DM Sans', system-ui, sans-serif",
-      }}>
-        <BoutiqueNav />
-        <CartDrawer />
-        <main>{children}</main>
+    <AuthProvider>
+      <CartProvider>
+        <div style={{
+          minHeight: '100vh', background: '#ffffff',
+          color: '#1a1a1a', fontFamily: "'DM Sans', system-ui, sans-serif",
+        }}>
+          <BoutiqueNav />
+          <CartDrawer />
+          <main>{children}</main>
 
         {/* Footer */}
         <footer style={{
@@ -424,7 +554,8 @@ export default function BoutiqueLayout({ children }: { children: React.ReactNode
         <div style={{ textAlign: 'center', padding: '16px', fontSize: 11, color: 'rgba(232,224,213,0.2)', borderTop: '0.5px solid rgba(255,255,255,0.04)' }}>
           © 2025 Cave de Gilbert · L'abus d'alcool est dangereux pour la santé
         </div>
-      </div>
-    </CartProvider>
+        </div>
+      </CartProvider>
+    </AuthProvider>
   )
 }

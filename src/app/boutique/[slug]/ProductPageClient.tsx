@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useAuth } from '../AuthContext'
 
 // ============================================================
 // Fiche produit — Cave de Gilbert
@@ -85,6 +86,7 @@ export default function ProductPageClient({ product, similaires }: { product: an
 
   const accent = COULEUR_ACCENT[product.couleur] || '#8a6a3e'
   // Stock affiché = stock entrepôt (le stock expédiable depuis l'entrepôt vers le client)
+  const { isPro } = useAuth()
   const stockEntrepot = product._stockByEntity?.entrepot ?? product.stock_total ?? 0
   const stockCaveGilbert = product._stockByEntity?.cave_gilbert ?? 0
   const stockPetiteCave = product._stockByEntity?.petite_cave ?? 0
@@ -410,7 +412,7 @@ export default function ProductPageClient({ product, similaires }: { product: an
                 Prix TTC · 75 cl
                 {stockEntrepot > 0 && (
                   <span style={{ marginLeft: 12, color: stockStatut === 'alerte' ? '#8a6a3e' : '#2a8a2a' }}>
-                    ● {stockStatut === 'alerte' ? `Plus que ${stockEntrepot} en stock` : 'En stock'}
+                    ● {stockStatut === 'alerte' ? (isPro ? `Plus que ${stockEntrepot} en stock` : 'Dernières bouteilles') : 'En stock'}
                   </span>
                 )}
               </div>
@@ -494,12 +496,12 @@ export default function ProductPageClient({ product, similaires }: { product: an
               <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 4 }}>
                 {stockCaveGilbert > 0 && (
                   <div style={{ fontSize: 12, color: '#1a1a1a' }}>
-                    <span style={{ color: '#2a8a73' }}>●</span> Cave de Gilbert · Marcy-l'Étoile <span style={{ color: 'rgba(0,0,0,0.5)', marginLeft: 6 }}>{stockCaveGilbert} bouteille{stockCaveGilbert > 1 ? 's' : ''}</span>
+                    <span style={{ color: '#2a8a73' }}>●</span> Cave de Gilbert · Marcy-l'Étoile{isPro && <span style={{ color: 'rgba(0,0,0,0.5)', marginLeft: 6 }}>{stockCaveGilbert} bouteille{stockCaveGilbert > 1 ? 's' : ''}</span>}
                   </div>
                 )}
                 {stockPetiteCave > 0 && (
                   <div style={{ fontSize: 12, color: '#1a1a1a' }}>
-                    <span style={{ color: '#2a8a73' }}>●</span> La Petite Cave · L'Arbresle <span style={{ color: 'rgba(0,0,0,0.5)', marginLeft: 6 }}>{stockPetiteCave} bouteille{stockPetiteCave > 1 ? 's' : ''}</span>
+                    <span style={{ color: '#2a8a73' }}>●</span> La Petite Cave · L'Arbresle{isPro && <span style={{ color: 'rgba(0,0,0,0.5)', marginLeft: 6 }}>{stockPetiteCave} bouteille{stockPetiteCave > 1 ? 's' : ''}</span>}
                   </div>
                 )}
               </div>

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { useCart } from './CartContext'
+import { useAuth } from './AuthContext'
 
 // ============================================================
 // Cave de Gilbert — Boutique / Catalogue client
@@ -330,6 +331,7 @@ function ProductCard({ product: p }: { product: any }) {
   const [qty, setQty] = useState(1)
   const [added, setAdded] = useState(false)
   const { addItem, updateQuantite, items, openCart } = useCart()
+  const { isPro } = useAuth()
   const accent = COULEUR_ACCENT[p.couleur] || '#8a6a3e'
   const disponible = p.stock_total > 0
 
@@ -424,7 +426,11 @@ function ProductCard({ product: p }: { product: any }) {
           <div style={{ fontFamily: 'Georgia, serif', fontSize: 22, color: accent, lineHeight: 1 }}>
             {p.prix_vente_ttc?.toFixed(2)}€
           </div>
-          <div style={{ fontSize: 10, color: 'rgba(0,0,0,0.4)', marginTop: 2 }}>TTC · {p.stock_total} dispo</div>
+          <div style={{ fontSize: 10, color: 'rgba(0,0,0,0.4)', marginTop: 2 }}>
+            TTC
+            {isPro && ` · ${p.stock_total} dispo`}
+            {!isPro && (p.stock_total === 0 ? ' · Rupture' : p.stock_total < 5 ? ' · Dernières bouteilles' : ' · En stock')}
+          </div>
         </div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           {disponible && (
