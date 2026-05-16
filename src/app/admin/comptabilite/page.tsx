@@ -289,6 +289,7 @@ function DashboardCompta() {
         { data: entreprises },
         { data: ventes },
         { data: facturesAchat },
+        { data: facturesInter },
       ] = await Promise.all([
         supabase.from('entreprises').select('id, code, raison_sociale').order('code'),
         supabase.from('ventes')
@@ -301,12 +302,22 @@ function DashboardCompta() {
           .select('*, fournisseur:fournisseurs(nom, categorie), entreprise:entreprises(code, raison_sociale)')
           .order('date_facture', { ascending: false })
           .limit(100),
+        supabase.from('factures_intersocietes')
+          .select('site_emetteur_id, site_destinataire_id, total_ht, total_ttc, type, statut, date_emission')
+          .gte('date_emission', debut)
+          .lte('date_emission', fin),
       ])
 
       // CA total + ventilation par entreprise (CDG = Marcy + Entrepôt, LPC = Arbresle)
       const ID_MARCY = 'ee3afa96-0c45-407f-87fc-e503fbada6c4'
       const ID_ENTREPOT = 'e12d7e47-23dc-4011-95fc-e9e975fc4307'
       const ID_ARBRESLE = '3097e864-f452-4c2e-9af3-21e26f0330b7'
+
+      const siteToCode = (siteId: string) => {
+        if (siteId === ID_ARBRESLE) return 'LPC'
+        if (siteId === ID_MARCY || siteId === ID_ENTREPOT) return 'CDG'
+        return null
+      }
 
       const caCDG = (ventes || [])
         .filter((v: any) => v.site_id === ID_MARCY || v.site_id === ID_ENTREPOT)
@@ -325,18 +336,31 @@ function DashboardCompta() {
       const facMois = (facturesAchat || []).filter((f: any) =>
         f.date_facture >= debut && f.date_facture <= fin && f.statut !== 'annulee'
       )
-      const achatsCDG = facMois
+      let achatsCDG = facMois
         .filter((f: any) => f.entreprise?.code === 'CDG')
         .reduce((sum: number, f: any) => sum + parseFloat(f.total_ht || 0), 0)
-      const achatsLPC = facMois
+      let achatsLPC = facMois
         .filter((f: any) => f.entreprise?.code === 'LPC')
         .reduce((sum: number, f: any) => sum + parseFloat(f.total_ht || 0), 0)
-      const tvaDedCDG = facMois
+      let tvaDedCDG = facMois
         .filter((f: any) => f.entreprise?.code === 'CDG')
         .reduce((sum: number, f: any) => sum + parseFloat(f.total_tva || 0), 0)
-      const tvaDedLPC = facMois
+      let tvaDedLPC = facMois
         .filter((f: any) => f.entreprise?.code === 'LPC')
         .reduce((sum: number, f: any) => sum + parseFloat(f.total_tva || 0), 0)
+
+      // Ajouter les factures inter-sociétés du mois (l'entité acheteur = destinataire pour 'facture', émetteur pour 'avoir')
+      for (const f of (facturesInter || [])) {
+        if (f.statut === 'brouillon' || f.statut === 'annulee') continue
+        const isAvoir = f.type === 'avoir'
+        const buyerSite = isAvoir ? f.site_emetteur_id : f.site_destinataire_id
+        const buyerCode = siteToCode(buyerSite)
+        const ht = parseFloat(f.total_ht || 0)
+        const ttc = parseFloat(f.total_ttc || 0)
+        const sign = isAvoir ? -1 : 1
+        if (buyerCode === 'CDG') { achatsCDG += sign * ht; tvaDedCDG += sign * (ttc - ht) }
+        else if (buyerCode === 'LPC') { achatsLPC += sign * ht; tvaDedLPC += sign * (ttc - ht) }
+      }
 
       // TVA collectée estimée (CA TTC - CA HT)
       const tvaColCDG = caCDG - caCDG_HT
@@ -490,7 +514,7 @@ function OngletAchats({ currentUser }: { currentUser: any }) {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [{ data: facs }, { data: ents }, { data: facsInter }] = await Promise.all([
+    const [{ data: facs }, { data: ents }, { data: facsInter, error: errInter }, { data: sitesData }] = await Promise.all([
       supabase.from('factures_achat')
         .select('*, fournisseur:fournisseurs(id, nom, categorie), entreprise:entreprises(id, code, raison_sociale)')
         .order('date_facture', { ascending: false })
@@ -498,20 +522,28 @@ function OngletAchats({ currentUser }: { currentUser: any }) {
       supabase.from('entreprises').select('id, code, raison_sociale').order('code'),
       supabase.from('factures_intersocietes')
         .select('*, transfer:stock_transfers(numero)')
-        .neq('statut', 'brouillon')
         .order('date_emission', { ascending: false })
         .limit(500),
+      supabase.from('sites').select('id, nom').eq('actif', true),
     ])
 
-    // Mapping site → entreprise (CDG = Marcy + Entrepôt, LPC = Arbresle)
+    // eslint-disable-next-line no-console
+    console.log('[Achats] factures_achat:', facs?.length || 0, '| factures_intersocietes:', facsInter?.length || 0, errInter ? `err=${errInter.message}` : '')
+
+    // Mapping site → entreprise.
+    // Priorité 1 : essayer de matcher par nom du site contre la raison_sociale de l'entreprise.
+    // Priorité 2 : fallback sur les UUIDs hardcodés (CDG = Marcy + Entrepôt, LPC = Arbresle).
     const ID_MARCY = 'ee3afa96-0c45-407f-87fc-e503fbada6c4'
     const ID_ENTREPOT = 'e12d7e47-23dc-4011-95fc-e9e975fc4307'
     const ID_ARBRESLE = '3097e864-f452-4c2e-9af3-21e26f0330b7'
-    const entCDG = (ents || []).find((e: any) => e.code === 'CDG')
-    const entLPC = (ents || []).find((e: any) => e.code === 'LPC')
+    const entCDG = (ents || []).find((e: any) => e.code === 'CDG' || /gilbert/i.test(e.raison_sociale || ''))
+    const entLPC = (ents || []).find((e: any) => e.code === 'LPC' || /petite cave/i.test(e.raison_sociale || ''))
+    const siteById = new Map<string, any>((sitesData || []).map((s: any) => [s.id, s]))
     const siteToEnt = (siteId: string) => {
-      if (siteId === ID_ARBRESLE) return entLPC
-      if (siteId === ID_MARCY || siteId === ID_ENTREPOT) return entCDG
+      const s = siteById.get(siteId)
+      const nom = (s?.nom || '').toLowerCase()
+      if (nom.includes('petite cave') || siteId === ID_ARBRESLE) return entLPC
+      if (nom.includes('gilbert') || nom.includes('entrepôt') || nom.includes('entrepot') || siteId === ID_MARCY || siteId === ID_ENTREPOT) return entCDG
       return null
     }
 
@@ -523,6 +555,8 @@ function OngletAchats({ currentUser }: { currentUser: any }) {
       const isAvoir = f.type === 'avoir'
       const buyerEnt = isAvoir ? siteToEnt(f.site_emetteur_id) : siteToEnt(f.site_destinataire_id)
       const sellerEnt = isAvoir ? siteToEnt(f.site_destinataire_id) : siteToEnt(f.site_emetteur_id)
+      const buyerSiteName = siteById.get(isAvoir ? f.site_emetteur_id : f.site_destinataire_id)?.nom
+      const sellerSiteName = siteById.get(isAvoir ? f.site_destinataire_id : f.site_emetteur_id)?.nom
       const ht = parseFloat(f.total_ht || 0)
       const ttc = parseFloat(f.total_ttc || 0)
       const sign = isAvoir ? -1 : 1
@@ -531,10 +565,10 @@ function OngletAchats({ currentUser }: { currentUser: any }) {
         numero_interne: f.numero,
         numero_fournisseur: f.transfer?.numero || null,
         entreprise_id: buyerEnt?.id || null,
-        entreprise: buyerEnt,
+        entreprise: buyerEnt || { code: '?', raison_sociale: buyerSiteName || '?' },
         fournisseur: {
           id: null,
-          nom: `${sellerEnt?.raison_sociale || '—'} (inter-société)`,
+          nom: `${sellerEnt?.raison_sociale || sellerSiteName || '—'} (inter-société)`,
           categorie: 'inter_societe',
         },
         date_facture: f.date_emission,
@@ -543,11 +577,14 @@ function OngletAchats({ currentUser }: { currentUser: any }) {
         total_ht: sign * ht,
         total_tva: sign * (ttc - ht),
         total_ttc: sign * ttc,
-        statut: f.statut === 'reglee' ? 'reglee' : 'a_valider',
+        statut: f.statut === 'reglee' ? 'reglee' : f.statut === 'brouillon' ? 'a_valider' : 'a_valider',
         _isInterCo: true,
         _docType: f.type,
       } as any
     })
+
+    // eslint-disable-next-line no-console
+    console.log('[Achats] inter-soc mappées:', facsInterMapped.length, '— sans entreprise:', facsInterMapped.filter(x => !x.entreprise_id).length)
 
     const merged = [...(facs || []), ...facsInterMapped]
       .sort((a, b) => (b.date_facture || '').localeCompare(a.date_facture || ''))
@@ -593,15 +630,15 @@ function OngletAchats({ currentUser }: { currentUser: any }) {
           <div>
             <label style={lbl}>Entreprise</label>
             <select value={filtreEntreprise} onChange={e => setFiltreEntreprise(e.target.value)} style={{ ...sel, width: '100%' }}>
-              <option value="">Toutes</option>
-              {entreprises.map(e => <option key={e.id} value={e.id}>{e.code} — {e.raison_sociale}</option>)}
+              <option value="" style={{ background: '#1a1408', color: '#e8e0d5' }}>Toutes</option>
+              {entreprises.map(e => <option key={e.id} value={e.id} style={{ background: '#1a1408', color: '#e8e0d5' }}>{e.code} — {e.raison_sociale}</option>)}
             </select>
           </div>
           <div>
             <label style={lbl}>Statut</label>
             <select value={filtreStatut} onChange={e => setFiltreStatut(e.target.value)} style={{ ...sel, width: '100%' }}>
-              <option value="">Tous</option>
-              {Object.entries(STATUT_LABELS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+              <option value="" style={{ background: '#1a1408', color: '#e8e0d5' }}>Tous</option>
+              {Object.entries(STATUT_LABELS).map(([k, v]) => <option key={k} value={k} style={{ background: '#1a1408', color: '#e8e0d5' }}>{v.label}</option>)}
             </select>
           </div>
           <div>
