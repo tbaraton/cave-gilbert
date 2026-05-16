@@ -736,7 +736,7 @@ function HistoriqueAchatsClient({ client, onClose, onAddToCart, onRetourDone }: 
               🖨 Imprimer / PDF
             </button>
           </div>
-          {selectedPiece.type_doc !== 'facture' && selectedPiece.type_doc !== 'avoir' && <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', marginBottom: 8 }}>TRANSFORMER EN :</div>}}
+          {selectedPiece.type_doc !== 'facture' && selectedPiece.type_doc !== 'avoir' && <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', marginBottom: 8 }}>TRANSFORMER EN :</div>}
           <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
             {selectedPiece.type_doc !== 'commande' && selectedPiece.type_doc !== 'bl' && selectedPiece.type_doc !== 'facture' && (
               <button onClick={() => handleTransformerPiece(selectedPiece, 'commande')} style={{ background: 'rgba(201,169,110,0.08)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 8, color: '#c9b06e', padding: '10px 14px', fontSize: 13, cursor: 'pointer', textAlign: 'left' as const }}>📦 Commande (réservation stock)</button>
