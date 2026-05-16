@@ -29,6 +29,37 @@ const getLogoForSite = (siteName: string) => {
   return '/logo.png'
 }
 
+function getSiteInfo(siteNomOrLabel: string) {
+  const n = (siteNomOrLabel || '').toLowerCase()
+  if (n.includes('petite cave') || n === 'lpc') {
+    return { nom: 'La Petite Cave', adresse: '3 Rue Peillon', ville: "69210 L'Arbresle", tel: '09 60 50 15 72', email: 'contact@petitecave.net', siret: '452 841 562 00039', logo: '/logo-petite-cave.png' }
+  }
+  return { nom: 'Cave de Gilbert', adresse: 'Avenue Jean Colomb', ville: "69280 Marcy l'Étoile", tel: '04 22 91 41 09', email: 'contact@cavedegilbert.fr', siret: '898 622 055 00017', logo: '/logo.png' }
+}
+
+function genererHTMLTicket({ numero, dateStr, heureStr, vendeur, lignes, totalTTC, paiements, siteInfo, notes }: {
+  numero: string; dateStr: string; heureStr: string; vendeur?: string
+  lignes: Array<{ qte: number | string; nom: string; millesime?: string | number; totalTTC: number }>
+  totalTTC: number; paiements: Array<{ label: string; montant: number }>
+  siteInfo: ReturnType<typeof getSiteInfo>; notes?: string
+}) {
+  const totalHT = totalTTC / 1.20
+  const tva = totalTTC - totalHT
+  const logoUrl = (typeof window !== 'undefined' ? window.location.origin : '') + siteInfo.logo
+  const modeLabel = (m: string) => ({ cb: 'Carte bancaire', especes: 'Espèces', virement: 'Virement', cheque: 'Chèque', bon_achat: "Bon d'achat", non_regle: 'Non réglé' }[m] || m)
+  const row = (a: string, b: string, bold = false) => `<div style="display:flex;justify-content:space-between;margin:2px 0;${bold ? 'font-weight:bold;font-size:13px' : 'font-size:11px'}""><span>${a}</span><span>${b}</span></div>`
+  const sep = '<hr style="border:none;border-top:1px dashed #000;margin:5px 0"/>'
+  const lignesHtml = notes
+    ? row(notes, totalTTC.toFixed(2) + '€')
+    : lignes.map(l => row(`${l.qte}x ${l.nom}${l.millesime ? ' ' + l.millesime : ''}`, parseFloat(String(l.totalTTC)).toFixed(2) + '€')).join('')
+  const paiementsHtml = paiements.map(p => row(modeLabel(p.label), p.montant.toFixed(2) + '€')).join('')
+  return `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:monospace;font-size:11px;width:80mm;margin:0 auto;padding:3mm}.center{text-align:center}.footer{font-size:9px;color:#444;text-align:center;margin-top:6px;line-height:1.6}</style></head><body>
+<div class="center"><img src="${logoUrl}" style="max-width:44mm;max-height:22mm;display:block;margin:0 auto 4px" onerror="this.style.display='none'"/><div style="font-size:10px">${siteInfo.adresse} — ${siteInfo.ville}</div><div style="font-size:10px">Tél : ${siteInfo.tel}</div><div style="font-size:9px">SIRET : ${siteInfo.siret}</div></div>
+${sep}<div class="center" style="font-weight:bold">TICKET DE CAISSE</div><div class="center" style="font-size:10px">N° ${numero}</div><div class="center" style="font-size:10px">${dateStr} — ${heureStr}${vendeur ? ' · ' + vendeur : ''}</div>
+${sep}${lignesHtml}${sep}${row('Total HT', totalHT.toFixed(2) + '€')}${row('TVA 20%', tva.toFixed(2) + '€')}${sep}${row('TOTAL TTC', totalTTC.toFixed(2) + '€', true)}${sep}${paiementsHtml}${sep}
+<div class="footer">TVA acquittée sur les débits<br/>Échange ou remboursement sous 30 jours sur présentation du ticket<br/>${siteInfo.email}<br/>Merci de votre visite !</div></body></html>`
+}
+
 // ── Login ─────────────────────────────────────────────────────
 function EcranLogin({ onLogin }: { onLogin: (u: User) => void }) {
   const [prenom, setPrenom] = useState('')
@@ -960,42 +991,18 @@ function HistoriqueVentes({ session, onClose, onAddToCart }: {
 
   const handlePrint = (type: 'ticket' | 'facture') => {
     if (!detail) return
-    const css = type === 'ticket' ? `
-      body { font-family: monospace; font-size: 12px; width: 80mm; margin: 0 auto; }
-      .header { text-align: center; border-bottom: 1px dashed #000; padding-bottom: 8px; margin-bottom: 8px; }
-      .ligne { display: flex; justify-content: space-between; margin: 3px 0; }
-      .total { border-top: 1px dashed #000; padding-top: 6px; margin-top: 6px; font-weight: bold; font-size: 14px; }
-      .footer { text-align: center; margin-top: 10px; font-size: 10px; }
-    ` : `
-      body { font-family: Arial, sans-serif; font-size: 12px; max-width: 210mm; margin: 0 auto; padding: 20mm; }
-      .header { display: flex; justify-content: space-between; margin-bottom: 30px; }
-      .title { font-size: 24px; font-weight: bold; color: #8B6914; margin-bottom: 20px; }
-      table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-      th { background: #f5f0e8; padding: 8px; text-align: left; border-bottom: 2px solid #c9a96e; }
-      td { padding: 8px; border-bottom: 1px solid #eee; }
-      .total-row { font-weight: bold; font-size: 14px; }
-      .footer { margin-top: 40px; font-size: 10px; color: #666; border-top: 1px solid #eee; padding-top: 10px; }
-    `
-
-    const lignesHtml = lignesDetail.map(l =>
-      type === 'ticket'
-        ? `<div class="ligne"><span>${l.quantite}x ${l.nom_produit}${l.millesime ? ' ' + l.millesime : ''}</span><span>${parseFloat(l.total_ttc).toFixed(2)}€</span></div>`
-        : `<tr><td>${l.nom_produit}${l.millesime ? ' ' + l.millesime : ''}</td><td style="text-align:center">${l.quantite}</td><td style="text-align:right">${parseFloat(l.prix_unitaire_ttc).toFixed(2)}€</td>${l.remise_pct > 0 ? `<td style="text-align:right">${l.remise_pct}%</td>` : '<td></td>'}<td style="text-align:right"><b>${parseFloat(l.total_ttc).toFixed(2)}€</b></td></tr>`
-    ).join('')
-
-    const html = type === 'ticket' ? `
-      <html><head><style>${css}</style></head><body>
-      <div class="header">
-        <div><b>Cave de Gilbert</b></div>
-        <div>${new Date(detail.created_at).toLocaleDateString('fr-FR')}</div>
-        <div>N° ${detail.numero}</div>
-      </div>
-      ${detail.notes ? `<div style="border:1px dashed #000;padding:6px;margin-bottom:8px">${detail.notes}</div>` : lignesHtml}
-      <div class="total"><div class="ligne"><span>TOTAL TTC</span><span>${parseFloat(detail.total_ttc).toFixed(2)}€</span></div></div>
-      ${paiementsDetail.map(p => `<div class="ligne"><span>${p.mode}</span><span>${parseFloat(p.montant).toFixed(2)}€</span></div>`).join('')}
-      <div class="footer">Merci de votre visite !</div>
-      </body></html>
-    ` : genererFactureCaisse(detail, lignesDetail, paiementsDetail)
+    if (type === 'ticket') {
+      const siteLabel = siteLabels[detail.site_id] || ''
+      const siteInfo = getSiteInfo(siteLabel)
+      const d = new Date(detail.created_at)
+      const lignes = (lignesDetail || []).map((l: any) => ({ qte: l.quantite, nom: l.nom_produit, millesime: l.millesime, totalTTC: parseFloat(l.total_ttc) }))
+      const paiements = (paiementsDetail || []).map((p: any) => ({ label: p.mode, montant: parseFloat(p.montant) }))
+      const html = genererHTMLTicket({ numero: detail.numero, dateStr: d.toLocaleDateString('fr-FR'), heureStr: d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }), vendeur: detail.user?.prenom, lignes, totalTTC: parseFloat(detail.total_ttc), paiements, siteInfo, notes: detail.notes || undefined })
+      const win = window.open('', '_blank')
+      if (win) { win.document.write(html); win.document.close(); win.print() }
+      return
+    }
+    const html = genererFactureCaisse(detail, lignesDetail, paiementsDetail)
     const win = window.open('', '_blank')
     if (win) { win.document.write(html); win.document.close(); win.print() }
   }
@@ -2705,8 +2712,11 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
   }
 
   const imprimerTicket = (vente: any) => {
-    const lignesHtml = (vente.lignes||[]).map((l:any) => `<div class="ligne"><span>${l.qte}x ${l.nom_modifie||l.nom}${l.millesime?' '+l.millesime:''}</span><span>${l.total.toFixed(2)}€</span></div>`).join('')
-    const html = `<html><head><style>body{font-family:monospace;font-size:12px;width:80mm;margin:0 auto}.header{text-align:center;border-bottom:1px dashed #000;padding-bottom:8px;margin-bottom:8px}.ligne{display:flex;justify-content:space-between;margin:3px 0}.total{border-top:1px dashed #000;padding-top:6px;margin-top:6px;font-weight:bold}.footer{text-align:center;margin-top:10px;font-size:10px}</style></head><body><div class="header"><b>Cave de Gilbert</b><br/>${new Date().toLocaleDateString('fr-FR')}<br/>N° ${vente.numero}</div>${noteGlobaleActive&&noteGlobale?`<div class="ligne"><span>${noteGlobale}</span><span>${vente.total.toFixed(2)}€</span></div>`:lignesHtml}<div class="total"><div class="ligne"><span>TOTAL TTC</span><span>${vente.total.toFixed(2)}€</span></div></div>${(vente.paiements||[]).map((p:any)=>`<div class="ligne"><span>${p.label}</span><span>${p.montant.toFixed(2)}€</span></div>`).join('')}<div class="footer">Merci de votre visite !</div></body></html>`
+    const siteInfo = getSiteInfo(session.site_nom || '')
+    const now = new Date()
+    const lignes = (vente.lignes || []).map((l: any) => ({ qte: l.qte, nom: l.nom_modifie || l.nom, millesime: l.millesime, totalTTC: l.total }))
+    const paiements = (vente.paiements || []).map((p: any) => ({ label: p.mode || p.label, montant: p.montant }))
+    const html = genererHTMLTicket({ numero: vente.numero, dateStr: now.toLocaleDateString('fr-FR'), heureStr: now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }), vendeur: vendeur?.prenom, lignes, totalTTC: vente.total, paiements, siteInfo, notes: noteGlobaleActive && noteGlobale ? noteGlobale : undefined })
     const win = window.open('', '_blank'); if (win) { win.document.write(html); win.document.close(); win.print() }
   }
 
