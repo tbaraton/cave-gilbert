@@ -38,16 +38,45 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'PHOTOROOM_API_KEY manquante. Crée une clé gratuite sur app.photoroom.com → API.' }, { status: 500 })
     }
 
-    const formData = await req.formData()
-    const file = formData.get('file') as File | null
-    const productId = formData.get('product_id') as string | null
-    if (!file) {
-      return NextResponse.json({ error: 'Fichier manquant (champ "file" attendu)' }, { status: 400 })
+    // Deux modes d'entrée :
+    //  - multipart/form-data avec champ "file" (upload classique)
+    //  - JSON { image_url, product_id } (récupère l'image depuis une URL)
+    const contentType = req.headers.get('content-type') || ''
+    let imageBlob: Blob
+    let productId: string | null = null
+
+    if (contentType.includes('application/json')) {
+      const body = await req.json()
+      productId = body.product_id || null
+      const url = body.image_url
+      if (!url) return NextResponse.json({ error: 'image_url manquant dans le body JSON' }, { status: 400 })
+      // Fetch l'image depuis l'URL (avec un User-Agent pour passer les CDN type Cloudflare)
+      let imgRes: Response
+      try {
+        imgRes = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CaveGilbertBot/1.0)' } })
+      } catch (e: any) {
+        return NextResponse.json({ error: `Impossible de télécharger l'image : ${e.message}` }, { status: 400 })
+      }
+      if (!imgRes.ok) {
+        return NextResponse.json({ error: `URL inaccessible (HTTP ${imgRes.status}). Vérifie le lien.` }, { status: 400 })
+      }
+      const imgContentType = imgRes.headers.get('content-type') || 'image/jpeg'
+      if (!imgContentType.startsWith('image/')) {
+        return NextResponse.json({ error: `L'URL ne pointe pas vers une image (type : ${imgContentType})` }, { status: 400 })
+      }
+      const imgBuffer = await imgRes.arrayBuffer()
+      imageBlob = new Blob([imgBuffer], { type: imgContentType })
+    } else {
+      const formData = await req.formData()
+      const file = formData.get('file') as File | null
+      productId = formData.get('product_id') as string | null
+      if (!file) return NextResponse.json({ error: 'Fichier manquant (champ "file" attendu)' }, { status: 400 })
+      imageBlob = file
     }
 
     // 1. Détourage via PhotoRoom — endpoint v1/segment, renvoie PNG transparent
     const prFormData = new FormData()
-    prFormData.append('image_file', file)
+    prFormData.append('image_file', imageBlob, 'bottle.jpg')
     const prRes = await fetch('https://sdk.photoroom.com/v1/segment', {
       method: 'POST',
       headers: { 'x-api-key': photoroomKey },

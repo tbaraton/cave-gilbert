@@ -542,6 +542,8 @@ function ModalEditProduit({ produit, regions: regionsProp, appellations: appella
     }
   }
 
+  const [urlSource, setUrlSource] = useState('')
+
   const handleUploadBottlePhoto = async (file: File) => {
     setUploadingImage(true)
     setError('')
@@ -555,6 +557,27 @@ function ModalEditProduit({ produit, regions: regionsProp, appellations: appella
       setForm(f => ({ ...f, image_url: data.url }))
     } catch (e: any) {
       setError(`Erreur upload : ${e.message}`)
+    } finally {
+      setUploadingImage(false)
+    }
+  }
+
+  const handleProcessUrl = async () => {
+    const url = urlSource.trim()
+    if (!url) { setError('Colle d\'abord une URL d\'image'); return }
+    setUploadingImage(true); setError('')
+    try {
+      const res = await fetch('/api/upload-bottle-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image_url: url, product_id: produit.id }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setError(data.error || 'Échec détourage URL'); return }
+      setForm(f => ({ ...f, image_url: data.url }))
+      setUrlSource('')
+    } catch (e: any) {
+      setError(`Erreur détourage URL : ${e.message}`)
     } finally {
       setUploadingImage(false)
     }
@@ -804,6 +827,25 @@ function ModalEditProduit({ produit, regions: regionsProp, appellations: appella
           <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.35)', marginTop: 6 }}>
             Upload une photo de bouteille (n'importe quel fond) — détourage auto + cadrage carré 800×800 fond blanc.
           </div>
+
+          {/* Alternative : URL trouvée sur le web */}
+          <div style={{ marginTop: 10, padding: '10px 12px', background: 'rgba(255,255,255,0.02)', border: '0.5px dashed rgba(255,255,255,0.1)', borderRadius: 4 }}>
+            <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.4)', marginBottom: 6, textTransform: 'uppercase' as const, letterSpacing: 1 }}>OU coller une URL trouvée sur le web</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input value={urlSource} onChange={e => setUrlSource(e.target.value)} placeholder="https://exemple.com/photo-bouteille.jpg" style={{ ...inp, flex: 1 }} />
+              <button onClick={handleProcessUrl} disabled={uploadingImage || !urlSource.trim()} style={{
+                background: (uploadingImage || !urlSource.trim()) ? '#2a2a2a' : 'rgba(110,201,176,0.15)',
+                border: '0.5px solid rgba(110,201,176,0.4)',
+                color: (uploadingImage || !urlSource.trim()) ? '#888' : '#6ec9b0',
+                borderRadius: 4, padding: '9px 14px', fontSize: 12, fontWeight: 600,
+                cursor: (uploadingImage || !urlSource.trim()) ? 'not-allowed' : 'pointer',
+                whiteSpace: 'nowrap' as const,
+              }}>
+                {uploadingImage ? '⟳' : '↓ Détourer cette URL'}
+              </button>
+            </div>
+          </div>
+
           {form.image_url && (
             <img src={form.image_url} alt="" style={{ height: 120, marginTop: 10, borderRadius: 4, objectFit: 'contain' as const, background: '#fff', padding: 4 }} onError={e => (e.currentTarget.style.display = 'none')} />
           )}

@@ -15,7 +15,7 @@ const COULEUR_LABEL: Record<string, string> = {
 
 const COULEUR_ACCENT: Record<string, string> = {
   rouge: '#8b2020', blanc: '#b8a96a', rosé: '#c97b7b',
-  champagne: '#c9b06e', effervescent: '#c9b06e',
+  champagne: '#8a6a3e', effervescent: '#8a6a3e',
   spiritueux: '#6e8b6e', autre: '#888',
 }
 
@@ -23,21 +23,21 @@ function ProfilBar({ label, value }: { label: string; value: number | null }) {
   if (!value) return null
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
-      <span style={{ width: 80, fontSize: 11, color: 'rgba(232,224,213,0.4)', textAlign: 'right' as const }}>{label}</span>
-      <div style={{ flex: 1, height: 2, background: 'rgba(255,255,255,0.06)', borderRadius: 1 }}>
-        <div style={{ width: `${value}%`, height: '100%', background: 'linear-gradient(90deg, #c9a96e, #e8c98a)', borderRadius: 1, transition: 'width 1s ease' }} />
+      <span style={{ width: 80, fontSize: 11, color: 'rgba(0,0,0,0.5)', textAlign: 'right' as const }}>{label}</span>
+      <div style={{ flex: 1, height: 2, background: 'rgba(0,0,0,0.08)', borderRadius: 1 }}>
+        <div style={{ width: `${value}%`, height: '100%', background: 'linear-gradient(90deg, #8a6a3e, #a8854a)', borderRadius: 1, transition: 'width 1s ease' }} />
       </div>
-      <span style={{ fontSize: 10, color: 'rgba(232,224,213,0.25)', width: 24 }}>{value}</span>
+      <span style={{ fontSize: 10, color: 'rgba(0,0,0,0.35)', width: 24 }}>{value}</span>
     </div>
   )
 }
 
 export default function ProductPageClient({ product, similaires }: { product: any; similaires: any[] }) {
   const [qty, setQty] = useState(1)
-  const [activeTab, setActiveTab] = useState<'description' | 'degustation' | 'service'>('description')
+  const [activeTab, setActiveTab] = useState<'description' | 'degustation' | 'service'>('degustation')
   const [addedToCart, setAddedToCart] = useState(false)
 
-  const accent = COULEUR_ACCENT[product.couleur] || '#c9a96e'
+  const accent = COULEUR_ACCENT[product.couleur] || '#8a6a3e'
   // Stock affiché = stock entrepôt (le stock expédiable depuis l'entrepôt vers le client)
   const stockEntrepot = product._stockByEntity?.entrepot ?? product.stock_total ?? 0
   const stockCaveGilbert = product._stockByEntity?.cave_gilbert ?? 0
@@ -52,28 +52,28 @@ export default function ProductPageClient({ product, similaires }: { product: an
   }
 
   return (
-    <div style={{ background: '#0d0a08', minHeight: '100vh', fontFamily: "'DM Sans', system-ui, sans-serif", color: '#e8e0d5' }}>
+    <div style={{ background: '#ffffff', minHeight: '100vh', fontFamily: "'DM Sans', system-ui, sans-serif", color: '#1a1a1a' }}>
 
       {/* Navigation */}
-      <nav style={{ padding: '16px 40px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '0.5px solid rgba(255,255,255,0.06)' }}>
-        <a href="/" style={{ fontFamily: 'Georgia, serif', fontSize: 16, color: '#c9a96e', letterSpacing: 4, textTransform: 'uppercase' as const, textDecoration: 'none', fontWeight: 300 }}>Cave de Gilbert</a>
-        <div style={{ display: 'flex', gap: 28, fontSize: 11, letterSpacing: 1.5, color: 'rgba(232,224,213,0.4)', textTransform: 'uppercase' as const }}>
+      <nav style={{ padding: '16px 40px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '0.5px solid rgba(0,0,0,0.08)' }}>
+        <a href="/" style={{ fontFamily: 'Georgia, serif', fontSize: 16, color: '#8a6a3e', letterSpacing: 4, textTransform: 'uppercase' as const, textDecoration: 'none', fontWeight: 300 }}>Cave de Gilbert</a>
+        <div style={{ display: 'flex', gap: 28, fontSize: 11, letterSpacing: 1.5, color: 'rgba(0,0,0,0.5)', textTransform: 'uppercase' as const }}>
           <a href="/boutique" style={{ color: 'inherit', textDecoration: 'none' }}>Vins</a>
           <a href="/boutique?couleur=champagne" style={{ color: 'inherit', textDecoration: 'none' }}>Champagnes</a>
           <a href="/boutique?couleur=spiritueux" style={{ color: 'inherit', textDecoration: 'none' }}>Spiritueux</a>
         </div>
-        <a href="/panier" style={{ fontSize: 11, color: '#c9a96e', textDecoration: 'none', letterSpacing: 1.5, border: '0.5px solid rgba(201,169,110,0.4)', padding: '8px 16px', borderRadius: 2 }}>
+        <a href="/panier" style={{ fontSize: 11, color: '#8a6a3e', textDecoration: 'none', letterSpacing: 1.5, border: '0.5px solid rgba(201,169,110,0.4)', padding: '8px 16px', borderRadius: 2 }}>
           Panier
         </a>
       </nav>
 
       {/* Breadcrumb */}
-      <div style={{ padding: '12px 40px', fontSize: 11, color: 'rgba(232,224,213,0.3)', letterSpacing: 0.5 }}>
+      <div style={{ padding: '12px 40px', fontSize: 11, color: 'rgba(0,0,0,0.4)', letterSpacing: 0.5 }}>
         <a href="/" style={{ color: 'inherit', textDecoration: 'none' }}>Accueil</a>
         <span style={{ margin: '0 8px' }}>·</span>
         <a href="/boutique" style={{ color: 'inherit', textDecoration: 'none' }}>Boutique</a>
         <span style={{ margin: '0 8px' }}>·</span>
-        <span style={{ color: '#c9a96e' }}>{product.nom}</span>
+        <span style={{ color: '#8a6a3e' }}>{product.nom}</span>
       </div>
 
       {/* Corps principal */}
@@ -89,7 +89,7 @@ export default function ProductPageClient({ product, similaires }: { product: an
           </div>
 
           {/* Image / Bouteille placeholder */}
-          <div style={{ background: '#100d0a', borderRadius: 8, padding: '60px 40px', textAlign: 'center' as const, marginBottom: 24, border: '0.5px solid rgba(255,255,255,0.05)', minHeight: 420, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fbfaf6', borderRadius: 8, padding: '60px 40px', textAlign: 'center' as const, marginBottom: 24, border: '0.5px solid rgba(0,0,0,0.06)', minHeight: 420, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             {product.image_url ? (
               <img src={product.image_url} alt={product.nom} style={{ maxHeight: 380, maxWidth: '100%', objectFit: 'contain' }} />
             ) : (
@@ -97,27 +97,27 @@ export default function ProductPageClient({ product, similaires }: { product: an
                 {/* Capsule */}
                 <rect x="52" y="12" width="36" height="24" rx="4" fill={accent} opacity="0.7" />
                 {/* Col */}
-                <path d="M52 34 L52 90 Q52 105 44 115 L38 128 L102 128 L96 115 Q88 105 88 90 L88 34 Z" fill="#1c1408" />
+                <path d="M52 34 L52 90 Q52 105 44 115 L38 128 L102 128 L96 115 Q88 105 88 90 L88 34 Z" fill="#f5f0e6" />
                 {/* Corps */}
-                <rect x="28" y="128" width="84" height="200" rx="5" fill="#1a1208" />
+                <rect x="28" y="128" width="84" height="200" rx="5" fill="#f5f0e6" />
                 {/* Étiquette */}
-                <rect x="32" y="148" width="76" height="158" rx="3" fill="#f5efd8" />
-                <rect x="36" y="152" width="68" height="150" rx="2" fill="#faf5e4" />
+                <rect x="32" y="148" width="76" height="158" rx="3" fill="#1a1a1a" />
+                <rect x="36" y="152" width="68" height="150" rx="2" fill="#1a1a1a" />
                 <rect x="40" y="158" width="60" height="0.5" fill={accent} />
-                <text x="70" y="174" textAnchor="middle" fontFamily="Georgia, serif" fontSize="7" fill="#1a0f04" letterSpacing="1">{product.domaine || 'Domaine'}</text>
-                <text x="70" y="195" textAnchor="middle" fontFamily="Georgia, serif" fontSize="8.5" fill="#1a0f04" fontWeight="bold">{(product.nom || '').slice(0, 18)}</text>
+                <text x="70" y="174" textAnchor="middle" fontFamily="Georgia, serif" fontSize="7" fill="#f5f0e6" letterSpacing="1">{product.domaine || 'Domaine'}</text>
+                <text x="70" y="195" textAnchor="middle" fontFamily="Georgia, serif" fontSize="8.5" fill="#f5f0e6" fontWeight="bold">{(product.nom || '').slice(0, 18)}</text>
                 {product.millesime && (
                   <>
-                    <rect x="52" y="205" width="36" height="14" rx="1" fill="#1a0f04" />
+                    <rect x="52" y="205" width="36" height="14" rx="1" fill="#f5f0e6" />
                     <text x="70" y="216" textAnchor="middle" fontFamily="Georgia, serif" fontSize="9" fill={accent} letterSpacing="2">{product.millesime}</text>
                   </>
                 )}
                 <text x="70" y="280" textAnchor="middle" fontSize="6" fill="#8a7355">75 cl</text>
                 <rect x="40" y="288" width="60" height="0.5" fill={accent} />
                 {/* Base */}
-                <path d="M28 328 Q28 340 38 344 L102 344 Q112 340 112 328 L112 324 L28 324 Z" fill="#120e08" />
+                <path d="M28 328 Q28 340 38 344 L102 344 Q112 340 112 328 L112 324 L28 324 Z" fill="#f8f4ed" />
                 {/* Reflet */}
-                <path d="M32 140 L32 320" stroke="rgba(255,255,255,0.03)" strokeWidth="3" />
+                <path d="M32 140 L32 320" stroke="rgba(0,0,0,0.04)" strokeWidth="3" />
               </svg>
             )}
           </div>
@@ -125,7 +125,7 @@ export default function ProductPageClient({ product, similaires }: { product: an
           {/* Badges */}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
             {product.bio && (
-              <span style={{ fontSize: 10, letterSpacing: 1, color: '#6ec96e', border: '0.5px solid rgba(110,201,110,0.3)', padding: '4px 10px', borderRadius: 2 }}>
+              <span style={{ fontSize: 10, letterSpacing: 1, color: '#2a8a2a', border: '0.5px solid rgba(110,201,110,0.3)', padding: '4px 10px', borderRadius: 2 }}>
                 🌿 Agriculture biologique
               </span>
             )}
@@ -135,7 +135,7 @@ export default function ProductPageClient({ product, similaires }: { product: an
               </span>
             )}
             {product.stock_statut === 'alerte' && (
-              <span style={{ fontSize: 10, letterSpacing: 1, color: '#c9b06e', border: '0.5px solid rgba(201,176,110,0.3)', padding: '4px 10px', borderRadius: 2 }}>
+              <span style={{ fontSize: 10, letterSpacing: 1, color: '#8a6a3e', border: '0.5px solid rgba(201,176,110,0.3)', padding: '4px 10px', borderRadius: 2 }}>
                 ⚠ Dernières bouteilles
               </span>
             )}
@@ -146,22 +146,22 @@ export default function ProductPageClient({ product, similaires }: { product: an
         <div style={{ paddingLeft: 60 }}>
 
           {/* Titre */}
-          <div style={{ fontSize: 10, letterSpacing: 2, color: 'rgba(232,224,213,0.35)', marginBottom: 8 }}>
+          <div style={{ fontSize: 10, letterSpacing: 2, color: 'rgba(0,0,0,0.45)', marginBottom: 8 }}>
             {product.appellation || product.region || ''}
           </div>
-          <h1 style={{ fontFamily: 'Georgia, serif', fontSize: 36, fontWeight: 300, color: '#f0e8d8', lineHeight: 1.1, marginBottom: 6 }}>
+          <h1 style={{ fontFamily: 'Georgia, serif', fontSize: 36, fontWeight: 300, color: '#0a0a0a', lineHeight: 1.1, marginBottom: 6 }}>
             {product.nom}
           </h1>
-          <div style={{ fontFamily: 'Georgia, serif', fontSize: 16, fontStyle: 'italic', color: 'rgba(232,224,213,0.4)', marginBottom: 28 }}>
+          <div style={{ fontFamily: 'Georgia, serif', fontSize: 16, fontStyle: 'italic', color: 'rgba(0,0,0,0.5)', marginBottom: 28 }}>
             {product.domaine}{product.millesime ? `, ${product.millesime}` : ''}
           </div>
 
           {/* Onglets */}
-          <div style={{ display: 'flex', borderBottom: '0.5px solid rgba(255,255,255,0.08)', marginBottom: 28 }}>
+          <div style={{ display: 'flex', borderBottom: '0.5px solid rgba(0,0,0,0.1)', marginBottom: 28 }}>
             {(['description', 'degustation', 'service'] as const).map(tab => (
               <button key={tab} onClick={() => setActiveTab(tab)} style={{
                 background: 'transparent', border: 'none', borderBottom: `1.5px solid ${activeTab === tab ? accent : 'transparent'}`,
-                color: activeTab === tab ? accent : 'rgba(232,224,213,0.35)',
+                color: activeTab === tab ? accent : 'rgba(0,0,0,0.45)',
                 padding: '10px 16px', fontSize: 10, letterSpacing: 2, cursor: 'pointer',
                 textTransform: 'uppercase' as const, marginBottom: -1,
               }}>
@@ -174,12 +174,12 @@ export default function ProductPageClient({ product, similaires }: { product: an
           {activeTab === 'description' && (
             <div>
               {product.description_courte && (
-                <p style={{ fontFamily: 'Georgia, serif', fontSize: 16, fontStyle: 'italic', color: '#e8e0d5', lineHeight: 1.6, marginBottom: 16 }}>
+                <p style={{ fontFamily: 'Georgia, serif', fontSize: 16, fontStyle: 'italic', color: '#1a1a1a', lineHeight: 1.6, marginBottom: 16 }}>
                   « {product.description_courte} »
                 </p>
               )}
               {product.description_longue && (
-                <p style={{ fontSize: 13, color: 'rgba(232,224,213,0.55)', lineHeight: 1.8, marginBottom: 24, fontWeight: 300 }}>
+                <p style={{ fontSize: 13, color: 'rgba(0,0,0,0.65)', lineHeight: 1.8, marginBottom: 24, fontWeight: 300 }}>
                   {product.description_longue}
                 </p>
               )}
@@ -194,9 +194,9 @@ export default function ProductPageClient({ product, similaires }: { product: an
                   { label: 'Cépage(s)', value: product.cepages?.join(', ') },
                   { label: 'Alcool', value: product.alcool ? `${product.alcool}% vol.` : null },
                 ].filter(i => i.value).map(({ label, value }) => (
-                  <div key={label} style={{ borderTop: '0.5px solid rgba(255,255,255,0.06)', paddingTop: 12 }}>
-                    <div style={{ fontSize: 9, letterSpacing: 2, color: 'rgba(232,224,213,0.3)', textTransform: 'uppercase' as const, marginBottom: 4 }}>{label}</div>
-                    <div style={{ fontSize: 13, color: '#e8e0d5' }}>{value}</div>
+                  <div key={label} style={{ borderTop: '0.5px solid rgba(0,0,0,0.08)', paddingTop: 12 }}>
+                    <div style={{ fontSize: 9, letterSpacing: 2, color: 'rgba(0,0,0,0.4)', textTransform: 'uppercase' as const, marginBottom: 4 }}>{label}</div>
+                    <div style={{ fontSize: 13, color: '#1a1a1a' }}>{value}</div>
                   </div>
                 ))}
               </div>
@@ -208,7 +208,7 @@ export default function ProductPageClient({ product, similaires }: { product: an
             <div>
               {product.aromes?.length > 0 && (
                 <div style={{ marginBottom: 24 }}>
-                  <div style={{ fontSize: 9, letterSpacing: 2, color: 'rgba(232,224,213,0.3)', textTransform: 'uppercase' as const, marginBottom: 12 }}>Arômes & saveurs</div>
+                  <div style={{ fontSize: 9, letterSpacing: 2, color: 'rgba(0,0,0,0.4)', textTransform: 'uppercase' as const, marginBottom: 12 }}>Arômes & saveurs</div>
                   <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 6 }}>
                     {product.aromes.map((a: string) => (
                       <span key={a} style={{ border: `0.5px solid ${accent}40`, borderRadius: 2, padding: '4px 10px', fontSize: 11, color: `${accent}cc`, letterSpacing: 0.5 }}>
@@ -222,7 +222,7 @@ export default function ProductPageClient({ product, similaires }: { product: an
               {/* Profil gustatif */}
               {(product.acidite || product.corps || product.tanins) && (
                 <div style={{ marginBottom: 24 }}>
-                  <div style={{ fontSize: 9, letterSpacing: 2, color: 'rgba(232,224,213,0.3)', textTransform: 'uppercase' as const, marginBottom: 16 }}>Profil gustatif</div>
+                  <div style={{ fontSize: 9, letterSpacing: 2, color: 'rgba(0,0,0,0.4)', textTransform: 'uppercase' as const, marginBottom: 16 }}>Profil gustatif</div>
                   <ProfilBar label="Acidité" value={product.acidite} />
                   <ProfilBar label="Tanins" value={product.tanins} />
                   <ProfilBar label="Corps" value={product.corps} />
@@ -236,13 +236,13 @@ export default function ProductPageClient({ product, similaires }: { product: an
               {/* Accords */}
               {product.accords?.length > 0 && (
                 <div>
-                  <div style={{ fontSize: 9, letterSpacing: 2, color: 'rgba(232,224,213,0.3)', textTransform: 'uppercase' as const, marginBottom: 12 }}>Accords mets & vins</div>
+                  <div style={{ fontSize: 9, letterSpacing: 2, color: 'rgba(0,0,0,0.4)', textTransform: 'uppercase' as const, marginBottom: 12 }}>Accords mets & vins</div>
                   <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 8 }}>
                     {product.accords.map((a: string) => (
-                      <span key={a} style={{ fontSize: 12, color: 'rgba(232,224,213,0.6)' }}>
+                      <span key={a} style={{ fontSize: 12, color: 'rgba(0,0,0,0.7)' }}>
                         {a}
                       </span>
-                    )).reduce((acc: any[], el: any, i: number) => i === 0 ? [el] : [...acc, <span key={`sep-${i}`} style={{ color: 'rgba(232,224,213,0.2)' }}>·</span>, el], [])}
+                    )).reduce((acc: any[], el: any, i: number) => i === 0 ? [el] : [...acc, <span key={`sep-${i}`} style={{ color: 'rgba(0,0,0,0.3)' }}>·</span>, el], [])}
                   </div>
                 </div>
               )}
@@ -275,10 +275,10 @@ export default function ProductPageClient({ product, similaires }: { product: an
                       : null
                   },
                 ].filter(i => i.value).map(({ icon, label, value }) => (
-                  <div key={label} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 5, padding: '16px' }}>
+                  <div key={label} style={{ background: 'rgba(0,0,0,0.04)', borderRadius: 5, padding: '16px' }}>
                     <div style={{ fontSize: 20, marginBottom: 8 }}>{icon}</div>
-                    <div style={{ fontSize: 9, letterSpacing: 2, color: 'rgba(232,224,213,0.3)', textTransform: 'uppercase' as const, marginBottom: 4 }}>{label}</div>
-                    <div style={{ fontSize: 14, color: '#e8e0d5' }}>{value}</div>
+                    <div style={{ fontSize: 9, letterSpacing: 2, color: 'rgba(0,0,0,0.4)', textTransform: 'uppercase' as const, marginBottom: 4 }}>{label}</div>
+                    <div style={{ fontSize: 14, color: '#1a1a1a' }}>{value}</div>
                   </div>
                 ))}
               </div>
@@ -299,19 +299,19 @@ export default function ProductPageClient({ product, similaires }: { product: an
           )}
 
           {/* Séparateur */}
-          <div style={{ height: '0.5px', background: 'rgba(255,255,255,0.07)', margin: '32px 0' }} />
+          <div style={{ height: '0.5px', background: 'rgba(0,0,0,0.09)', margin: '32px 0' }} />
 
           {/* Prix + Panier */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 20 }}>
             <div>
-              <span style={{ fontFamily: 'Georgia, serif', fontSize: 44, fontWeight: 300, color: '#f0e8d8' }}>
+              <span style={{ fontFamily: 'Georgia, serif', fontSize: 44, fontWeight: 300, color: '#0a0a0a' }}>
                 {product.prix_vente_ttc?.toFixed(2)}
               </span>
-              <span style={{ fontSize: 16, color: 'rgba(232,224,213,0.4)', marginLeft: 4 }}>€</span>
-              <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.3)', marginTop: 2 }}>
+              <span style={{ fontSize: 16, color: 'rgba(0,0,0,0.5)', marginLeft: 4 }}>€</span>
+              <div style={{ fontSize: 11, color: 'rgba(0,0,0,0.4)', marginTop: 2 }}>
                 Prix TTC · 75 cl
                 {stockEntrepot > 0 && (
-                  <span style={{ marginLeft: 12, color: stockStatut === 'alerte' ? '#c9b06e' : '#6ec96e' }}>
+                  <span style={{ marginLeft: 12, color: stockStatut === 'alerte' ? '#8a6a3e' : '#2a8a2a' }}>
                     ● {stockStatut === 'alerte' ? `Plus que ${stockEntrepot} en stock` : 'En stock'}
                   </span>
                 )}
@@ -319,10 +319,10 @@ export default function ProductPageClient({ product, similaires }: { product: an
             </div>
 
             {/* Sélecteur quantité */}
-            <div style={{ display: 'flex', alignItems: 'center', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 3 }}>
-              <button onClick={() => setQty(q => Math.max(1, q - 1))} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.5)', width: 36, height: 44, cursor: 'pointer', fontSize: 18 }}>−</button>
+            <div style={{ display: 'flex', alignItems: 'center', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 3 }}>
+              <button onClick={() => setQty(q => Math.max(1, q - 1))} style={{ background: 'transparent', border: 'none', color: 'rgba(0,0,0,0.6)', width: 36, height: 44, cursor: 'pointer', fontSize: 18 }}>−</button>
               <span style={{ width: 32, textAlign: 'center' as const, fontSize: 14 }}>{qty}</span>
-              <button onClick={() => setQty(q => q + 1)} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.5)', width: 36, height: 44, cursor: 'pointer', fontSize: 18 }}>+</button>
+              <button onClick={() => setQty(q => q + 1)} style={{ background: 'transparent', border: 'none', color: 'rgba(0,0,0,0.6)', width: 36, height: 44, cursor: 'pointer', fontSize: 18 }}>+</button>
             </div>
           </div>
 
@@ -333,8 +333,8 @@ export default function ProductPageClient({ product, similaires }: { product: an
               disabled={!disponible}
               style={{
                 flex: 1, padding: '14px 20px',
-                background: addedToCart ? '#2a4a2a' : disponible ? accent : '#333',
-                color: addedToCart ? '#6ec96e' : disponible ? '#0d0a08' : '#888',
+                background: addedToCart ? '#d4e9d4' : disponible ? accent : '#333',
+                color: addedToCart ? '#2a8a2a' : disponible ? '#ffffff' : '#888',
                 border: 'none', borderRadius: 3, fontSize: 11, letterSpacing: 2,
                 textTransform: 'uppercase' as const, cursor: disponible ? 'pointer' : 'not-allowed',
                 fontWeight: 500, transition: 'all 0.2s',
@@ -343,8 +343,8 @@ export default function ProductPageClient({ product, similaires }: { product: an
               {addedToCart ? '✓ Ajouté au panier' : !disponible ? 'Rupture de stock' : 'Ajouter au panier'}
             </button>
             <button style={{
-              background: 'transparent', border: '0.5px solid rgba(255,255,255,0.15)',
-              color: 'rgba(232,224,213,0.5)', borderRadius: 3, padding: '14px 16px', cursor: 'pointer', fontSize: 16,
+              background: 'transparent', border: '0.5px solid rgba(0,0,0,0.2)',
+              color: 'rgba(0,0,0,0.6)', borderRadius: 3, padding: '14px 16px', cursor: 'pointer', fontSize: 16,
             }}>♡</button>
           </div>
 
@@ -354,13 +354,13 @@ export default function ProductPageClient({ product, similaires }: { product: an
               <div style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(110,201,176,0.7)', textTransform: 'uppercase' as const, marginBottom: 6 }}>⚡ Retrait sous 2 h disponible</div>
               <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 4 }}>
                 {stockCaveGilbert > 0 && (
-                  <div style={{ fontSize: 12, color: '#e8e0d5' }}>
-                    <span style={{ color: '#6ec9b0' }}>●</span> Cave de Gilbert · Marcy-l'Étoile <span style={{ color: 'rgba(232,224,213,0.4)', marginLeft: 6 }}>{stockCaveGilbert} bouteille{stockCaveGilbert > 1 ? 's' : ''}</span>
+                  <div style={{ fontSize: 12, color: '#1a1a1a' }}>
+                    <span style={{ color: '#2a8a73' }}>●</span> Cave de Gilbert · Marcy-l'Étoile <span style={{ color: 'rgba(0,0,0,0.5)', marginLeft: 6 }}>{stockCaveGilbert} bouteille{stockCaveGilbert > 1 ? 's' : ''}</span>
                   </div>
                 )}
                 {stockPetiteCave > 0 && (
-                  <div style={{ fontSize: 12, color: '#e8e0d5' }}>
-                    <span style={{ color: '#6ec9b0' }}>●</span> La Petite Cave · L'Arbresle <span style={{ color: 'rgba(232,224,213,0.4)', marginLeft: 6 }}>{stockPetiteCave} bouteille{stockPetiteCave > 1 ? 's' : ''}</span>
+                  <div style={{ fontSize: 12, color: '#1a1a1a' }}>
+                    <span style={{ color: '#2a8a73' }}>●</span> La Petite Cave · L'Arbresle <span style={{ color: 'rgba(0,0,0,0.5)', marginLeft: 6 }}>{stockPetiteCave} bouteille{stockPetiteCave > 1 ? 's' : ''}</span>
                   </div>
                 )}
               </div>
@@ -368,7 +368,7 @@ export default function ProductPageClient({ product, similaires }: { product: an
           )}
 
           {/* Livraison */}
-          <div style={{ marginTop: 16, fontSize: 11, color: 'rgba(232,224,213,0.3)', display: 'flex', gap: 20 }}>
+          <div style={{ marginTop: 16, fontSize: 11, color: 'rgba(0,0,0,0.4)', display: 'flex', gap: 20 }}>
             <span>🚚 Livraison gratuite dès 150€</span>
             <span>📦 Expédition sous 24h</span>
           </div>
@@ -377,23 +377,23 @@ export default function ProductPageClient({ product, similaires }: { product: an
 
       {/* ── PRODUITS SIMILAIRES ── */}
       {similaires.length > 0 && (
-        <div style={{ padding: '48px 40px', borderTop: '0.5px solid rgba(255,255,255,0.06)' }}>
-          <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 22, fontWeight: 300, color: '#f0e8d8', marginBottom: 32, textAlign: 'center' as const }}>
+        <div style={{ padding: '48px 40px', borderTop: '0.5px solid rgba(0,0,0,0.08)' }}>
+          <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 22, fontWeight: 300, color: '#0a0a0a', marginBottom: 32, textAlign: 'center' as const }}>
             Dans le même esprit
           </h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 20, maxWidth: 1200, margin: '0 auto' }}>
             {similaires.map(p => (
               <a key={p.id} href={`/boutique/${p.slug}`} style={{ textDecoration: 'none', color: 'inherit' }}>
-                <div style={{ background: '#18130e', border: '0.5px solid rgba(255,255,255,0.06)', borderRadius: 6, padding: '24px 20px', textAlign: 'center' as const, transition: 'border-color 0.2s' }}
+                <div style={{ background: '#f5f1ea', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: 6, padding: '24px 20px', textAlign: 'center' as const, transition: 'border-color 0.2s' }}
                   onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(201,169,110,0.3)')}
-                  onMouseLeave={e => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)')}
+                  onMouseLeave={e => (e.currentTarget.style.borderColor = 'rgba(0,0,0,0.08)')}
                 >
-                  <div style={{ fontSize: 9, letterSpacing: 2, color: COULEUR_ACCENT[p.couleur] || '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 8 }}>
+                  <div style={{ fontSize: 9, letterSpacing: 2, color: COULEUR_ACCENT[p.couleur] || '#8a6a3e', textTransform: 'uppercase' as const, marginBottom: 8 }}>
                     {COULEUR_LABEL[p.couleur] || p.couleur}
                   </div>
-                  <div style={{ fontFamily: 'Georgia, serif', fontSize: 14, color: '#f0e8d8', marginBottom: 4 }}>{p.nom}</div>
-                  <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', marginBottom: 12 }}>{p.domaine}{p.millesime ? ` · ${p.millesime}` : ''}</div>
-                  <div style={{ fontSize: 18, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{p.prix_vente_ttc?.toFixed(2)}€</div>
+                  <div style={{ fontFamily: 'Georgia, serif', fontSize: 14, color: '#0a0a0a', marginBottom: 4 }}>{p.nom}</div>
+                  <div style={{ fontSize: 11, color: 'rgba(0,0,0,0.5)', marginBottom: 12 }}>{p.domaine}{p.millesime ? ` · ${p.millesime}` : ''}</div>
+                  <div style={{ fontSize: 18, color: '#8a6a3e', fontFamily: 'Georgia, serif' }}>{p.prix_vente_ttc?.toFixed(2)}€</div>
                 </div>
               </a>
             ))}
@@ -402,9 +402,9 @@ export default function ProductPageClient({ product, similaires }: { product: an
       )}
 
       {/* Footer */}
-      <footer style={{ padding: '32px 40px', borderTop: '0.5px solid rgba(255,255,255,0.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ fontFamily: 'Georgia, serif', fontSize: 14, color: '#c9a96e', letterSpacing: 3, textTransform: 'uppercase' as const }}>Cave de Gilbert</div>
-        <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.25)' }}>La vente d'alcool aux mineurs est interdite</div>
+      <footer style={{ padding: '32px 40px', borderTop: '0.5px solid rgba(0,0,0,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ fontFamily: 'Georgia, serif', fontSize: 14, color: '#8a6a3e', letterSpacing: 3, textTransform: 'uppercase' as const }}>Cave de Gilbert</div>
+        <div style={{ fontSize: 11, color: 'rgba(0,0,0,0.35)' }}>La vente d'alcool aux mineurs est interdite</div>
       </footer>
     </div>
   )
