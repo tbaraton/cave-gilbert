@@ -74,10 +74,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       options: { data: { prenom, nom } },
     })
     if (error) return { error: error.message }
-    // Créer ou mettre à jour la fiche customer (tarif_pro=false par défaut, à valider par l'admin)
+    // Créer ou mettre à jour la fiche customer (tarif_pro=false, pro_pending=true)
+    // L'admin verra la demande dans /admin/validations-pro
     if (data.user) {
       await supabase.from('customers').upsert({
-        prenom, nom, email: cleanEmail, tarif_pro: false,
+        prenom, nom, email: cleanEmail, tarif_pro: false, pro_pending: true,
       }, { onConflict: 'email' })
     }
     return { needsValidation: true }
