@@ -81,7 +81,7 @@ export default function BoutiquePage() {
       // 1) Catalogue direct sur products (sans passer par la vue qui filtre trop)
       let query = supabase
         .from('products')
-        .select('id, nom, millesime, couleur, prix_vente_ttc, image_url, slug, bio, ia_generated, description_courte, mis_en_avant, domaine:domaines(nom), appellation:appellations(nom), region:regions(nom), tasting_notes(aromes, accords)')
+        .select('id, nom, millesime, couleur, prix_vente_ttc, prix_vente_pro, image_url, slug, bio, ia_generated, description_courte, mis_en_avant, domaine:domaines(nom), appellation:appellations(nom), region:regions(nom), tasting_notes(aromes, accords)')
         .eq('actif', true)
         .eq('visible_boutique', true)
       if (couleur) query = query.eq('couleur', couleur)
@@ -334,6 +334,9 @@ function ProductCard({ product: p }: { product: any }) {
   const { isPro } = useAuth()
   const accent = COULEUR_ACCENT[p.couleur] || '#8a6a3e'
   const disponible = p.stock_total > 0
+  // Prix affiché : pro voit prix_vente_pro en HT, particulier voit prix_vente_ttc TTC
+  const prixAffiche = isPro && p.prix_vente_pro != null ? p.prix_vente_pro : p.prix_vente_ttc
+  const labelPrix = isPro ? 'HT' : 'TTC'
 
   const handleAdd = () => {
     if (!disponible) return
@@ -344,7 +347,7 @@ function ProductCard({ product: p }: { product: any }) {
     } else {
       addItem({
         id: p.id, nom: p.nom, millesime: p.millesime, couleur: p.couleur,
-        prix_unitaire_ttc: p.prix_vente_ttc, stock_total: p.stock_total,
+        prix_unitaire_ttc: prixAffiche, stock_total: p.stock_total,
         image_url: p.image_url, slug: p.slug,
       })
       if (qty > 1) {
@@ -424,12 +427,11 @@ function ProductCard({ product: p }: { product: any }) {
       }}>
         <div>
           <div style={{ fontFamily: 'Georgia, serif', fontSize: 22, color: accent, lineHeight: 1 }}>
-            {p.prix_vente_ttc?.toFixed(2)}€
+            {prixAffiche?.toFixed(2)}€
+            <span style={{ fontSize: 10, fontFamily: "'DM Sans', system-ui, sans-serif", color: 'rgba(0,0,0,0.4)', marginLeft: 4 }}>{labelPrix}</span>
           </div>
           <div style={{ fontSize: 10, color: 'rgba(0,0,0,0.4)', marginTop: 2 }}>
-            TTC
-            {isPro && ` · ${p.stock_total} dispo`}
-            {!isPro && (p.stock_total === 0 ? ' · Rupture' : p.stock_total < 5 ? ' · Dernières bouteilles' : ' · En stock')}
+            {isPro ? `Tarif pro · ${p.stock_total} dispo` : (p.stock_total === 0 ? 'Rupture' : p.stock_total < 5 ? 'Dernières bouteilles' : 'En stock')}
           </div>
         </div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>

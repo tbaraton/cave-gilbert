@@ -405,11 +405,11 @@ export default function ProductPageClient({ product, similaires }: { product: an
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 20 }}>
             <div>
               <span style={{ fontFamily: 'Georgia, serif', fontSize: 44, fontWeight: 300, color: '#0a0a0a' }}>
-                {product.prix_vente_ttc?.toFixed(2)}
+                {(isPro && product.prix_vente_pro != null ? product.prix_vente_pro : product.prix_vente_ttc)?.toFixed(2)}
               </span>
-              <span style={{ fontSize: 16, color: 'rgba(0,0,0,0.5)', marginLeft: 4 }}>€</span>
+              <span style={{ fontSize: 16, color: 'rgba(0,0,0,0.5)', marginLeft: 4 }}>€ <span style={{ fontSize: 13 }}>{isPro ? 'HT' : 'TTC'}</span></span>
               <div style={{ fontSize: 11, color: 'rgba(0,0,0,0.4)', marginTop: 2 }}>
-                Prix TTC · 75 cl
+                {isPro ? 'Tarif pro · 75 cl' : 'Prix TTC · 75 cl'}
                 {stockEntrepot > 0 && (
                   <span style={{ marginLeft: 12, color: stockStatut === 'alerte' ? '#8a6a3e' : '#2a8a2a' }}>
                     ● {stockStatut === 'alerte' ? (isPro ? `Plus que ${stockEntrepot} en stock` : 'Dernières bouteilles') : 'En stock'}
