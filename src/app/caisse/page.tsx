@@ -444,24 +444,21 @@ function HistoriqueAchatsClient({ client, onClose, onAddToCart, onRetourDone }: 
   onAddToCart: (ligne: any) => void
   onRetourDone?: (resa?: any) => void
 }) {
-  const [achats, setAchats] = useState<any[]>([])
+  const [pieces, setPieces] = useState<any[]>([])
   const [locations, setLocations] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [onglet, setOnglet] = useState<'achats' | 'devis' | 'locations'>('achats')
-  const [devisList, setDevisList] = useState<any[]>([])
+  const [onglet, setOnglet] = useState<'pieces' | 'locations'>('pieces')
   const [retourResa, setRetourResa] = useState<any>(null)
 
   const loadHistorique = async () => {
     setLoading(true)
-    const [{ data: ventes }, { data: resas }, { data: devisData }] = await Promise.all([
+    const [{ data: ventesData }, { data: resas }] = await Promise.all([
       supabase
         .from('ventes')
-        .select('id, numero, created_at, vente_lignes(id, product_id, nom_produit, millesime, quantite, prix_unitaire_ttc, remise_pct)')
+        .select('id, numero, created_at, type_doc, statut, statut_paiement, total_ttc, notes')
         .eq('customer_id', client.id)
-        .eq('statut', 'validee')
-        .neq('type_doc', 'devis')
         .order('created_at', { ascending: false })
-        .limit(50),
+        .limit(100),
       supabase
         .from('reservations_location')
         .select('*, reservation_futs(*, fut:futs_catalogue(*)), reservation_tireuses(*, tireuse:tireuses(*)), retours_futs(*)')
@@ -470,15 +467,8 @@ function HistoriqueAchatsClient({ client, onClose, onAddToCart, onRetourDone }: 
         .order('date_debut', { ascending: false })
         .limit(20),
     ])
-    const lignes: any[] = []
-    for (const v of ventes || []) {
-      for (const l of (v.vente_lignes || [])) {
-        lignes.push({ ...l, vente_date: v.created_at, vente_numero: v.numero })
-      }
-    }
-    setAchats(lignes)
+    setPieces(ventesData || [])
     setLocations(resas || [])
-    setDevisList(devisData || [])
     setLoading(false)
   }
 
@@ -523,54 +513,48 @@ function HistoriqueAchatsClient({ client, onClose, onAddToCart, onRetourDone }: 
 
       {/* Onglets */}
       <div style={{ display: 'flex', borderBottom: '0.5px solid rgba(255,255,255,0.07)' }}>
-        {[{ id: 'achats', label: '🛒 Achats' }, { id: 'devis', label: '📄 Devis' }, { id: 'locations', label: '🍺 Locations' }].map(tab => (
+        {[{ id: 'pieces', label: '📋 Pièces de vente' }, { id: 'locations', label: '🍺 Locations' }].map(tab => (
           <button key={tab.id} onClick={() => setOnglet(tab.id as any)} style={{
             flex: 1, padding: '10px', fontSize: 12, cursor: 'pointer', border: 'none',
             background: onglet === tab.id ? 'rgba(201,169,110,0.1)' : 'transparent',
             color: onglet === tab.id ? '#c9a96e' : 'rgba(232,224,213,0.4)',
             borderBottom: onglet === tab.id ? '2px solid #c9a96e' : '2px solid transparent',
-          }}>{tab.label}{tab.id === 'locations' && locations.length > 0 && ` (${locations.length})`}</button>
+          }}>{tab.label}{tab.id === 'pieces' && pieces.length > 0 && ` (${pieces.length})`}{tab.id === 'locations' && locations.length > 0 && ` (${locations.length})`}</button>
         ))}
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto' as const }}>
         {loading ? (
           <div style={{ textAlign: 'center' as const, padding: 48, color: 'rgba(232,224,213,0.3)' }}>Chargement...</div>
-        ) : onglet === 'achats' ? (
-          achats.length === 0 ? (
-            <div style={{ textAlign: 'center' as const, padding: 48, color: 'rgba(232,224,213,0.3)' }}>Aucun achat enregistré</div>
-          ) : achats.map((l, i) => (
-            <div key={`${l.id}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.04)' }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 15, color: '#f0e8d8' }}>{l.nom_produit}{l.millesime ? ` ${l.millesime}` : ''}</div>
-                <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', marginTop: 3 }}>
-                  {new Date(l.vente_date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}
-                  {' · '}{l.quantite} bouteille{l.quantite > 1 ? 's' : ''}
-                  {l.remise_pct > 0 ? ` · -${l.remise_pct}%` : ''}
+        ) : onglet === 'pieces' ? (
+          pieces.length === 0 ? (
+            <div style={{ textAlign: 'center' as const, padding: 48, color: 'rgba(232,224,213,0.3)' }}>Aucune pièce de vente</div>
+          ) : pieces.map((v: any) => {
+            const estTransforme = v.type_doc === 'devis' && v.statut === 'annulee'
+            const typeColor: Record<string, string> = { ticket: '#888', devis: '#6e9ec9', commande: '#c9b06e', bl: '#6ec9b0', facture: '#c9a96e', avoir: '#c96e6e' }
+            const typeIcon: Record<string, string> = { ticket: '🧾', devis: '📄', commande: '📦', bl: '🚚', facture: '💼', avoir: '↩' }
+            const sourceDevis = v.notes && v.notes.match(/Issu du devis (DEV-[\w-]+)/)
+            return (
+              <div key={v.id} style={{ padding: '12px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.04)', opacity: estTransforme ? 0.45 : 1, background: estTransforme ? 'rgba(255,255,255,0.01)' : 'transparent' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' as const, marginBottom: 4 }}>
+                      <span style={{ fontSize: 12, fontFamily: 'monospace', color: typeColor[v.type_doc] || '#888' }}>{v.numero}</span>
+                      <span style={{ fontSize: 10, background: `${typeColor[v.type_doc] || '#888'}22`, color: typeColor[v.type_doc] || '#888', padding: '2px 7px', borderRadius: 3, textTransform: 'uppercase' as const }}>{typeIcon[v.type_doc]} {v.type_doc}</span>
+                      {estTransforme && <span style={{ fontSize: 10, background: 'rgba(255,255,255,0.07)', color: 'rgba(232,224,213,0.4)', padding: '2px 7px', borderRadius: 3 }}>Transformé →</span>}
+                      {v.statut === 'annulee' && !estTransforme && <span style={{ fontSize: 10, background: 'rgba(201,110,110,0.15)', color: '#c96e6e', padding: '2px 7px', borderRadius: 3 }}>Annulé</span>}
+                    </div>
+                    <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>{new Date(v.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
+                    {sourceDevis && <div style={{ fontSize: 11, color: '#6e9ec9', marginTop: 3 }}>↳ {sourceDevis[1]}</div>}
+                  </div>
+                  <div style={{ textAlign: 'right' as const }}>
+                    <div style={{ fontSize: 16, color: estTransforme ? 'rgba(232,224,213,0.3)' : '#c9a96e', fontFamily: 'Georgia, serif' }}>{parseFloat(v.total_ttc || 0).toFixed(2)} €</div>
+                    <div style={{ fontSize: 11, color: v.statut_paiement === 'regle' ? '#6ec96e' : v.statut_paiement === 'non_regle' ? '#c96e6e' : 'rgba(232,224,213,0.4)' }}>{v.statut_paiement === 'regle' ? 'Réglé' : v.statut_paiement === 'non_regle' ? 'Non réglé' : ''}</div>
+                  </div>
                 </div>
               </div>
-              <div style={{ textAlign: 'right' as const, marginRight: 8 }}>
-                <div style={{ fontSize: 16, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{parseFloat(l.prix_unitaire_ttc || 0).toFixed(2)} €</div>
-                <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)' }}>/ bouteille</div>
-              </div>
-              <button onClick={() => onAddToCart(l)} style={{ background: 'rgba(201,169,110,0.1)', border: '0.5px solid rgba(201,169,110,0.3)', color: '#c9a96e', borderRadius: 6, padding: '6px 10px', fontSize: 12, cursor: 'pointer' }}>+</button>
-            </div>
-          ))
-        ) : onglet === 'devis' ? (
-          devisList.length === 0 ? (
-            <div style={{ textAlign: 'center' as const, padding: 48, color: 'rgba(232,224,213,0.3)' }}>Aucun devis enregistré</div>
-          ) : devisList.map((d: any) => (
-            <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.04)' }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 14, color: '#6e9ec9', fontFamily: 'monospace' }}>{d.numero}</div>
-                <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', marginTop: 3 }}>{new Date(d.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}</div>
-              </div>
-              <div style={{ textAlign: 'right' as const }}>
-                <div style={{ fontSize: 16, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{parseFloat(d.total_ttc || 0).toFixed(2)} €</div>
-                <div style={{ fontSize: 11, color: d.statut === 'annulee' ? '#c96e6e' : 'rgba(232,224,213,0.35)' }}>{d.statut === 'annulee' ? 'Annulé' : 'En cours'}</div>
-              </div>
-            </div>
-          ))
+            )
+          })
         ) : (
           locations.length === 0 ? (
             <div style={{ textAlign: 'center' as const, padding: 48, color: 'rgba(232,224,213,0.3)' }}>Aucune location enregistrée</div>
@@ -751,7 +735,7 @@ function HistoriqueVentes({ session, onClose, onAddToCart }: {
     const numero = `${prefix}-${new Date().getFullYear()}${String(new Date().getMonth()+1).padStart(2,'0')}-${String(Math.floor(Math.random()*9999)).padStart(4,'0')}`
     const labels: Record<string,string> = { commande:'commande', bl:'bon de livraison', facture:'facture' }
     if (!confirm(`Transformer ce devis en ${labels[type]} — ${numero} ?`)) return
-    const { data: nouv } = await supabase.from('ventes').insert({ numero, user_id: detail.user?.id||null, customer_id: detail.customer?.id||null, site_id: session.site_id, type_doc: type, statut: 'validee', statut_paiement: 'non_regle', total_ht: parseFloat(detail.total_ttc)/1.20, total_ttc: parseFloat(detail.total_ttc), notes: detail.notes }).select('id').single()
+    const { data: nouv } = await supabase.from('ventes').insert({ numero, user_id: detail.user?.id||null, customer_id: detail.customer?.id||null, site_id: session.site_id, type_doc: type, statut: 'validee', statut_paiement: 'non_regle', total_ht: parseFloat(detail.total_ttc)/1.20, total_ttc: parseFloat(detail.total_ttc), notes: `Issu du devis ${detail.numero}` }).select('id').single()
     if (nouv) {
       await supabase.from('vente_lignes').insert(lignesDetail.map((l:any) => ({ vente_id:nouv.id, product_id:l.product_id, nom_produit:l.nom_produit, millesime:l.millesime, quantite:l.quantite, prix_unitaire_ttc:l.prix_unitaire_ttc, remise_pct:l.remise_pct, total_ttc:l.total_ttc })))
       if (type==='bl'||type==='facture') {
