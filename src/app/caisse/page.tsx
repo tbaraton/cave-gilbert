@@ -1062,6 +1062,110 @@ function HistoriqueVentes({ session, onClose, onAddToCart }: {
   )
 }
 
+// ── Modal Catalogue ───────────────────────────────────────────
+function ModalCatalogue({ session, client, onAjouter, onClose }: { session: Session; client: Client | null; onAjouter: (items: Array<{produit: any; qte: number}>) => void; onClose: () => void }) {
+  const [produits, setProduits] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [filterCouleur, setFilterCouleur] = useState('')
+  const [filterStock, setFilterStock] = useState(true)
+  const [selection, setSelection] = useState<Record<string, number>>({})
+
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true)
+      const { data: stockData } = await supabase.from('stock').select('product_id, quantite').eq('site_id', session.site_id).gt('quantite', 0)
+      const stockMap = Object.fromEntries((stockData || []).map((s: any) => [s.product_id, s.quantite]))
+      const { data: prodsData } = await supabase.from('products').select('id, nom, nom_cuvee, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id, bio').eq('actif', true).order('nom')
+      const domaineIds = [...new Set((prodsData || []).map((p: any) => p.domaine_id).filter(Boolean))]
+      let domaineMap: Record<string, string> = {}
+      if (domaineIds.length) { const { data: doms } = await supabase.from('domaines').select('id, nom').in('id', domaineIds); domaineMap = Object.fromEntries((doms || []).map((d: any) => [d.id, d.nom])) }
+      setProduits((prodsData || []).map((p: any) => ({ ...p, stock: stockMap[p.id] || 0, domaine_nom: domaineMap[p.domaine_id] || '' })))
+      setLoading(false)
+    }
+    load()
+  }, [])
+
+  const filtered = produits.filter(p => {
+    if (filterStock && p.stock <= 0) return false
+    if (filterCouleur && p.couleur !== filterCouleur) return false
+    if (search) { const s = search.toLowerCase(); return p.nom.toLowerCase().includes(s) || (p.nom_cuvee && p.nom_cuvee.toLowerCase().includes(s)) || (p.millesime && String(p.millesime).includes(s)) || (p.domaine_nom && p.domaine_nom.toLowerCase().includes(s)) }
+    return true
+  })
+
+  const nbSelectionnes = Object.values(selection).filter(q => q > 0).length
+  const totalUnites = Object.values(selection).reduce((acc, q) => acc + (q || 0), 0)
+
+  const toggleProduit = (id: string) => setSelection(prev => { if (prev[id]) { const n = { ...prev }; delete n[id]; return n } return { ...prev, [id]: 1 } })
+
+  const handleValider = () => {
+    const items = Object.entries(selection).filter(([_, q]) => q > 0).map(([id, qte]) => ({ produit: produits.find(p => p.id === id), qte })).filter(x => x.produit)
+    onAjouter(items as any)
+    onClose()
+  }
+
+  const COULEURS_LIST = ['rouge', 'blanc', 'rosé', 'champagne', 'effervescent', 'spiritueux', 'autre']
+
+  return (
+    <div style={{ position: 'fixed' as const, inset: 0, background: '#0d0a08', zIndex: 800, display: 'flex', flexDirection: 'column' as const, fontFamily: "'DM Sans', system-ui, sans-serif" }}>
+      <div style={{ padding: '14px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', gap: 12, background: '#0d0a08', position: 'sticky' as const, top: 0, zIndex: 10 }}>
+        <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: '#c9a96e', fontSize: 22, cursor: 'pointer' }}>←</button>
+        <div style={{ fontFamily: 'Georgia, serif', fontSize: 17, color: '#f0e8d8', flex: 1 }}>Catalogue produits</div>
+        {nbSelectionnes > 0 && <button onClick={handleValider} style={{ background: '#c9a96e', border: 'none', borderRadius: 8, color: '#0d0a08', padding: '10px 18px', fontSize: 14, cursor: 'pointer', fontWeight: 700 }}>✓ Ajouter ({totalUnites})</button>}
+      </div>
+      <div style={{ padding: '12px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', background: '#100d0a' }}>
+        <input type="text" placeholder="🔍 Rechercher par nom, cuvée, domaine..." value={search} onChange={e => setSearch(e.target.value)} style={{ width: '100%', background: 'rgba(255,255,255,0.07)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 8, color: '#f0e8d8', fontSize: 15, padding: '10px 14px', boxSizing: 'border-box' as const, marginBottom: 10, outline: 'none' }} />
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const, alignItems: 'center' }}>
+          <button onClick={() => setFilterStock(!filterStock)} style={{ background: filterStock ? 'rgba(110,201,110,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${filterStock ? '#6ec96e' : 'rgba(255,255,255,0.1)'}`, color: filterStock ? '#6ec96e' : 'rgba(232,224,213,0.5)', borderRadius: 20, padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}>{filterStock ? '✓ ' : ''}En stock</button>
+          {COULEURS_LIST.map(c => (<button key={c} onClick={() => setFilterCouleur(filterCouleur === c ? '' : c)} style={{ background: filterCouleur === c ? 'rgba(201,169,110,0.12)' : 'rgba(255,255,255,0.03)', border: `1px solid ${filterCouleur === c ? '#c9a96e' : 'rgba(255,255,255,0.07)'}`, color: filterCouleur === c ? '#c9a96e' : 'rgba(232,224,213,0.4)', borderRadius: 20, padding: '4px 10px', fontSize: 11, cursor: 'pointer' }}><span style={{ color: COULEURS[c] || '#888' }}>● </span>{c}</button>))}
+        </div>
+      </div>
+      <div style={{ flex: 1, overflowY: 'auto' as const }}>
+        {loading ? (<div style={{ textAlign: 'center' as const, padding: 48, color: 'rgba(232,224,213,0.3)' }}>Chargement...</div>)
+          : filtered.length === 0 ? (<div style={{ textAlign: 'center' as const, padding: 48, color: 'rgba(232,224,213,0.3)' }}>Aucun produit trouvé</div>)
+          : filtered.map(p => {
+            const selected = (selection[p.id] || 0) > 0
+            const qte = selection[p.id] || 0
+            const prix = (client?.tarif_pro ? p.prix_vente_pro : p.prix_vente_ttc) || p.prix_vente_ttc
+            return (
+              <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.04)', background: selected ? 'rgba(201,169,110,0.05)' : 'transparent' }}>
+                <div onClick={() => toggleProduit(p.id)} style={{ width: 22, height: 22, borderRadius: 4, border: `2px solid ${selected ? '#c9a96e' : 'rgba(255,255,255,0.2)'}`, background: selected ? '#c9a96e' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+                  {selected && <span style={{ fontSize: 12, color: '#0d0a08', fontWeight: 700 }}>✓</span>}
+                </div>
+                <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => toggleProduit(p.id)}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ color: COULEURS[p.couleur] || '#888', fontSize: 10 }}>●</span>
+                    <span style={{ fontSize: 15, color: '#f0e8d8' }}>{p.nom}{p.millesime ? ` ${p.millesime}` : ''}</span>
+                    {p.bio && <span style={{ fontSize: 11 }}>🌿</span>}
+                  </div>
+                  {p.nom_cuvee && <div style={{ fontSize: 11, color: '#c9a96e', marginTop: 1 }}>{p.nom_cuvee}</div>}
+                  {p.domaine_nom && <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)' }}>{p.domaine_nom}</div>}
+                </div>
+                <div style={{ textAlign: 'right' as const, marginRight: selected ? 8 : 0 }}>
+                  <div style={{ fontSize: 15, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{prix?.toFixed(2)}€</div>
+                  <div style={{ fontSize: 11, color: p.stock === 0 ? '#c96e6e' : p.stock <= 3 ? '#c9b06e' : 'rgba(232,224,213,0.4)' }}>stk: {p.stock}</div>
+                </div>
+                {selected && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(255,255,255,0.07)', borderRadius: 8, padding: '4px 6px' }}>
+                    <button onClick={() => setSelection(prev => { const nv = (prev[p.id] || 1) - 1; if (nv <= 0) { const n = { ...prev }; delete n[p.id]; return n } return { ...prev, [p.id]: nv } })} style={{ background: 'transparent', border: 'none', color: '#e8e0d5', fontSize: 18, cursor: 'pointer', width: 26, height: 26 }}>−</button>
+                    <span style={{ fontSize: 16, minWidth: 20, textAlign: 'center' as const, color: '#f0e8d8' }}>{qte}</span>
+                    <button onClick={() => setSelection(prev => ({ ...prev, [p.id]: (prev[p.id] || 1) + 1 }))} style={{ background: 'transparent', border: 'none', color: '#e8e0d5', fontSize: 18, cursor: 'pointer', width: 26, height: 26 }}>+</button>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+      </div>
+      {nbSelectionnes > 0 && (
+        <div style={{ padding: '14px 16px 32px', borderTop: '0.5px solid rgba(255,255,255,0.07)', background: '#0d0a08' }}>
+          <div style={{ fontSize: 13, color: 'rgba(232,224,213,0.5)', marginBottom: 10, textAlign: 'center' as const }}>{nbSelectionnes} produit{nbSelectionnes > 1 ? 's' : ''} — {totalUnites} unité{totalUnites > 1 ? 's' : ''}</div>
+          <button onClick={handleValider} style={{ width: '100%', background: '#c9a96e', border: 'none', borderRadius: 12, color: '#0d0a08', padding: '18px', fontSize: 16, cursor: 'pointer', fontWeight: 700, touchAction: 'manipulation' }}>✓ Ajouter à la caisse</button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Caisse Principale ─────────────────────────────────────────
 function CaissePrincipale({ user, session, onFermer }: { user: User; session: Session; onFermer: () => void }) {
   // Étapes: client → produits → document → paiement
@@ -1105,6 +1209,7 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
   const [diversPrix, setDiversPrix] = useState('')
   const [diversTva, setDiversTva] = useState<5.5 | 20>(20)
   const [diversQte, setDiversQte] = useState('1')
+  const [showCatalogue, setShowCatalogue] = useState(false)
 
   // UI
   const [paiements, setPaiements] = useState<Paiement[]>([])
@@ -1474,6 +1579,7 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
           onSaved={(c) => { if (client?.id === c.id) setClient(c); setClientsFound(prev => prev.map(x => x.id === c.id ? c : x)); setEditingClient(null) }}
         />
       )}
+      {showCatalogue && <ModalCatalogue session={session} client={client} onAjouter={items => { items.forEach(({ produit: p, qte }) => { const prix = (client?.tarif_pro ? p.prix_vente_pro : p.prix_vente_ttc) || p.prix_vente_ttc; const remisePct = client?.remise_pct || 0; const ex = lignes.find(l => l.product_id === p.id); if (ex) setLignes(prev => prev.map(l => l.product_id === p.id ? { ...l, qte: l.qte + qte, total: (l.qte + qte) * l.prix_unit * (1 - l.remise_pct / 100) } : l)); else setLignes(prev => [...prev, { id: Math.random().toString(36).slice(2), product_id: p.id, nom: p.nom, millesime: p.millesime, qte, prix_unit: prix, remise_pct: remisePct, total: prix * qte * (1 - remisePct / 100), domaine_nom: p.domaine_nom || '' }]) }) }} onClose={() => setShowCatalogue(false)} />}
       {showHistorique && <HistoriqueVentes session={session} onClose={() => setShowHistorique(false)} onAddToCart={handleAddFromHistorique} />}
       {showAchatsClient && client && <HistoriqueAchatsClient client={client} onClose={() => setShowAchatsClient(false)} onAddToCart={handleAddSingleAchat} onRetourDone={() => { setShowAchatsClient(false); setClient(null); setLignes([]); setTypeDoc('ticket'); setRemise(''); setSearchClient(''); setEtape('produits') }} />}
       {showLocation && <div style={{ position: 'fixed' as const, inset: 0, zIndex: 600 }}><ModuleLocation session={session} user={vendeur} onClose={() => setShowLocation(false)} /></div>}
@@ -1563,10 +1669,15 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
           <div style={{ padding: '12px 16px', position: 'relative' as const }}>
             <input type="text" placeholder="🔍 Ajouter un produit..." value={searchProduit} onChange={e => handleSearchProduit(e.target.value)} autoFocus
               style={{ width: '100%', background: 'rgba(255,255,255,0.07)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 10, color: '#f0e8d8', fontSize: 16, padding: '14px', boxSizing: 'border-box' as const, outline: 'none' }} />
-            {/* Bouton article divers */}
-            <button onClick={() => setShowDivers(!showDivers)} style={{ marginTop: 8, background: showDivers ? 'rgba(201,169,110,0.1)' : 'rgba(255,255,255,0.04)', border: `0.5px solid ${showDivers ? 'rgba(201,169,110,0.3)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 8, color: showDivers ? '#c9a96e' : 'rgba(232,224,213,0.4)', padding: '8px 14px', fontSize: 13, cursor: 'pointer', width: '100%', textAlign: 'left' as const }}>
-              ＋ Article divers (hors catalogue)
-            </button>
+            {/* Boutons catalogue + divers */}
+            <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+              <button onClick={() => setShowCatalogue(true)} style={{ flex: 1, background: 'rgba(201,169,110,0.1)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 8, color: '#c9a96e', padding: '8px 14px', fontSize: 13, cursor: 'pointer', textAlign: 'left' as const }}>
+                📚 Catalogue
+              </button>
+              <button onClick={() => setShowDivers(!showDivers)} style={{ flex: 1, background: showDivers ? 'rgba(201,169,110,0.1)' : 'rgba(255,255,255,0.04)', border: `0.5px solid ${showDivers ? 'rgba(201,169,110,0.3)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 8, color: showDivers ? '#c9a96e' : 'rgba(232,224,213,0.4)', padding: '8px 14px', fontSize: 13, cursor: 'pointer', textAlign: 'left' as const }}>
+                ＋ Divers
+              </button>
+            </div>
 
             {/* Formulaire article divers */}
             {showDivers && (
@@ -2082,6 +2193,7 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
   const [diversPrix, setDiversPrix] = useState('')
   const [diversTva, setDiversTva] = useState<5.5 | 20>(20)
   const [diversQte, setDiversQte] = useState('1')
+  const [showCatalogue, setShowCatalogue] = useState(false)
   const [derniereVente, setDerniereVente] = useState<any>(null)
   const [showEmailVente, setShowEmailVente] = useState(false)
   const [emailVente, setEmailVente] = useState('')
@@ -2268,6 +2380,7 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
           {attentes.length>0&&attentes.map(a=>(
             <button key={a.id} onClick={()=>reprendreAttente(a)} style={{background:'rgba(201,169,110,0.1)',border:'0.5px solid rgba(201,169,110,0.3)',borderRadius:6,color:'#c9a96e',padding:'5px 10px',fontSize:11,cursor:'pointer'}}>⏸ {a.label}</button>
           ))}
+          <button onClick={()=>setShowCatalogue(true)} style={{background:'rgba(201,169,110,0.1)',border:'0.5px solid rgba(201,169,110,0.3)',color:'#c9a96e',borderRadius:4,padding:'6px 12px',fontSize:11,cursor:'pointer'}}>📚 Catalogue</button>
           <button onClick={()=>setShowHistorique(true)} style={{background:'transparent',border:'0.5px solid rgba(255,255,255,0.15)',color:'rgba(232,224,213,0.5)',borderRadius:4,padding:'6px 12px',fontSize:11,cursor:'pointer'}}>📋 Historique</button>
           <button onClick={()=>setShowLocation(true)} style={{background:'transparent',border:'0.5px solid rgba(255,255,255,0.15)',color:'rgba(232,224,213,0.5)',borderRadius:4,padding:'6px 12px',fontSize:11,cursor:'pointer'}}>🍺 Location</button>
           <button onClick={()=>setShowGestion(!showGestion)} style={{background:noteGlobaleActive?'rgba(201,169,110,0.15)':'transparent',border:`0.5px solid ${noteGlobaleActive?'rgba(201,169,110,0.4)':'rgba(255,255,255,0.15)'}`,color:noteGlobaleActive?'#c9a96e':'rgba(232,224,213,0.5)',borderRadius:4,padding:'6px 12px',fontSize:11,cursor:'pointer'}}>📝 Intitulé{noteGlobaleActive?' ✓':''}</button>
@@ -2433,6 +2546,7 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
       {alertesClient&&(<div style={{position:'fixed' as const,inset:0,background:'rgba(0,0,0,0.85)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:200}}><div style={{background:'#18130e',border:'0.5px solid rgba(201,169,110,0.3)',borderRadius:12,padding:'28px',maxWidth:460,width:'90%'}}><div style={{fontFamily:'Georgia, serif',fontSize:20,color:'#f0e8d8',marginBottom:16}}>⚠ Alertes — {alertesClient.client.est_societe?alertesClient.client.raison_sociale:`${alertesClient.client.prenom} ${alertesClient.client.nom}`}</div>{alertesClient.bons?.length>0&&<div style={{marginBottom:12}}><div style={{fontSize:12,color:'#c9a96e',marginBottom:8}}>🎟 BONS D'ACHAT</div>{alertesClient.bons.map((b:any)=><div key={b.id} style={{background:'rgba(201,169,110,0.1)',borderRadius:6,padding:'10px',marginBottom:6,color:'#c9a96e',fontFamily:'Georgia, serif',fontSize:16}}>{b.montant}€ — {b.code}</div>)}</div>}{alertesClient.demandes?.length>0&&<div style={{marginBottom:12}}><div style={{fontSize:12,color:'#6e9ec9',marginBottom:8}}>📋 DEMANDES</div>{alertesClient.demandes.map((d:any)=><div key={d.id} style={{background:'rgba(110,158,201,0.08)',borderRadius:6,padding:'10px',marginBottom:6,fontSize:14}}>{d.titre}</div>)}</div>}{alertesClient.factures?.length>0&&<div style={{marginBottom:12}}><div style={{fontSize:12,color:'#c96e6e',marginBottom:8}}>💳 FACTURES NON RÉGLÉES</div>{alertesClient.factures.map((f:any)=><div key={f.id} style={{background:'rgba(201,110,110,0.08)',borderRadius:6,padding:'10px',marginBottom:6,fontSize:14,color:'#c96e6e'}}>{f.numero} — {parseFloat(f.total_ttc).toFixed(2)}€</div>)}</div>}<div style={{display:'flex',gap:10,marginTop:20}}><button onClick={()=>setAlertesClient(null)} style={{flex:1,background:'transparent',border:'0.5px solid rgba(255,255,255,0.15)',color:'rgba(232,224,213,0.5)',borderRadius:8,padding:'12px',fontSize:13,cursor:'pointer'}}>← Retour</button><button onClick={()=>{setClient(alertesClient.client);setAlertesClient(null);setShowClientPanel(false)}} style={{flex:2,background:'#c9a96e',color:'#0d0a08',border:'none',borderRadius:8,padding:'12px',fontSize:14,cursor:'pointer',fontWeight:600}}>Continuer →</button></div></div></div>)}
       {venteOk&&derniereVente&&(<div style={{position:'fixed' as const,inset:0,background:'rgba(0,0,0,0.88)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:999,fontFamily:"'DM Sans', system-ui, sans-serif"}}><div style={{background:'#18130e',border:'0.5px solid rgba(201,169,110,0.3)',borderRadius:16,padding:'36px 40px',maxWidth:420,width:'90%'}}><div style={{textAlign:'center' as const,marginBottom:28}}><div style={{fontSize:56,marginBottom:8}}>✓</div><div style={{fontFamily:'Georgia, serif',fontSize:22,color:'#6ec96e'}}>Vente enregistrée !</div><div style={{fontSize:14,color:'rgba(232,224,213,0.5)',marginTop:4}}>{derniereVente.numero} — {fmt(derniereVente.total)}</div></div><div style={{display:'flex',flexDirection:'column' as const,gap:10}}><button onClick={()=>imprimerTicket(derniereVente)} style={{width:'100%',background:'rgba(255,255,255,0.06)',border:'0.5px solid rgba(255,255,255,0.12)',borderRadius:10,color:'#e8e0d5',padding:'14px',fontSize:15,cursor:'pointer'}}>🖨 Imprimer le ticket</button>{!showEmailVente?(<button onClick={()=>setShowEmailVente(true)} style={{width:'100%',background:'rgba(255,255,255,0.06)',border:'0.5px solid rgba(255,255,255,0.12)',borderRadius:10,color:'#e8e0d5',padding:'14px',fontSize:15,cursor:'pointer'}}>📧 Envoyer par email</button>):(<div style={{display:'flex',gap:8}}><input type="email" value={emailVente} onChange={e=>setEmailVente(e.target.value)} placeholder={client?.email||'email@client.fr'} style={{flex:1,background:'rgba(255,255,255,0.06)',border:'0.5px solid rgba(201,169,110,0.3)',borderRadius:8,color:'#f0e8d8',fontSize:14,padding:'12px'}}/><button onClick={()=>{alert(`Email envoyé à ${emailVente||client?.email}`);setShowEmailVente(false)}} style={{background:'#c9a96e',border:'none',borderRadius:8,color:'#0d0a08',padding:'12px 16px',fontSize:14,cursor:'pointer',fontWeight:700}}>→</button><button onClick={()=>setShowEmailVente(false)} style={{background:'transparent',border:'0.5px solid rgba(255,255,255,0.1)',borderRadius:8,color:'rgba(232,224,213,0.4)',padding:'12px',cursor:'pointer'}}>✕</button></div>)}<button onClick={()=>{setVenteOk(false);setDerniereVente(null);resetVente()}} style={{width:'100%',background:'#c9a96e',border:'none',borderRadius:10,color:'#0d0a08',padding:'14px',fontSize:15,cursor:'pointer',fontWeight:700}}>✓ Fin de la vente</button></div></div></div>)}
       {showFermeture&&(<div style={{position:'fixed' as const,inset:0,background:'rgba(0,0,0,0.9)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:999}}><div style={{background:'#18130e',border:'0.5px solid rgba(201,169,110,0.3)',borderRadius:12,padding:'32px',maxWidth:420,width:'90%'}}><div style={{fontFamily:'Georgia, serif',fontSize:20,color:'#f0e8d8',marginBottom:20}}>Fermeture de caisse</div><div style={{fontSize:12,color:'rgba(232,224,213,0.4)',marginBottom:8}}>ESPÈCES EN CAISSE</div><input type="number" step="0.01" placeholder="0.00" value={espacesFermeture} onChange={e=>setEspacesFermeture(e.target.value)} style={{width:'100%',background:'rgba(255,255,255,0.06)',border:'0.5px solid rgba(201,169,110,0.3)',borderRadius:8,color:'#f0e8d8',fontSize:20,padding:'14px',boxSizing:'border-box' as const,textAlign:'center' as const,marginBottom:20}}/><div style={{display:'flex',gap:10}}><button onClick={()=>setShowFermeture(false)} style={{flex:1,background:'transparent',border:'0.5px solid rgba(255,255,255,0.15)',color:'rgba(232,224,213,0.5)',borderRadius:8,padding:'14px',fontSize:14,cursor:'pointer'}}>Annuler</button><button onClick={async()=>{await supabase.from('caisse_sessions').update({statut:'fermee',ferme_le:new Date().toISOString(),especes_fermeture:parseFloat(espacesFermeture)||0}).eq('id',session.id);onFermer()}} style={{flex:2,background:'#c96e6e',color:'#fff',border:'none',borderRadius:8,padding:'14px',fontSize:14,cursor:'pointer',fontWeight:700}}>Fermer la caisse</button></div></div></div>)}
+      {showCatalogue&&<ModalCatalogue session={session} client={client} onAjouter={items=>{items.forEach(({produit:p,qte})=>{const prix=(client?.tarif_pro?p.prix_vente_pro:p.prix_vente_ttc)||p.prix_vente_ttc;const rp=client?.remise_pct||0;const ex=lignes.find(l=>l.product_id===p.id);if(ex)setLignes(prev=>prev.map(l=>l.product_id===p.id?{...l,qte:l.qte+qte,total:(l.qte+qte)*l.prix_unit*(1-l.remise_pct/100)}:l));else setLignes(prev=>[...prev,{id:Math.random().toString(36).slice(2),product_id:p.id,nom:p.nom,millesime:p.millesime,qte,prix_unit:prix,remise_pct:rp,total:prix*qte*(1-rp/100),domaine_nom:p.domaine_nom||''}])})}} onClose={()=>setShowCatalogue(false)}/>}
       {showNouveauClient&&<ModalClientForm onClose={()=>setShowNouveauClient(false)} onSaved={(c)=>{setClient(c);setShowNouveauClient(false)}}/>}
       {editingClient&&<ModalClientForm client={editingClient} onClose={()=>setEditingClient(null)} onSaved={(c)=>{if(client?.id===c.id)setClient(c);setClientsFound(prev=>prev.map((x:any)=>x.id===c.id?c:x));setEditingClient(null)}}/>}
       {showHistorique&&<HistoriqueVentes session={session} onClose={()=>setShowHistorique(false)} onAddToCart={handleAddFromHistorique}/>}
