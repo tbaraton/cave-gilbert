@@ -35,8 +35,40 @@ export default function BoutiquePage() {
   const [couleur, setCouleur] = useState<string | null>(null)
   const [sortBy, setSortBy] = useState('mis_en_avant')
   const [prixMax, setPrixMax] = useState<number | null>(null)
-  const [bioOnly, setBioOnly] = useState(false)
   const [stockOnly, setStockOnly] = useState(true)
+  // Filtres avancés
+  const [regionId, setRegionId] = useState<string>('')
+  const [appellationId, setAppellationId] = useState<string>('')
+  const [regions, setRegions] = useState<any[]>([])
+  const [appellations, setAppellations] = useState<any[]>([])
+  const [bioOnly, setBioOnly] = useState(false)
+  const [veganOnly, setVeganOnly] = useState(false)
+  const [naturelOnly, setNaturelOnly] = useState(false)
+  const [biodynamiqueOnly, setBiodynamiqueOnly] = useState(false)
+  const [casherOnly, setCasherOnly] = useState(false)
+
+  // Chargement des régions + appellations une seule fois
+  useEffect(() => {
+    (async () => {
+      const [{ data: regs }, { data: apps }] = await Promise.all([
+        supabase.from('regions').select('id, nom').order('nom'),
+        supabase.from('appellations').select('id, nom, region_id').order('nom'),
+      ])
+      setRegions(regs || [])
+      setAppellations(apps || [])
+    })()
+  }, [])
+
+  // Si on change la région, on reset l'appellation si elle n'appartient plus à la région
+  useEffect(() => {
+    if (!regionId || !appellationId) return
+    const a = appellations.find((x: any) => x.id === appellationId)
+    if (a && a.region_id !== regionId) setAppellationId('')
+  }, [regionId, appellationId, appellations])
+
+  const appellationsFiltrees = regionId
+    ? appellations.filter((a: any) => a.region_id === regionId)
+    : appellations
 
   useEffect(() => {
     const load = async () => {
@@ -52,7 +84,13 @@ export default function BoutiquePage() {
         .eq('actif', true)
         .eq('visible_boutique', true)
       if (couleur) query = query.eq('couleur', couleur)
+      if (regionId) query = query.eq('region_id', regionId)
+      if (appellationId) query = query.eq('appellation_id', appellationId)
       if (bioOnly) query = query.eq('bio', true)
+      if (veganOnly) query = query.eq('vegan', true)
+      if (naturelOnly) query = query.eq('naturel', true)
+      if (biodynamiqueOnly) query = query.eq('biodynamique', true)
+      if (casherOnly) query = query.eq('casher', true)
       if (prixMax) query = query.lte('prix_vente_ttc', prixMax)
       if (search) query = query.ilike('nom', `%${search}%`)
       switch (sortBy) {
@@ -108,7 +146,7 @@ export default function BoutiquePage() {
       setLoading(false)
     }
     load()
-  }, [couleur, bioOnly, stockOnly, prixMax, search, sortBy])
+  }, [couleur, bioOnly, veganOnly, naturelOnly, biodynamiqueOnly, casherOnly, stockOnly, prixMax, search, sortBy, regionId, appellationId])
 
   return (
     <div style={{ background: '#ffffff', minHeight: '100vh', fontFamily: "'DM Sans', system-ui, sans-serif", color: '#1a1a1a' }}>
@@ -156,24 +194,68 @@ export default function BoutiquePage() {
             </div>
           </div>
 
-          {/* Options */}
+          {/* Région */}
+          <div style={{ marginBottom: 22 }}>
+            <div style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(0,0,0,0.5)', textTransform: 'uppercase' as const, marginBottom: 10 }}>Région</div>
+            <select value={regionId} onChange={e => setRegionId(e.target.value)} style={{
+              width: '100%', background: 'rgba(0,0,0,0.04)', border: '0.5px solid rgba(0,0,0,0.12)',
+              borderRadius: 3, color: '#1a1a1a', fontSize: 11, padding: '8px 10px',
+            }}>
+              <option value="">Toutes les régions</option>
+              {regions.map((r: any) => <option key={r.id} value={r.id}>{r.nom}</option>)}
+            </select>
+          </div>
+
+          {/* Appellation (cascade depuis région) */}
+          <div style={{ marginBottom: 22 }}>
+            <div style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(0,0,0,0.5)', textTransform: 'uppercase' as const, marginBottom: 10 }}>
+              Appellation {regionId && <span style={{ textTransform: 'none' as const, letterSpacing: 0, color: 'rgba(0,0,0,0.35)' }}>({appellationsFiltrees.length})</span>}
+            </div>
+            <select value={appellationId} onChange={e => setAppellationId(e.target.value)} style={{
+              width: '100%', background: 'rgba(0,0,0,0.04)', border: '0.5px solid rgba(0,0,0,0.12)',
+              borderRadius: 3, color: '#1a1a1a', fontSize: 11, padding: '8px 10px',
+            }}>
+              <option value="">Toutes les appellations</option>
+              {appellationsFiltrees.map((a: any) => <option key={a.id} value={a.id}>{a.nom}</option>)}
+            </select>
+          </div>
+
+          {/* Options stock */}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(0,0,0,0.5)', textTransform: 'uppercase' as const, marginBottom: 12 }}>Disponibilité</div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: 10 }}>
+              <div onClick={() => setStockOnly(v => !v)} style={{
+                width: 14, height: 14, borderRadius: 2,
+                border: `0.5px solid ${stockOnly ? '#8a6a3e' : 'rgba(0,0,0,0.2)'}`,
+                background: stockOnly ? '#8a6a3e' : 'transparent',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              }}>
+                {stockOnly && <span style={{ fontSize: 9, color: '#ffffff', fontWeight: 700 }}>✓</span>}
+              </div>
+              <span style={{ fontSize: 11, color: 'rgba(0,0,0,0.6)' }} onClick={() => setStockOnly(v => !v)}>En stock uniquement</span>
+            </label>
+          </div>
+
+          {/* Certifications */}
           <div style={{ marginBottom: 24 }}>
-            <div style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(0,0,0,0.5)', textTransform: 'uppercase' as const, marginBottom: 12 }}>Options</div>
+            <div style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(0,0,0,0.5)', textTransform: 'uppercase' as const, marginBottom: 12 }}>Certifications</div>
             {[
-              { label: 'En stock uniquement', state: stockOnly, toggle: () => setStockOnly(v => !v) },
-              { label: 'Agriculture biologique', state: bioOnly, toggle: () => setBioOnly(v => !v) },
+              { label: '🌿 Bio', state: bioOnly, toggle: () => setBioOnly(v => !v) },
+              { label: '🌱 Vegan', state: veganOnly, toggle: () => setVeganOnly(v => !v) },
+              { label: '🍃 Naturel', state: naturelOnly, toggle: () => setNaturelOnly(v => !v) },
+              { label: '🌙 Biodynamique', state: biodynamiqueOnly, toggle: () => setBiodynamiqueOnly(v => !v) },
+              { label: '✡ Casher', state: casherOnly, toggle: () => setCasherOnly(v => !v) },
             ].map(({ label, state, toggle }) => (
-              <label key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: 10 }}>
+              <label key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: 8 }}>
                 <div onClick={toggle} style={{
                   width: 14, height: 14, borderRadius: 2,
-                  border: `0.5px solid ${state ? '#8a6a3e' : 'rgba(255,255,255,0.2)'}`,
+                  border: `0.5px solid ${state ? '#8a6a3e' : 'rgba(0,0,0,0.2)'}`,
                   background: state ? '#8a6a3e' : 'transparent',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  cursor: 'pointer', flexShrink: 0,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                 }}>
                   {state && <span style={{ fontSize: 9, color: '#ffffff', fontWeight: 700 }}>✓</span>}
                 </div>
-                <span style={{ fontSize: 11, color: 'rgba(232,224,213,0.5)', cursor: 'pointer' }} onClick={toggle}>{label}</span>
+                <span style={{ fontSize: 11, color: 'rgba(0,0,0,0.6)' }} onClick={toggle}>{label}</span>
               </label>
             ))}
           </div>
@@ -218,7 +300,7 @@ export default function BoutiquePage() {
           ) : produits.length === 0 ? (
             <div style={{ textAlign: 'center' as const, padding: '80px 0', color: 'rgba(0,0,0,0.4)' }}>
               <p style={{ fontSize: 16, marginBottom: 8 }}>Aucun vin ne correspond à vos critères</p>
-              <button onClick={() => { setCouleur(null); setSearch(''); setPrixMax(null); setBioOnly(false) }} style={{ fontSize: 12, color: '#8a6a3e', background: 'transparent', border: '0.5px solid rgba(201,169,110,0.3)', padding: '8px 16px', borderRadius: 3, cursor: 'pointer' }}>
+              <button onClick={() => { setCouleur(null); setSearch(''); setPrixMax(null); setBioOnly(false); setVeganOnly(false); setNaturelOnly(false); setBiodynamiqueOnly(false); setCasherOnly(false); setRegionId(''); setAppellationId('') }} style={{ fontSize: 12, color: '#8a6a3e', background: 'transparent', border: '0.5px solid rgba(201,169,110,0.3)', padding: '8px 16px', borderRadius: 3, cursor: 'pointer' }}>
                 Effacer les filtres
               </button>
             </div>
