@@ -811,7 +811,9 @@ function HistoriqueVentes({ session, onClose, onAddToCart }: {
   const [ventes, setVentes] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [filterType, setFilterType] = useState('tous')
-  const [filterDate, setFilterDate] = useState('')
+  const today = new Date().toISOString().slice(0, 10)
+  const [filterDate, setFilterDate] = useState(today)
+  const [filterDateFin, setFilterDateFin] = useState(today)
   const [searchClient, setSearchClient] = useState('')
   const [clientsFound, setClientsFound] = useState<any[]>([])
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null)
@@ -854,12 +856,13 @@ function HistoriqueVentes({ session, onClose, onAddToCart }: {
       .order('created_at', { ascending: false })
       .limit(200)
     if (filterType !== 'tous') q = q.eq('type_doc', filterType)
-    if (filterDate) q = q.gte('created_at', filterDate).lte('created_at', filterDate + 'T23:59:59')
+    if (filterDate) q = q.gte('created_at', filterDate)
+    if (filterDateFin) q = q.lte('created_at', filterDateFin + 'T23:59:59')
     if (selectedClientId) q = q.eq('customer_id', selectedClientId)
     const { data } = await q
     setVentes(data || [])
     setLoading(false)
-  }, [filterType, filterDate, selectedClientId, siteIds])
+  }, [filterType, filterDate, filterDateFin, selectedClientId, siteIds])
 
   useEffect(() => { loadVentes() }, [loadVentes])
 
@@ -1292,9 +1295,17 @@ ${detail.type_doc === 'facture' ? `
         </div>
         {/* Filtre date + client */}
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' as const, alignItems: 'flex-start' }}>
-          <input type="date" value={filterDate} onChange={e => setFilterDate(e.target.value)}
-            style={{ background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#e8e0d5', fontSize: 14, padding: '8px 12px' }} />
-          {filterDate && <button onClick={() => setFilterDate('')} style={{ background: 'transparent', border: 'none', color: '#c96e6e', fontSize: 13, cursor: 'pointer' }}>✕</button>}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>De</span>
+            <input type="date" value={filterDate} onChange={e => setFilterDate(e.target.value)}
+              style={{ background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#e8e0d5', fontSize: 13, padding: '7px 10px' }} />
+            <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>À</span>
+            <input type="date" value={filterDateFin} onChange={e => setFilterDateFin(e.target.value)}
+              style={{ background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#e8e0d5', fontSize: 13, padding: '7px 10px' }} />
+            {(filterDate !== today || filterDateFin !== today) && (
+              <button onClick={() => { setFilterDate(today); setFilterDateFin(today) }} style={{ background: 'rgba(201,169,110,0.1)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 6, color: '#c9a96e', fontSize: 12, padding: '6px 10px', cursor: 'pointer' }}>Aujourd'hui</button>
+            )}
+          </div>
 
           {/* Recherche client */}
           <div style={{ flex: 1, minWidth: 180, position: 'relative' as const }}>
