@@ -293,14 +293,24 @@ function CartDrawer() {
 }
 
 // ── Nav ───────────────────────────────────────────────────────
-// ── Modal Login pro ──────────────────────────────────────────
+// ── Modal Login / Inscription ────────────────────────────────
 function LoginModal({ onClose }: { onClose: () => void }) {
   const { signIn, signUp } = useAuth()
   const [mode, setMode] = useState<'login' | 'signup'>('login')
+  // Login
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  // Signup
+  const [civilite, setCivilite] = useState<'M' | 'Mme' | 'Autre'>('M')
   const [prenom, setPrenom] = useState('')
   const [nom, setNom] = useState('')
+  const [telephone, setTelephone] = useState('')
+  const [typeCompte, setTypeCompte] = useState<'particulier' | 'pro'>('particulier')
+  const [raisonSociale, setRaisonSociale] = useState('')
+  const [siret, setSiret] = useState('')
+  const [accepteCgv, setAccepteCgv] = useState(false)
+  const [certifieMajeur, setCertifieMajeur] = useState(false)
+  const [newsletter, setNewsletter] = useState(false)
   const [err, setErr] = useState('')
   const [msg, setMsg] = useState('')
   const [loading, setLoading] = useState(false)
@@ -314,11 +324,18 @@ function LoginModal({ onClose }: { onClose: () => void }) {
         if (error) { setErr(error); return }
         onClose()
       } else {
-        if (!prenom.trim() || !nom.trim()) { setErr('Prénom et nom requis'); return }
-        const { error, needsValidation } = await signUp(email, password, prenom, nom)
+        if (!certifieMajeur) { setErr('Tu dois certifier avoir 18 ans ou plus pour acheter de l\'alcool.'); return }
+        if (!accepteCgv) { setErr('Tu dois accepter les CGV pour t\'inscrire.'); return }
+        if (typeCompte === 'pro' && !raisonSociale.trim()) { setErr('La raison sociale est requise pour un compte pro.'); return }
+        const { error, needsValidation } = await signUp({
+          email, password, civilite, prenom, nom, telephone, type_compte: typeCompte,
+          raison_sociale: raisonSociale, siret, newsletter,
+        })
         if (error) { setErr(error); return }
         if (needsValidation) {
-          setMsg('Compte créé ! Un email de confirmation t\'a été envoyé. Tu pourras te connecter ensuite. Note : l\'accès aux infos stock pro nécessite une validation par notre équipe.')
+          setMsg('Compte créé ! Un email de confirmation t\'a été envoyé. Tu pourras ensuite te connecter. L\'accès aux tarifs et stocks pros nécessite une validation par notre équipe.')
+        } else {
+          setMsg('Compte créé ! Un email de confirmation t\'a été envoyé. Tu peux te connecter.')
         }
       }
     } finally {
@@ -327,25 +344,70 @@ function LoginModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div onClick={onClose} style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 850, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 6, padding: '32px 36px', maxWidth: 420, width: '100%', boxShadow: '0 24px 48px rgba(0,0,0,0.15)' }}>
+    <div onClick={onClose} style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 850, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, overflowY: 'auto' as const }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 6, padding: '28px 32px', maxWidth: 460, width: '100%', boxShadow: '0 24px 48px rgba(0,0,0,0.15)', maxHeight: '90vh', overflowY: 'auto' as const }}>
         <div style={{ fontFamily: 'Georgia, serif', fontSize: 22, color: '#0a0a0a', marginBottom: 6 }}>
-          {mode === 'login' ? 'Connexion pro' : 'Créer un compte pro'}
+          {mode === 'login' ? 'Connexion' : 'Créer un compte'}
         </div>
-        <div style={{ fontSize: 11, color: 'rgba(0,0,0,0.5)', marginBottom: 20 }}>
-          {mode === 'login' ? 'Accède aux stocks détaillés et tarifs pro.' : 'Inscris-toi puis demande la validation à l\'équipe pour l\'accès pro.'}
+        <div style={{ fontSize: 11, color: 'rgba(0,0,0,0.5)', marginBottom: 18 }}>
+          {mode === 'login' ? 'Accède à ton compte et tes commandes.' : 'Quelques infos pour mieux te servir.'}
         </div>
+
         <form onSubmit={handleSubmit}>
           {mode === 'signup' && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
-              <input value={prenom} onChange={e => setPrenom(e.target.value)} placeholder="Prénom" required style={loginInput} />
-              <input value={nom} onChange={e => setNom(e.target.value)} placeholder="Nom" required style={loginInput} />
+            <>
+              {/* Type de compte */}
+              <div style={{ display: 'flex', gap: 8, marginBottom: 14, padding: 3, background: '#fbfaf6', borderRadius: 3, border: '0.5px solid rgba(0,0,0,0.08)' }}>
+                {[
+                  { v: 'particulier', l: 'Particulier' },
+                  { v: 'pro', l: 'Professionnel' },
+                ].map(({ v, l }) => (
+                  <button type="button" key={v} onClick={() => setTypeCompte(v as any)} style={{
+                    flex: 1, padding: '8px 10px', fontSize: 12, fontWeight: 600,
+                    background: typeCompte === v ? '#8a6a3e' : 'transparent',
+                    color: typeCompte === v ? '#fff' : 'rgba(0,0,0,0.5)',
+                    border: 'none', borderRadius: 3, cursor: 'pointer', letterSpacing: 0.5,
+                  }}>{l}</button>
+                ))}
+              </div>
+
+              {/* Civilité + Prénom + Nom */}
+              <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr 1fr', gap: 8, marginBottom: 10 }}>
+                <select value={civilite} onChange={e => setCivilite(e.target.value as any)} style={loginInput}>
+                  <option value="M">M.</option>
+                  <option value="Mme">Mme</option>
+                  <option value="Autre">Autre</option>
+                </select>
+                <input value={prenom} onChange={e => setPrenom(e.target.value)} placeholder="Prénom" required style={loginInput} />
+                <input value={nom} onChange={e => setNom(e.target.value)} placeholder="Nom" required style={loginInput} />
+              </div>
+
+              {/* Champs pros */}
+              {typeCompte === 'pro' && (
+                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 8, marginBottom: 10 }}>
+                  <input value={raisonSociale} onChange={e => setRaisonSociale(e.target.value)} placeholder="Raison sociale" required style={loginInput} />
+                  <input value={siret} onChange={e => setSiret(e.target.value.replace(/\D/g, '').slice(0, 14))} placeholder="SIRET (14 chiffres)" pattern="[0-9]{14}" style={loginInput} />
+                </div>
+              )}
+
+              <input type="tel" value={telephone} onChange={e => setTelephone(e.target.value)} placeholder="Téléphone (optionnel)" style={{ ...loginInput, marginBottom: 10 }} />
+            </>
+          )}
+
+          <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" required autoComplete="email" style={{ ...loginInput, marginBottom: 10 }} />
+          <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder={mode === 'signup' ? 'Mot de passe (8+ caractères)' : 'Mot de passe'} required minLength={mode === 'signup' ? 8 : undefined} autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} style={{ ...loginInput, marginBottom: 14 }} />
+
+          {mode === 'signup' && (
+            <div style={{ marginBottom: 14 }}>
+              <Checkbox checked={certifieMajeur} onChange={setCertifieMajeur} label="Je certifie avoir 18 ans ou plus (vente d'alcool, art. L.3342-1 CSP)" />
+              <Checkbox checked={accepteCgv} onChange={setAccepteCgv} label={<span>J'accepte les <a href="/boutique/cgv" target="_blank" style={{ color: '#8a6a3e' }}>conditions générales</a> et la politique de confidentialité</span>} />
+              <Checkbox checked={newsletter} onChange={setNewsletter} label="Je souhaite recevoir la newsletter (sélections, événements, promotions)" />
             </div>
           )}
-          <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" required style={{ ...loginInput, marginBottom: 12 }} />
-          <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder={mode === 'signup' ? 'Mot de passe (8+ caractères)' : 'Mot de passe'} required minLength={8} style={{ ...loginInput, marginBottom: 16 }} />
+
           {err && <div style={{ fontSize: 12, color: '#a04444', marginBottom: 12, padding: '8px 12px', background: 'rgba(160,68,68,0.06)', borderRadius: 3 }}>{err}</div>}
-          {msg && <div style={{ fontSize: 12, color: '#2a8a2a', marginBottom: 12, padding: '8px 12px', background: 'rgba(42,138,42,0.08)', borderRadius: 3, lineHeight: 1.5 }}>{msg}</div>}
+          {msg && <div style={{ fontSize: 12, color: '#2a8a2a', marginBottom: 12, padding: '10px 12px', background: 'rgba(42,138,42,0.08)', borderRadius: 3, lineHeight: 1.5 }}>{msg}</div>}
+
           <button type="submit" disabled={loading} style={{
             width: '100%', background: loading ? '#ccc' : '#8a6a3e', color: '#fff', border: 'none',
             padding: '12px', fontSize: 12, letterSpacing: 1, textTransform: 'uppercase' as const,
@@ -365,6 +427,16 @@ function LoginModal({ onClose }: { onClose: () => void }) {
     </div>
   )
 }
+
+function Checkbox({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: React.ReactNode }) {
+  return (
+    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', marginBottom: 8, fontSize: 11, color: 'rgba(0,0,0,0.7)', lineHeight: 1.5 }}>
+      <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} style={{ marginTop: 2, accentColor: '#8a6a3e', flexShrink: 0 }} />
+      <span>{label}</span>
+    </label>
+  )
+}
+
 const loginInput: any = { width: '100%', background: '#fbfaf6', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 3, padding: '10px 14px', fontSize: 13, color: '#1a1a1a', boxSizing: 'border-box' as const, outline: 'none' }
 
 // ── Bouton compte (login / mon compte / déconnexion) ─────────
@@ -403,14 +475,24 @@ function AccountButton() {
         {isPro && <span style={{ fontSize: 9, background: '#8a6a3e', color: '#fff', padding: '1px 6px', borderRadius: 2, letterSpacing: 0.5, fontWeight: 600 }}>PRO</span>}
       </button>
       {showMenu && (
-        <div style={{ position: 'absolute' as const, top: 'calc(100% + 6px)', right: 0, background: '#fff', border: '0.5px solid rgba(0,0,0,0.1)', borderRadius: 6, boxShadow: '0 8px 20px rgba(0,0,0,0.1)', minWidth: 200, zIndex: 100 }}>
+        <div style={{ position: 'absolute' as const, top: 'calc(100% + 6px)', right: 0, background: '#fff', border: '0.5px solid rgba(0,0,0,0.1)', borderRadius: 6, boxShadow: '0 8px 20px rgba(0,0,0,0.1)', minWidth: 220, zIndex: 100 }}>
           <div style={{ padding: '12px 16px', borderBottom: '0.5px solid rgba(0,0,0,0.06)' }}>
             <div style={{ fontSize: 12, color: '#0a0a0a' }}>{user.email}</div>
             <div style={{ fontSize: 11, color: isPro ? '#2a8a2a' : 'rgba(0,0,0,0.5)', marginTop: 4 }}>
-              {isPro ? '✓ Compte pro validé' : 'Compte particulier (en attente de validation pro)'}
+              {isPro ? '✓ Compte pro validé' : 'Compte particulier'}
             </div>
           </div>
-          <button onClick={() => { setShowMenu(false); signOut() }} style={{ width: '100%', textAlign: 'left' as const, background: 'transparent', border: 'none', padding: '10px 16px', fontSize: 12, color: '#a04444', cursor: 'pointer' }}>
+          <Link href="/boutique/compte" onClick={() => setShowMenu(false)} style={{ display: 'block', textAlign: 'left' as const, padding: '10px 16px', fontSize: 12, color: '#1a1a1a', textDecoration: 'none' }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(0,0,0,0.03)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+            👤 Mon compte
+          </Link>
+          <Link href="/boutique/compte?tab=commandes" onClick={() => setShowMenu(false)} style={{ display: 'block', textAlign: 'left' as const, padding: '10px 16px', fontSize: 12, color: '#1a1a1a', textDecoration: 'none' }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(0,0,0,0.03)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+            📦 Mes commandes
+          </Link>
+          <button onClick={() => { setShowMenu(false); signOut() }} style={{ width: '100%', textAlign: 'left' as const, background: 'transparent', border: 'none', borderTop: '0.5px solid rgba(0,0,0,0.06)', padding: '10px 16px', fontSize: 12, color: '#a04444', cursor: 'pointer' }}>
             ↩ Se déconnecter
           </button>
         </div>

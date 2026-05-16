@@ -17,13 +17,27 @@ interface BoutiqueUser {
   est_societe?: boolean
 }
 
+export interface SignUpData {
+  email: string
+  password: string
+  civilite: string
+  prenom: string
+  nom: string
+  telephone?: string
+  type_compte: 'particulier' | 'pro'
+  raison_sociale?: string
+  siret?: string
+  newsletter: boolean
+}
+
 interface AuthContextType {
   user: BoutiqueUser | null
   isPro: boolean
   loading: boolean
   signIn: (email: string, password: string) => Promise<{ error?: string }>
-  signUp: (email: string, password: string, prenom: string, nom: string) => Promise<{ error?: string; needsValidation?: boolean }>
+  signUp: (data: SignUpData) => Promise<{ error?: string; needsValidation?: boolean }>
   signOut: () => Promise<void>
+  refresh: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | null>(null)
@@ -67,22 +81,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return {}
   }
 
-  const signUp = async (email: string, password: string, prenom: string, nom: string) => {
-    const cleanEmail = email.trim().toLowerCase()
+  const signUp = async (d: SignUpData) => {
+    const cleanEmail = d.email.trim().toLowerCase()
+    const isPro = d.type_compte === 'pro'
     const { data, error } = await supabase.auth.signUp({
-      email: cleanEmail, password,
-      options: { data: { prenom, nom } },
+      email: cleanEmail, password: d.password,
+      options: { data: { prenom: d.prenom, nom: d.nom } },
     })
     if (error) return { error: error.message }
-    // Créer ou mettre à jour la fiche customer (tarif_pro=false, pro_pending=true)
-    // L'admin verra la demande dans /admin/validations-pro
+    // Upsert customer avec tous les champs enrichis
     if (data.user) {
+      const now = new Date().toISOString()
       await supabase.from('customers').upsert({
-        prenom, nom, email: cleanEmail, tarif_pro: false, pro_pending: true,
+        civilite: d.civilite || null,
+        prenom: d.prenom,
+        nom: d.nom,
+        email: cleanEmail,
+        telephone: d.telephone?.trim() || null,
+        raison_sociale: isPro ? (d.raison_sociale?.trim() || null) : null,
+        siret: isPro ? (d.siret?.trim() || null) : null,
+        est_societe: isPro,
+        newsletter: d.newsletter,
+        tarif_pro: false,
+        pro_pending: isPro, // seuls les pros ont une demande à valider
+        cgv_acceptee_le: now,
+        majorite_certifiee_le: now,
       }, { onConflict: 'email' })
     }
-    return { needsValidation: true }
+    return { needsValidation: isPro }
   }
+
+  const refresh = useCallback(async () => {
+    const { data: { user: authUser } } = await supabase.auth.getUser()
+    await refreshProfile(authUser?.email)
+  }, [refreshProfile])
 
   const signOut = async () => {
     await supabase.auth.signOut()
@@ -91,7 +123,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, isPro, loading, signIn, signUp, signOut }}>
+    <AuthContext.Provider value={{ user, isPro, loading, signIn, signUp, signOut, refresh }}>
       {children}
     </AuthContext.Provider>
   )
