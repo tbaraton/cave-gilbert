@@ -445,17 +445,16 @@ function AccountButton() {
   const [showLogin, setShowLogin] = useState(false)
   const [showMenu, setShowMenu] = useState(false)
 
-  if (loading) return null
-
-  if (!user) {
+  // Affiche le bouton login même pendant le chargement (sécurité : pas de bouton fantôme)
+  if (loading || !user) {
     return (
       <>
         <button onClick={() => setShowLogin(true)} style={{
-          background: 'transparent', border: '0.5px solid rgba(0,0,0,0.15)',
-          color: 'rgba(0,0,0,0.6)', borderRadius: 8, padding: '8px 14px',
-          fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' as const,
+          background: 'transparent', border: '0.5px solid rgba(138,106,62,0.4)',
+          color: '#8a6a3e', borderRadius: 8, padding: '8px 14px',
+          fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' as const, fontWeight: 600,
         }}>
-          🔑 Espace pro
+          👤 Connexion / Inscription
         </button>
         {showLogin && <LoginModal onClose={() => setShowLogin(false)} />}
       </>

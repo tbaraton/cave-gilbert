@@ -65,12 +65,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     (async () => {
-      const { data: { user: authUser } } = await supabase.auth.getUser()
-      await refreshProfile(authUser?.email)
-      setLoading(false)
+      try {
+        const { data: { user: authUser } } = await supabase.auth.getUser()
+        await refreshProfile(authUser?.email)
+      } catch (e) {
+        console.warn('[AuthContext] init error', e)
+      } finally {
+        setLoading(false)
+      }
     })()
     const { data: sub } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      await refreshProfile(session?.user?.email)
+      try { await refreshProfile(session?.user?.email) } catch (e) { console.warn('[AuthContext] refresh error', e) }
     })
     return () => sub.subscription.unsubscribe()
   }, [refreshProfile])
