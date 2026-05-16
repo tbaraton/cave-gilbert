@@ -206,6 +206,16 @@ export default function ProductPageClient({ product, similaires }: { product: an
           {/* Tab : Dégustation */}
           {activeTab === 'degustation' && (
             <div>
+              {/* Notes de dégustation rédigées — section principale */}
+              {product.notes_degustation && (
+                <div style={{ marginBottom: 24 }}>
+                  <div style={{ fontSize: 9, letterSpacing: 2, color: accent, textTransform: 'uppercase' as const, marginBottom: 12, fontWeight: 600 }}>Notes de dégustation</div>
+                  <p style={{ fontSize: 14, color: '#1a1a1a', lineHeight: 1.8, fontWeight: 300 }}>
+                    {product.notes_degustation}
+                  </p>
+                </div>
+              )}
+
               {product.aromes?.length > 0 && (
                 <div style={{ marginBottom: 24 }}>
                   <div style={{ fontSize: 9, letterSpacing: 2, color: 'rgba(0,0,0,0.4)', textTransform: 'uppercase' as const, marginBottom: 12 }}>Arômes & saveurs</div>
@@ -219,66 +229,84 @@ export default function ProductPageClient({ product, similaires }: { product: an
                 </div>
               )}
 
-              {/* Profil gustatif */}
+              {/* Profil gustatif — réduit, sur 2 colonnes, dans un encart discret */}
               {(product.acidite || product.corps || product.tanins) && (
-                <div style={{ marginBottom: 24 }}>
-                  <div style={{ fontSize: 9, letterSpacing: 2, color: 'rgba(0,0,0,0.4)', textTransform: 'uppercase' as const, marginBottom: 16 }}>Profil gustatif</div>
-                  <ProfilBar label="Acidité" value={product.acidite} />
-                  <ProfilBar label="Tanins" value={product.tanins} />
-                  <ProfilBar label="Corps" value={product.corps} />
-                  <ProfilBar label="Minéralité" value={product.mineralite} />
-                  <ProfilBar label="Sucrosité" value={product.sucrosite} />
-                  <ProfilBar label="Longueur" value={product.longueur} />
-                  <ProfilBar label="Complexité" value={product.complexite} />
-                </div>
-              )}
-
-              {/* Accords */}
-              {product.accords?.length > 0 && (
-                <div>
-                  <div style={{ fontSize: 9, letterSpacing: 2, color: 'rgba(0,0,0,0.4)', textTransform: 'uppercase' as const, marginBottom: 12 }}>Accords mets & vins</div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 8 }}>
-                    {product.accords.map((a: string) => (
-                      <span key={a} style={{ fontSize: 12, color: 'rgba(0,0,0,0.7)' }}>
-                        {a}
-                      </span>
-                    )).reduce((acc: any[], el: any, i: number) => i === 0 ? [el] : [...acc, <span key={`sep-${i}`} style={{ color: 'rgba(0,0,0,0.3)' }}>·</span>, el], [])}
+                <details style={{ marginTop: 20, padding: '12px 16px', background: 'rgba(0,0,0,0.02)', border: '0.5px solid rgba(0,0,0,0.06)', borderRadius: 4 }}>
+                  <summary style={{ fontSize: 10, letterSpacing: 2, color: 'rgba(0,0,0,0.5)', textTransform: 'uppercase' as const, cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span>Profil gustatif détaillé</span>
+                    <span style={{ fontSize: 14, color: 'rgba(0,0,0,0.3)' }}>+</span>
+                  </summary>
+                  <div style={{ marginTop: 14, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 24px' }}>
+                    <ProfilBar label="Acidité" value={product.acidite} />
+                    <ProfilBar label="Tanins" value={product.tanins} />
+                    <ProfilBar label="Corps" value={product.corps} />
+                    <ProfilBar label="Minéralité" value={product.mineralite} />
+                    <ProfilBar label="Sucrosité" value={product.sucrosite} />
+                    <ProfilBar label="Longueur" value={product.longueur} />
+                    <ProfilBar label="Complexité" value={product.complexite} />
                   </div>
-                </div>
+                </details>
               )}
             </div>
           )}
 
-          {/* Tab : Service */}
+          {/* Tab : Service & accords mets */}
           {activeTab === 'service' && (
             <div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 24 }}>
+              {/* Accords mets-vins en premier (texte rédigé, prominent) */}
+              {(product.accords_mets || product.accords?.length > 0) && (
+                <div style={{ marginBottom: 28 }}>
+                  <div style={{ fontSize: 9, letterSpacing: 2, color: accent, textTransform: 'uppercase' as const, marginBottom: 12, fontWeight: 600 }}>🍽 Accords mets & vins</div>
+                  {product.accords_mets ? (
+                    <p style={{ fontSize: 14, color: '#1a1a1a', lineHeight: 1.8, fontWeight: 300 }}>
+                      {product.accords_mets}
+                    </p>
+                  ) : (
+                    <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 8 }}>
+                      {product.accords.map((a: string, i: number) => (
+                        <span key={a}>
+                          {i > 0 && <span style={{ color: 'rgba(0,0,0,0.3)', marginRight: 8 }}>·</span>}
+                          <span style={{ fontSize: 13, color: 'rgba(0,0,0,0.75)' }}>{a}</span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Service : grand encart température + garde au centre */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+                {(product.temperature_service_min || product.temp_service_min) && (
+                  <div style={{ background: `${accent}0e`, border: `0.5px solid ${accent}30`, borderRadius: 5, padding: '20px 22px' }}>
+                    <div style={{ fontSize: 28, marginBottom: 10 }}>🌡</div>
+                    <div style={{ fontSize: 9, letterSpacing: 2, color: 'rgba(0,0,0,0.5)', textTransform: 'uppercase' as const, marginBottom: 6 }}>Température de service</div>
+                    <div style={{ fontSize: 22, color: accent, fontFamily: 'Georgia, serif' }}>
+                      {(product.temperature_service_min ?? product.temp_service_min)} – {(product.temperature_service_max ?? product.temp_service_max)} °C
+                    </div>
+                  </div>
+                )}
+                {product.garde_potentiel_annees && (
+                  <div style={{ background: `${accent}0e`, border: `0.5px solid ${accent}30`, borderRadius: 5, padding: '20px 22px' }}>
+                    <div style={{ fontSize: 28, marginBottom: 10 }}>⏳</div>
+                    <div style={{ fontSize: 9, letterSpacing: 2, color: 'rgba(0,0,0,0.5)', textTransform: 'uppercase' as const, marginBottom: 6 }}>Potentiel de garde</div>
+                    <div style={{ fontSize: 22, color: accent, fontFamily: 'Georgia, serif' }}>
+                      {product.garde_potentiel_annees} an{product.garde_potentiel_annees > 1 ? 's' : ''}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Service : infos complémentaires plus petites */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 16 }}>
                 {[
-                  {
-                    icon: '🌡', label: 'Température de service',
-                    value: product.temp_service_min && product.temp_service_max
-                      ? `${product.temp_service_min} — ${product.temp_service_max} °C`
-                      : null
-                  },
-                  {
-                    icon: '⏱', label: 'Décantation',
-                    value: product.decantation_min ? `${product.decantation_min} min` : 'Non nécessaire'
-                  },
-                  {
-                    icon: '🍷', label: 'Type de verre',
-                    value: product.type_verre
-                  },
-                  {
-                    icon: '📅', label: 'Apogée',
-                    value: product.apogee_debut && product.apogee_fin
-                      ? `${product.apogee_debut} — ${product.apogee_fin}`
-                      : null
-                  },
+                  { icon: '⏱', label: 'Décantation', value: product.decantation_min ? `${product.decantation_min} min` : 'Non nécessaire' },
+                  { icon: '🍷', label: 'Type de verre', value: product.type_verre },
+                  { icon: '📅', label: 'Apogée', value: product.apogee_debut && product.apogee_fin ? `${product.apogee_debut} – ${product.apogee_fin}` : null },
                 ].filter(i => i.value).map(({ icon, label, value }) => (
-                  <div key={label} style={{ background: 'rgba(0,0,0,0.04)', borderRadius: 5, padding: '16px' }}>
-                    <div style={{ fontSize: 20, marginBottom: 8 }}>{icon}</div>
-                    <div style={{ fontSize: 9, letterSpacing: 2, color: 'rgba(0,0,0,0.4)', textTransform: 'uppercase' as const, marginBottom: 4 }}>{label}</div>
-                    <div style={{ fontSize: 14, color: '#1a1a1a' }}>{value}</div>
+                  <div key={label} style={{ background: 'rgba(0,0,0,0.03)', borderRadius: 4, padding: '12px 14px' }}>
+                    <div style={{ fontSize: 16, marginBottom: 4 }}>{icon}</div>
+                    <div style={{ fontSize: 9, letterSpacing: 1.5, color: 'rgba(0,0,0,0.45)', textTransform: 'uppercase' as const, marginBottom: 4 }}>{label}</div>
+                    <div style={{ fontSize: 13, color: '#1a1a1a' }}>{value}</div>
                   </div>
                 ))}
               </div>
