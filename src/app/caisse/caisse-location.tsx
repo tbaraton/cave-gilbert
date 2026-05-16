@@ -324,7 +324,7 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
     const lignesHtml = lignesFuts.filter(l => l.fut_id && l.quantite > 0).map(l => {
       const fut = futs.find(f => f.id === l.fut_id)
       const prix = getPrixLigne(l.fut_id)
-      return '<tr><td>' + (fut?.nom_cuvee || '') + ' ' + (fut?.contenance_litres || '') + 'L</td><td style="text-align:center;font-weight:700;color:#c9a96e">' + l.quantite + '</td><td style="text-align:right;color:rgba(232,224,213,0.7)">' + fmt(prix) + '</td><td style="text-align:right;font-weight:600;color:#f0e8d8">' + fmt(prix * l.quantite) + '</td></tr>'
+      return '<tr><td>' + (fut?.nom_cuvee || '') + ' ' + (fut?.contenance_litres || '') + 'L</td><td style="text-align:center;font-weight:700;color:#8a6a3e">' + l.quantite + '</td><td style="text-align:right;color:rgba(0,0,0,0.75)">' + fmt(prix) + '</td><td style="text-align:right;font-weight:600;color:#0a0a0a">' + fmt(prix * l.quantite) + '</td></tr>'
     }).join('')
     const sigHtml = sigClient
       ? '<img src="' + sigClient + '" style="max-width:200px;max-height:80px;border:0.5px solid rgba(201,169,110,0.3);border-radius:4px;background:#fff" />'
@@ -333,36 +333,36 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
     return '<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>Bon de r\u00e9servation ' + resaCreee + '</title>' +
       '<style>' +
       '* { margin: 0; padding: 0; box-sizing: border-box; }' +
-      'body { font-family: Arial, sans-serif; background: #0d0a08; color: #e8e0d5; max-width: 860px; margin: 0 auto; padding: 48px 40px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }' +
-      '@media print { body { background: #0d0a08 !important; color: #e8e0d5 !important; } * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } }' +
+      'body { font-family: Arial, sans-serif; background: #ffffff; color: #1a1a1a; max-width: 860px; margin: 0 auto; padding: 48px 40px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }' +
+      '@media print { body { background: #ffffff !important; color: #1a1a1a !important; } * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } }' +
       '.header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 40px; padding-bottom: 24px; border-bottom: 1px solid rgba(201,169,110,0.3); }' +
       '.logo-wrap img { height: 56px; object-fit: contain; display: block; margin-bottom: 10px; }' +
-      '.cave-name { font-size: 20px; color: #c9a96e; font-family: Georgia, serif; letter-spacing: 2px; }' +
-      '.cave-info { font-size: 11px; color: rgba(232,224,213,0.4); line-height: 1.9; margin-top: 6px; }' +
+      '.cave-name { font-size: 20px; color: #8a6a3e; font-family: Georgia, serif; letter-spacing: 2px; }' +
+      '.cave-info { font-size: 11px; color: rgba(0,0,0,0.5); line-height: 1.9; margin-top: 6px; }' +
       '.doc-info { text-align: right; }' +
-      '.doc-title { font-size: 11px; letter-spacing: 4px; text-transform: uppercase; color: rgba(201,169,110,0.6); margin-bottom: 6px; }' +
-      '.doc-numero { font-size: 22px; color: #c9a96e; font-family: Georgia, serif; }' +
-      '.doc-date { font-size: 12px; color: rgba(232,224,213,0.4); margin-top: 6px; }' +
+      '.doc-title { font-size: 11px; letter-spacing: 4px; text-transform: uppercase; color: rgba(138,106,62,0.85); margin-bottom: 6px; }' +
+      '.doc-numero { font-size: 22px; color: #8a6a3e; font-family: Georgia, serif; }' +
+      '.doc-date { font-size: 12px; color: rgba(0,0,0,0.5); margin-top: 6px; }' +
       '.section { margin-bottom: 24px; }' +
-      '.section-title { font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: rgba(201,169,110,0.5); margin-bottom: 10px; font-weight: 400; border-bottom: 0.5px solid rgba(201,169,110,0.2); padding-bottom: 6px; }' +
+      '.section-title { font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: rgba(138,106,62,0.85); margin-bottom: 10px; font-weight: 400; border-bottom: 0.5px solid rgba(201,169,110,0.2); padding-bottom: 6px; }' +
       '.info-row { display: flex; gap: 12px; margin-bottom: 6px; font-size: 13px; }' +
-      '.info-label { color: rgba(232,224,213,0.35); width: 90px; flex-shrink: 0; font-size: 11px; }' +
-      '.info-val { color: #f0e8d8; }' +
+      '.info-label { color: rgba(0,0,0,0.45); width: 90px; flex-shrink: 0; font-size: 11px; }' +
+      '.info-val { color: #0a0a0a; }' +
       'table { width: 100%; border-collapse: collapse; }' +
       'thead tr { border-bottom: 1px solid rgba(201,169,110,0.3); }' +
-      'thead th { padding: 10px 14px; text-align: left; font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: rgba(201,169,110,0.5); font-weight: 400; }' +
-      'tbody tr { border-bottom: 0.5px solid rgba(255,255,255,0.05); }' +
+      'thead th { padding: 10px 14px; text-align: left; font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: rgba(138,106,62,0.85); font-weight: 400; }' +
+      'tbody tr { border-bottom: 0.5px solid rgba(0,0,0,0.07); }' +
       'td { padding: 12px 14px; font-size: 13px; }' +
       '.totaux { border-top: 1px solid rgba(201,169,110,0.2); margin-top: 0; }' +
-      '.total-line { display: flex; justify-content: space-between; padding: 8px 14px; font-size: 13px; color: rgba(232,224,213,0.4); }' +
-      '.total-line.grand { background: rgba(201,169,110,0.08); border: 0.5px solid rgba(201,169,110,0.2); border-radius: 6px; margin: 12px 0; font-size: 17px; font-weight: 700; color: #c9a96e; font-family: Georgia, serif; padding: 14px; }' +
+      '.total-line { display: flex; justify-content: space-between; padding: 8px 14px; font-size: 13px; color: rgba(0,0,0,0.5); }' +
+      '.total-line.grand { background: rgba(201,169,110,0.08); border: 0.5px solid rgba(201,169,110,0.2); border-radius: 6px; margin: 12px 0; font-size: 17px; font-weight: 700; color: #8a6a3e; font-family: Georgia, serif; padding: 14px; }' +
       '.acompte-box { background: rgba(110,201,110,0.06); border: 0.5px solid rgba(110,201,110,0.2); border-radius: 6px; padding: 12px 14px; margin-top: 12px; }' +
-      '.conditions { background: rgba(255,255,255,0.02); border-left: 3px solid rgba(201,169,110,0.3); padding: 14px 18px; font-size: 11px; color: rgba(232,224,213,0.4); line-height: 1.9; border-radius: 0 6px 6px 0; margin-bottom: 32px; }' +
+      '.conditions { background: rgba(0,0,0,0.04); border-left: 3px solid rgba(201,169,110,0.3); padding: 14px 18px; font-size: 11px; color: rgba(0,0,0,0.5); line-height: 1.9; border-radius: 0 6px 6px 0; margin-bottom: 32px; }' +
       '.signature-zone { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-top: 32px; }' +
-      '.sig-box { border-top: 0.5px solid rgba(201,169,110,0.3); padding-top: 12px; font-size: 11px; color: rgba(232,224,213,0.3); min-height: 80px; }' +
-      '.sig-title { color: rgba(201,169,110,0.6); font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 8px; }' +
-      '.footer { margin-top: 32px; padding-top: 16px; border-top: 0.5px solid rgba(255,255,255,0.06); font-size: 10px; color: rgba(232,224,213,0.2); line-height: 2; }' +
-      '.watermark { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-35deg); font-size: 80px; color: rgba(255,255,255,0.03); font-family: Georgia, serif; letter-spacing: 8px; pointer-events: none; white-space: nowrap; }' +
+      '.sig-box { border-top: 0.5px solid rgba(201,169,110,0.3); padding-top: 12px; font-size: 11px; color: rgba(0,0,0,0.45); min-height: 80px; }' +
+      '.sig-title { color: rgba(138,106,62,0.85); font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 8px; }' +
+      '.footer { margin-top: 32px; padding-top: 16px; border-top: 0.5px solid rgba(0,0,0,0.08); font-size: 10px; color: rgba(0,0,0,0.35); line-height: 2; }' +
+      '.watermark { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-35deg); font-size: 80px; color: rgba(0,0,0,0.04); font-family: Georgia, serif; letter-spacing: 8px; pointer-events: none; white-space: nowrap; }' +
       '</style></head><body>' +
       '<div class="watermark">CAVE DE GILBERT</div>' +
       '<div class="header">' +
@@ -386,15 +386,15 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
       '<div class="section">' +
         '<div class="section-title">P\u00e9riode de location</div>' +
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">' +
-          '<div><div style="font-size:10px;color:rgba(201,169,110,0.5);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Retrait</div><div style="font-size:14px;color:#f0e8d8">' + new Date(dateDebut).toLocaleDateString('fr-FR', {weekday:'long',day:'2-digit',month:'long',year:'numeric'}) + '</div>' + (siteRetrait ? '<div style="font-size:11px;color:#6ec96e;margin-top:2px">\ud83d\udccd ' + (SITE_LABELS_LOC[siteRetrait] || siteRetrait) + '</div>' : '') + '</div>' +
-          '<div><div style="font-size:10px;color:rgba(201,169,110,0.5);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Retour</div><div style="font-size:14px;color:#f0e8d8">' + new Date(dateFin).toLocaleDateString('fr-FR', {weekday:'long',day:'2-digit',month:'long',year:'numeric'}) + '</div>' + (siteRetour ? '<div style="font-size:11px;color:#c9b06e;margin-top:2px">\ud83d\udccd ' + (SITE_LABELS_LOC[siteRetour] || siteRetour) + '</div>' : '') + '</div>' +
+          '<div><div style="font-size:10px;color:rgba(138,106,62,0.85);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Retrait</div><div style="font-size:14px;color:#0a0a0a">' + new Date(dateDebut).toLocaleDateString('fr-FR', {weekday:'long',day:'2-digit',month:'long',year:'numeric'}) + '</div>' + (siteRetrait ? '<div style="font-size:11px;color:#6ec96e;margin-top:2px">\ud83d\udccd ' + (SITE_LABELS_LOC[siteRetrait] || siteRetrait) + '</div>' : '') + '</div>' +
+          '<div><div style="font-size:10px;color:rgba(138,106,62,0.85);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Retour</div><div style="font-size:14px;color:#0a0a0a">' + new Date(dateFin).toLocaleDateString('fr-FR', {weekday:'long',day:'2-digit',month:'long',year:'numeric'}) + '</div>' + (siteRetour ? '<div style="font-size:11px;color:#c9b06e;margin-top:2px">\ud83d\udccd ' + (SITE_LABELS_LOC[siteRetour] || siteRetour) + '</div>' : '') + '</div>' +
         '</div>' +
       '</div>' +
-      (tireusesStr ? '<div class="section"><div class="section-title">Tireuse(s)</div><div style="font-size:14px;color:#f0e8d8">' + tireusesStr + '</div><div style="font-size:11px;color:rgba(232,224,213,0.4);margin-top:4px">Caution : <strong style="color:#c9a96e">' + fmt(cautionTireuse) + '</strong> par ch\u00e8que (non encaiss\u00e9 \u2014 restitu\u00e9 au retour)</div></div>' : '') +
+      (tireusesStr ? '<div class="section"><div class="section-title">Tireuse(s)</div><div style="font-size:14px;color:#0a0a0a">' + tireusesStr + '</div><div style="font-size:11px;color:rgba(0,0,0,0.5);margin-top:4px">Caution : <strong style="color:#8a6a3e">' + fmt(cautionTireuse) + '</strong> par ch\u00e8que (non encaiss\u00e9 \u2014 restitu\u00e9 au retour)</div></div>' : '') +
       '<div class="section"><div class="section-title">F\u00fbts command\u00e9s</div>' +
         '<table><thead><tr><th>D\u00e9signation</th><th style="text-align:center">Qté</th><th style="text-align:right">Prix u. TTC</th><th style="text-align:right">Total TTC</th></tr></thead><tbody>' + lignesHtml + '</tbody></table>' +
         '<div class="totaux"><div class="total-line grand"><span>TOTAL TTC</span><span>' + fmt(totalTTC) + '</span></div></div>' +
-        '<div class="acompte-box"><div style="font-size:13px;color:#6ec96e;margin-bottom:4px"><strong>Acompte 30% \u00e0 la commande : ' + fmt(acompte30) + '</strong></div><div style="font-size:11px;color:rgba(232,224,213,0.4)">Solde de <strong style="color:#f0e8d8">' + fmt(totalTTC - acompte30) + '</strong> \u00e0 r\u00e9gler au retour de la tireuse</div></div>' +
+        '<div class="acompte-box"><div style="font-size:13px;color:#6ec96e;margin-bottom:4px"><strong>Acompte 30% \u00e0 la commande : ' + fmt(acompte30) + '</strong></div><div style="font-size:11px;color:rgba(0,0,0,0.5)">Solde de <strong style="color:#0a0a0a">' + fmt(totalTTC - acompte30) + '</strong> \u00e0 r\u00e9gler au retour de la tireuse</div></div>' +
       '</div>' +
       '<div class="conditions">' +
         '\u2022 La caution de ' + fmt(cautionTireuse) + ' par ch\u00e8que est obligatoire et sera restitu\u00e9e au retour du mat\u00e9riel en bon \u00e9tat.<br>' +
@@ -405,7 +405,7 @@ export function ModuleLocation({ session, user, onClose }: { session: Session; u
       '</div>' +
       '<div class="signature-zone">' +
         '<div class="sig-box"><div class="sig-title">Signature client \u2014 Bon pour accord</div>' + sigHtml + '</div>' +
-        '<div class="sig-box"><div class="sig-title">Cave de Gilbert</div><div style="font-family:Georgia,serif;font-size:18px;color:#c9a96e;margin-top:8px">Cave de Gilbert</div></div>' +
+        '<div class="sig-box"><div class="sig-title">Cave de Gilbert</div><div style="font-family:Georgia,serif;font-size:18px;color:#8a6a3e;margin-top:8px">Cave de Gilbert</div></div>' +
       '</div>' +
       '<div class="footer">Cave de Gilbert \u00b7 Avenue Jean Colomb, 69280 Marcy l\u2019\u00c9toile \u00b7 contact@cavedegilbert.fr \u00b7 04 22 91 41 09</div>' +
       '</body></html>'

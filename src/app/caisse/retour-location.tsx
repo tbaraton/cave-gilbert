@@ -150,23 +150,23 @@ export function ModuleRetourLocation({ reservation: resa, onClose, onDone }: Ret
       const totalLigneHT = prixUnitHT * l.quantite_percutee
       const totalLigneTTC = prixUnitTTC * l.quantite_percutee
       return `<tr>
-        <td style="padding:10px 12px;border-bottom:0.5px solid rgba(255,255,255,0.06);font-size:13px;color:#e8e0d5">
+        <td style="padding:10px 12px;border-bottom:0.5px solid rgba(0,0,0,0.08);font-size:13px;color:#1a1a1a">
           Location f\u00fbt ${l.fut?.nom_cuvee} ${l.fut?.contenance_litres}L
-          ${remisePct > 0 ? `<div style="font-size:11px;color:rgba(201,169,110,0.6)">Prix catalogue : ${l.prix_unitaire.toFixed(2)} \u20ac — Remise ${remisePct}%</div>` : ''}
+          ${remisePct > 0 ? `<div style="font-size:11px;color:rgba(138,106,62,0.85)">Prix catalogue : ${l.prix_unitaire.toFixed(2)} \u20ac — Remise ${remisePct}%</div>` : ''}
         </td>
-        <td style="padding:10px 12px;border-bottom:0.5px solid rgba(255,255,255,0.06);text-align:center;font-size:13px;color:#e8e0d5">${l.quantite_percutee}</td>
-        <td style="padding:10px 12px;border-bottom:0.5px solid rgba(255,255,255,0.06);text-align:right;font-size:13px;color:rgba(232,224,213,0.7)">${prixUnitHT.toFixed(2)} \u20ac</td>
-        <td style="padding:10px 12px;border-bottom:0.5px solid rgba(255,255,255,0.06);text-align:center;font-size:13px;color:rgba(232,224,213,0.5)">20%</td>
-        <td style="padding:10px 12px;border-bottom:0.5px solid rgba(255,255,255,0.06);text-align:right;font-size:13px;color:#c9a96e;font-weight:600">${totalLigneTTC.toFixed(2)} \u20ac</td>
+        <td style="padding:10px 12px;border-bottom:0.5px solid rgba(0,0,0,0.08);text-align:center;font-size:13px;color:#1a1a1a">${l.quantite_percutee}</td>
+        <td style="padding:10px 12px;border-bottom:0.5px solid rgba(0,0,0,0.08);text-align:right;font-size:13px;color:rgba(0,0,0,0.75)">${prixUnitHT.toFixed(2)} \u20ac</td>
+        <td style="padding:10px 12px;border-bottom:0.5px solid rgba(0,0,0,0.08);text-align:center;font-size:13px;color:rgba(0,0,0,0.6)">20%</td>
+        <td style="padding:10px 12px;border-bottom:0.5px solid rgba(0,0,0,0.08);text-align:right;font-size:13px;color:#8a6a3e;font-weight:600">${totalLigneTTC.toFixed(2)} \u20ac</td>
       </tr>`
     }).join('')
 
     const tireusesHtml = (resa.reservation_tireuses || []).map((rt: any) => `<tr>
-        <td style="padding:10px 12px;border-bottom:0.5px solid rgba(255,255,255,0.06);font-size:13px;color:#e8e0d5">Location tireuse ${rt.tireuse?.nom} — ${rt.tireuse?.modele || ''}</td>
-        <td style="padding:10px 12px;border-bottom:0.5px solid rgba(255,255,255,0.06);text-align:center;font-size:13px;color:#e8e0d5">1</td>
-        <td style="padding:10px 12px;border-bottom:0.5px solid rgba(255,255,255,0.06);text-align:right;font-size:13px;color:rgba(232,224,213,0.7)">0,00 \u20ac</td>
-        <td style="padding:10px 12px;border-bottom:0.5px solid rgba(255,255,255,0.06);text-align:center;font-size:13px;color:rgba(232,224,213,0.5)">20%</td>
-        <td style="padding:10px 12px;border-bottom:0.5px solid rgba(255,255,255,0.06);text-align:right;font-size:13px;color:#c9a96e">offerte</td>
+        <td style="padding:10px 12px;border-bottom:0.5px solid rgba(0,0,0,0.08);font-size:13px;color:#1a1a1a">Location tireuse ${rt.tireuse?.nom} — ${rt.tireuse?.modele || ''}</td>
+        <td style="padding:10px 12px;border-bottom:0.5px solid rgba(0,0,0,0.08);text-align:center;font-size:13px;color:#1a1a1a">1</td>
+        <td style="padding:10px 12px;border-bottom:0.5px solid rgba(0,0,0,0.08);text-align:right;font-size:13px;color:rgba(0,0,0,0.75)">0,00 \u20ac</td>
+        <td style="padding:10px 12px;border-bottom:0.5px solid rgba(0,0,0,0.08);text-align:center;font-size:13px;color:rgba(0,0,0,0.6)">20%</td>
+        <td style="padding:10px 12px;border-bottom:0.5px solid rgba(0,0,0,0.08);text-align:right;font-size:13px;color:#8a6a3e">offerte</td>
       </tr>`).join('')
 
     const totalHT = lignesFacturees.reduce((acc, l) => {
@@ -179,16 +179,16 @@ export function ModuleRetourLocation({ reservation: resa, onClose, onDone }: Ret
     const nonPercutesHtml = lignesNonPercutees.length > 0 ? `
       <div style="background:rgba(110,201,110,0.06);border:0.5px solid rgba(110,201,110,0.2);border-radius:8px;padding:12px 16px;margin-bottom:20px">
         <div style="font-size:11px;letter-spacing:1.5px;color:#6ec96e;text-transform:uppercase;margin-bottom:8px">F\u00fbts non percuté(s) — remis en stock</div>
-        ${lignesNonPercutees.map(l => `<div style="font-size:13px;color:rgba(232,224,213,0.6)">↩ ${l.quantite_non_percutee}× ${l.fut?.nom_cuvee} ${l.fut?.contenance_litres}L — non facturé(s)</div>`).join('')}
+        ${lignesNonPercutees.map(l => `<div style="font-size:13px;color:rgba(0,0,0,0.7)">↩ ${l.quantite_non_percutee}× ${l.fut?.nom_cuvee} ${l.fut?.contenance_litres}L — non facturé(s)</div>`).join('')}
       </div>` : ''
 
     const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
 <title>Facture ${numeroFacture}</title>
 <style>
 * { margin:0;padding:0;box-sizing:border-box }
-body { font-family:Arial,sans-serif;background:#0d0a08;color:#e8e0d5;max-width:860px;margin:0 auto;padding:48px 40px;-webkit-print-color-adjust:exact;print-color-adjust:exact }
-@media print { body { background:#0d0a08 !important;color:#e8e0d5 !important } * { -webkit-print-color-adjust:exact !important;print-color-adjust:exact !important } }
-.watermark { position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-35deg);font-size:80px;color:rgba(255,255,255,0.03);font-family:Georgia,serif;letter-spacing:8px;pointer-events:none;white-space:nowrap }
+body { font-family:Arial,sans-serif;background:#ffffff;color:#1a1a1a;max-width:860px;margin:0 auto;padding:48px 40px;-webkit-print-color-adjust:exact;print-color-adjust:exact }
+@media print { body { background:#ffffff !important;color:#1a1a1a !important } * { -webkit-print-color-adjust:exact !important;print-color-adjust:exact !important } }
+.watermark { position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-35deg);font-size:80px;color:rgba(0,0,0,0.04);font-family:Georgia,serif;letter-spacing:8px;pointer-events:none;white-space:nowrap }
 </style></head><body>
 <div class="watermark">CAVE DE GILBERT</div>
 
@@ -196,8 +196,8 @@ body { font-family:Arial,sans-serif;background:#0d0a08;color:#e8e0d5;max-width:8
 <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:40px;padding-bottom:24px;border-bottom:1px solid rgba(201,169,110,0.3)">
   <div>
     <img src="https://cavedegilbert.vercel.app/logo.png" onerror="this.style.display=&quot;none&quot;" style="height:56px;object-fit:contain;display:block;margin-bottom:10px" />
-    <div style="font-size:20px;color:#c9a96e;font-family:Georgia,serif;letter-spacing:2px">Cave de Gilbert</div>
-    <div style="font-size:11px;color:rgba(232,224,213,0.4);line-height:2;margin-top:6px">
+    <div style="font-size:20px;color:#8a6a3e;font-family:Georgia,serif;letter-spacing:2px">Cave de Gilbert</div>
+    <div style="font-size:11px;color:rgba(0,0,0,0.5);line-height:2;margin-top:6px">
       SAS Cave de Gilbert<br>
       Avenue Jean Colomb — 69280 Marcy-l\u2019\u00c9toile<br>
       SIRET : 898 622 055 00017<br>
@@ -206,28 +206,28 @@ body { font-family:Arial,sans-serif;background:#0d0a08;color:#e8e0d5;max-width:8
     </div>
   </div>
   <div style="text-align:right">
-    <div style="font-size:11px;letter-spacing:4px;text-transform:uppercase;color:rgba(201,169,110,0.6);margin-bottom:6px">Facture</div>
-    <div style="font-size:24px;color:#c9a96e;font-family:Georgia,serif">${numeroFacture}</div>
-    <div style="font-size:12px;color:rgba(232,224,213,0.4);margin-top:6px">Date : ${dateFacture}</div>
-    <div style="font-size:12px;color:rgba(232,224,213,0.4)">Prestation : ${datePrestation}</div>
+    <div style="font-size:11px;letter-spacing:4px;text-transform:uppercase;color:rgba(138,106,62,0.85);margin-bottom:6px">Facture</div>
+    <div style="font-size:24px;color:#8a6a3e;font-family:Georgia,serif">${numeroFacture}</div>
+    <div style="font-size:12px;color:rgba(0,0,0,0.5);margin-top:6px">Date : ${dateFacture}</div>
+    <div style="font-size:12px;color:rgba(0,0,0,0.5)">Prestation : ${datePrestation}</div>
     <div style="font-size:11px;color:#6ec96e;margin-top:6px">✓ Soldée le ${dateFacture}</div>
   </div>
 </div>
 
 <!-- Client -->
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:32px">
-  <div style="background:#18130e;border-radius:8px;padding:16px 20px;border:0.5px solid rgba(255,255,255,0.07)">
-    <div style="font-size:9px;letter-spacing:2px;text-transform:uppercase;color:rgba(201,169,110,0.5);margin-bottom:10px">Client</div>
-    <div style="font-size:15px;color:#f0e8d8;font-family:Georgia,serif;margin-bottom:4px">${clientNom}</div>
-    ${resa.customer?.adresse ? `<div style="font-size:12px;color:rgba(232,224,213,0.5)">${resa.customer.adresse}</div>` : ''}
-    ${resa.customer?.code_postal || resa.customer?.ville ? `<div style="font-size:12px;color:rgba(232,224,213,0.5)">${[resa.customer?.code_postal, resa.customer?.ville].filter(Boolean).join(' ')}</div>` : ''}
-    ${resa.customer?.email ? `<div style="font-size:12px;color:rgba(232,224,213,0.5);margin-top:4px">${resa.customer.email}</div>` : ''}
-    ${resa.customer?.telephone ? `<div style="font-size:12px;color:rgba(232,224,213,0.5)">${resa.customer.telephone}</div>` : ''}
+  <div style="background:#f8f6f1;border-radius:8px;padding:16px 20px;border:0.5px solid rgba(0,0,0,0.09)">
+    <div style="font-size:9px;letter-spacing:2px;text-transform:uppercase;color:rgba(138,106,62,0.85);margin-bottom:10px">Client</div>
+    <div style="font-size:15px;color:#0a0a0a;font-family:Georgia,serif;margin-bottom:4px">${clientNom}</div>
+    ${resa.customer?.adresse ? `<div style="font-size:12px;color:rgba(0,0,0,0.6)">${resa.customer.adresse}</div>` : ''}
+    ${resa.customer?.code_postal || resa.customer?.ville ? `<div style="font-size:12px;color:rgba(0,0,0,0.6)">${[resa.customer?.code_postal, resa.customer?.ville].filter(Boolean).join(' ')}</div>` : ''}
+    ${resa.customer?.email ? `<div style="font-size:12px;color:rgba(0,0,0,0.6);margin-top:4px">${resa.customer.email}</div>` : ''}
+    ${resa.customer?.telephone ? `<div style="font-size:12px;color:rgba(0,0,0,0.6)">${resa.customer.telephone}</div>` : ''}
   </div>
-  <div style="background:#18130e;border-radius:8px;padding:16px 20px;border:0.5px solid rgba(255,255,255,0.07)">
-    <div style="font-size:9px;letter-spacing:2px;text-transform:uppercase;color:rgba(201,169,110,0.5);margin-bottom:10px">D\u00e9tail location</div>
-    <div style="font-size:12px;color:rgba(232,224,213,0.5);line-height:2">
-      Réservation : <span style="color:#c9a96e">${resa.numero}</span><br>
+  <div style="background:#f8f6f1;border-radius:8px;padding:16px 20px;border:0.5px solid rgba(0,0,0,0.09)">
+    <div style="font-size:9px;letter-spacing:2px;text-transform:uppercase;color:rgba(138,106,62,0.85);margin-bottom:10px">D\u00e9tail location</div>
+    <div style="font-size:12px;color:rgba(0,0,0,0.6);line-height:2">
+      Réservation : <span style="color:#8a6a3e">${resa.numero}</span><br>
       ${resa.site_retrait ? `Retrait : ${SITES[resa.site_retrait] || resa.site_retrait}<br>` : ''}
       ${resa.site_retour ? `Retour : ${SITES[resa.site_retour] || resa.site_retour}<br>` : ''}
       ${(resa.reservation_tireuses || []).length > 0 ? `Tireuse : ${(resa.reservation_tireuses || []).map((rt: any) => rt.tireuse?.nom).join(', ')}<br>` : ''}
@@ -241,11 +241,11 @@ ${nonPercutesHtml}
 <table style="width:100%;border-collapse:collapse;margin-bottom:0">
   <thead>
     <tr style="border-bottom:1px solid rgba(201,169,110,0.3)">
-      <th style="padding:10px 12px;text-align:left;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:rgba(201,169,110,0.5);font-weight:400">Désignation</th>
-      <th style="padding:10px 12px;text-align:center;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:rgba(201,169,110,0.5);font-weight:400">Qté</th>
-      <th style="padding:10px 12px;text-align:right;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:rgba(201,169,110,0.5);font-weight:400">P.U. HT</th>
-      <th style="padding:10px 12px;text-align:center;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:rgba(201,169,110,0.5);font-weight:400">TVA</th>
-      <th style="padding:10px 12px;text-align:right;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:rgba(201,169,110,0.5);font-weight:400">Total TTC</th>
+      <th style="padding:10px 12px;text-align:left;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:rgba(138,106,62,0.85);font-weight:400">Désignation</th>
+      <th style="padding:10px 12px;text-align:center;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:rgba(138,106,62,0.85);font-weight:400">Qté</th>
+      <th style="padding:10px 12px;text-align:right;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:rgba(138,106,62,0.85);font-weight:400">P.U. HT</th>
+      <th style="padding:10px 12px;text-align:center;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:rgba(138,106,62,0.85);font-weight:400">TVA</th>
+      <th style="padding:10px 12px;text-align:right;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:rgba(138,106,62,0.85);font-weight:400">Total TTC</th>
     </tr>
   </thead>
   <tbody>${lignesHtml}${tireusesHtml}</tbody>
@@ -254,16 +254,16 @@ ${nonPercutesHtml}
 <!-- Totaux -->
 <div style="display:flex;justify-content:flex-end;margin-top:0">
   <div style="width:320px">
-    <div style="display:flex;justify-content:space-between;padding:8px 12px;font-size:13px;color:rgba(232,224,213,0.5)">
+    <div style="display:flex;justify-content:space-between;padding:8px 12px;font-size:13px;color:rgba(0,0,0,0.6)">
       <span>Total HT</span><span>${totalHT.toFixed(2)} \u20ac</span>
     </div>
     ${remisePct > 0 ? `<div style="display:flex;justify-content:space-between;padding:8px 12px;font-size:13px;color:#c9b06e">
       <span>Remise ${remisePct}%</span><span>\u2212 ${(lignesFacturees.reduce((a, l) => a + l.prix_unitaire / (1 + tvaRate) * l.quantite_percutee, 0) * remisePct / 100).toFixed(2)} \u20ac HT</span>
     </div>` : ''}
-    <div style="display:flex;justify-content:space-between;padding:8px 12px;font-size:13px;color:rgba(232,224,213,0.5)">
+    <div style="display:flex;justify-content:space-between;padding:8px 12px;font-size:13px;color:rgba(0,0,0,0.6)">
       <span>TVA 20%</span><span>${totalTVA.toFixed(2)} \u20ac</span>
     </div>
-    <div style="display:flex;justify-content:space-between;padding:12px;font-size:20px;color:#c9a96e;font-family:Georgia,serif;font-weight:700;border-top:1px solid rgba(201,169,110,0.3);margin-top:4px">
+    <div style="display:flex;justify-content:space-between;padding:12px;font-size:20px;color:#8a6a3e;font-family:Georgia,serif;font-weight:700;border-top:1px solid rgba(201,169,110,0.3);margin-top:4px">
       <span>Total TTC</span><span>${totalTTC.toFixed(2)} \u20ac</span>
     </div>
     ${acompte > 0 ? `<div style="display:flex;justify-content:space-between;padding:8px 12px;font-size:13px;color:#6ec96e">
@@ -276,16 +276,16 @@ ${nonPercutesHtml}
 </div>
 
 <!-- Règlement -->
-<div style="margin-top:32px;padding:16px 20px;background:#18130e;border-radius:8px;border:0.5px solid rgba(255,255,255,0.07)">
-  <div style="font-size:9px;letter-spacing:2px;text-transform:uppercase;color:rgba(201,169,110,0.5);margin-bottom:10px">R\u00e8glement</div>
-  <div style="font-size:12px;color:rgba(232,224,213,0.5);line-height:2">
+<div style="margin-top:32px;padding:16px 20px;background:#f8f6f1;border-radius:8px;border:0.5px solid rgba(0,0,0,0.09)">
+  <div style="font-size:9px;letter-spacing:2px;text-transform:uppercase;color:rgba(138,106,62,0.85);margin-bottom:10px">R\u00e8glement</div>
+  <div style="font-size:12px;color:rgba(0,0,0,0.6);line-height:2">
     Facture acquittée le ${dateFacture} — Mode : ${MODES.find(m => m.id === modePaiement)?.label || modePaiement}<br>
     En cas de virement : IBAN FR76 1027 8072 5500 0206 6880 148 — BIC CMCIFR2A
   </div>
 </div>
 
 <!-- Mentions légales -->
-<div style="margin-top:24px;padding-top:16px;border-top:0.5px solid rgba(255,255,255,0.06);font-size:10px;color:rgba(232,224,213,0.25);line-height:2">
+<div style="margin-top:24px;padding-top:16px;border-top:0.5px solid rgba(0,0,0,0.08);font-size:10px;color:rgba(0,0,0,0.4);line-height:2">
   SAS Cave de Gilbert — SIRET 898 622 055 00017 — TVA FR79 898 622 055<br>
   Avenue Jean Colomb, 69280 Marcy-l\u2019\u00c9toile — contact@cavedegilbert.fr<br>
   Tout litige relatif \u00e0 cette facture devra \u00eatre port\u00e9 devant le Tribunal de Commerce de Lyon.<br>

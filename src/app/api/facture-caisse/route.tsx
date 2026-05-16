@@ -48,8 +48,8 @@ export async function GET(req: NextRequest) {
 
   const lignesHtml = vente.notes
     ? `<tr>
-        <td colspan="4" style="padding:12px;color:#e8e0d5;font-size:13px">${vente.notes}</td>
-        <td style="padding:12px;text-align:right;color:#c9a96e;font-size:14px;font-weight:700">${totalTTC.toFixed(2)} &euro;</td>
+        <td colspan="4" style="padding:12px;color:#1a1a1a;font-size:13px">${vente.notes}</td>
+        <td style="padding:12px;text-align:right;color:#8a6a3e;font-size:14px;font-weight:700">${totalTTC.toFixed(2)} &euro;</td>
        </tr>`
     : (lignes || []).map(l => {
         const prixHT = parseFloat(l.prix_unitaire_ttc) / (1 + tvaRate)
@@ -57,12 +57,12 @@ export async function GET(req: NextRequest) {
         const remise = l.remise_pct > 0
           ? ` <span style="font-size:10px;color:rgba(110,201,110,0.8)">(-${l.remise_pct}%)</span>`
           : ''
-        return `<tr style="border-bottom:0.5px solid rgba(255,255,255,0.06)">
-          <td style="padding:10px 12px;font-size:13px;color:#e8e0d5">${l.nom_produit}${l.millesime ? ` ${l.millesime}` : ''}${remise}</td>
-          <td style="padding:10px 12px;text-align:center;font-size:13px;color:rgba(232,224,213,0.6)">${l.quantite}</td>
-          <td style="padding:10px 12px;text-align:right;font-size:13px;color:rgba(232,224,213,0.6)">${prixHT.toFixed(2)} &euro;</td>
-          <td style="padding:10px 12px;text-align:right;font-size:13px;color:rgba(232,224,213,0.4)">${tvLigne.toFixed(2)} &euro;</td>
-          <td style="padding:10px 12px;text-align:right;font-size:14px;color:#c9a96e;font-weight:600">${parseFloat(l.total_ttc).toFixed(2)} &euro;</td>
+        return `<tr style="border-bottom:0.5px solid rgba(0,0,0,0.08)">
+          <td style="padding:10px 12px;font-size:13px;color:#1a1a1a">${l.nom_produit}${l.millesime ? ` ${l.millesime}` : ''}${remise}</td>
+          <td style="padding:10px 12px;text-align:center;font-size:13px;color:rgba(0,0,0,0.7)">${l.quantite}</td>
+          <td style="padding:10px 12px;text-align:right;font-size:13px;color:rgba(0,0,0,0.7)">${prixHT.toFixed(2)} &euro;</td>
+          <td style="padding:10px 12px;text-align:right;font-size:13px;color:rgba(0,0,0,0.5)">${tvLigne.toFixed(2)} &euro;</td>
+          <td style="padding:10px 12px;text-align:right;font-size:14px;color:#8a6a3e;font-weight:600">${parseFloat(l.total_ttc).toFixed(2)} &euro;</td>
         </tr>`
       }).join('')
 
@@ -73,19 +73,19 @@ export async function GET(req: NextRequest) {
   }
 
   const paiementsHtml = (paiements || []).map(p =>
-    `<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:12px;color:rgba(232,224,213,0.5)">
+    `<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:12px;color:rgba(0,0,0,0.6)">
       <span>${modeLabel[p.mode] || p.mode}</span>
       <span>${parseFloat(p.montant).toFixed(2)} &euro;</span>
     </div>`
   ).join('')
 
   const ribHtml = vente.type_doc === 'facture' ? `
-    <div style="background:rgba(255,255,255,0.03);border:0.5px solid rgba(255,255,255,0.08);border-radius:8px;padding:14px 18px;margin-top:20px">
-      <div style="font-size:9px;letter-spacing:2px;text-transform:uppercase;color:rgba(201,169,110,0.5);margin-bottom:8px">Coordonn&eacute;es bancaires</div>
-      <div style="font-size:12px;color:rgba(232,224,213,0.5);line-height:2">
-        Banque&nbsp;: <span style="color:#f0e8d8;font-family:monospace">Cr&eacute;dit Mutuel</span><br>
-        IBAN&nbsp;: <span style="color:#f0e8d8;font-family:monospace">FR76 1027 8072 5500 0206 6880 148</span><br>
-        BIC&nbsp;: <span style="color:#f0e8d8;font-family:monospace">CMCIFR2A</span>
+    <div style="background:rgba(0,0,0,0.04);border:0.5px solid rgba(0,0,0,0.1);border-radius:8px;padding:14px 18px;margin-top:20px">
+      <div style="font-size:9px;letter-spacing:2px;text-transform:uppercase;color:rgba(138,106,62,0.85);margin-bottom:8px">Coordonn&eacute;es bancaires</div>
+      <div style="font-size:12px;color:rgba(0,0,0,0.6);line-height:2">
+        Banque&nbsp;: <span style="color:#0a0a0a;font-family:monospace">Cr&eacute;dit Mutuel</span><br>
+        IBAN&nbsp;: <span style="color:#0a0a0a;font-family:monospace">FR76 1027 8072 5500 0206 6880 148</span><br>
+        BIC&nbsp;: <span style="color:#0a0a0a;font-family:monospace">CMCIFR2A</span>
       </div>
     </div>` : ''
 
@@ -98,8 +98,8 @@ export async function GET(req: NextRequest) {
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: Arial, sans-serif;
-      background: #0d0a08;
-      color: #e8e0d5;
+      background: #ffffff;
+      color: #1a1a1a;
       max-width: 860px;
       margin: 0 auto;
       padding: 48px 40px;
@@ -107,7 +107,7 @@ export async function GET(req: NextRequest) {
       print-color-adjust: exact;
     }
     @media print {
-      body { background: #0d0a08 !important; }
+      body { background: #ffffff !important; }
       * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     }
     .header {
@@ -115,43 +115,43 @@ export async function GET(req: NextRequest) {
       margin-bottom: 40px; padding-bottom: 24px;
       border-bottom: 1px solid rgba(201,169,110,0.3);
     }
-    .cave-name { font-size: 20px; color: #c9a96e; font-family: Georgia, serif; letter-spacing: 2px; margin-bottom: 6px; }
-    .cave-info { font-size: 11px; color: rgba(232,224,213,0.4); line-height: 2; }
-    .doc-title { font-size: 11px; letter-spacing: 4px; text-transform: uppercase; color: rgba(201,169,110,0.6); margin-bottom: 6px; text-align: right; }
-    .doc-numero { font-size: 22px; color: #c9a96e; font-family: Georgia, serif; text-align: right; }
-    .doc-date { font-size: 12px; color: rgba(232,224,213,0.4); text-align: right; margin-top: 4px; }
+    .cave-name { font-size: 20px; color: #8a6a3e; font-family: Georgia, serif; letter-spacing: 2px; margin-bottom: 6px; }
+    .cave-info { font-size: 11px; color: rgba(0,0,0,0.5); line-height: 2; }
+    .doc-title { font-size: 11px; letter-spacing: 4px; text-transform: uppercase; color: rgba(138,106,62,0.85); margin-bottom: 6px; text-align: right; }
+    .doc-numero { font-size: 22px; color: #8a6a3e; font-family: Georgia, serif; text-align: right; }
+    .doc-date { font-size: 12px; color: rgba(0,0,0,0.5); text-align: right; margin-top: 4px; }
     .client-box {
-      background: rgba(255,255,255,0.03);
+      background: rgba(0,0,0,0.04);
       border-left: 3px solid rgba(201,169,110,0.4);
       padding: 12px 18px; margin-bottom: 32px;
-      font-size: 13px; color: rgba(232,224,213,0.7);
+      font-size: 13px; color: rgba(0,0,0,0.75);
       border-radius: 0 6px 6px 0;
     }
-    .client-box strong { color: #c9a96e; font-size: 15px; }
+    .client-box strong { color: #8a6a3e; font-size: 15px; }
     table { width: 100%; border-collapse: collapse; }
     thead tr { border-bottom: 1px solid rgba(201,169,110,0.3); }
     thead th {
       padding: 10px 12px; text-align: left;
       font-size: 9px; letter-spacing: 2px; text-transform: uppercase;
-      color: rgba(201,169,110,0.5); font-weight: 400;
+      color: rgba(138,106,62,0.85); font-weight: 400;
     }
     .totaux { border-top: 1px solid rgba(201,169,110,0.2); margin-top: 8px; }
-    .total-line { display: flex; justify-content: space-between; padding: 8px 12px; font-size: 13px; color: rgba(232,224,213,0.5); }
+    .total-line { display: flex; justify-content: space-between; padding: 8px 12px; font-size: 13px; color: rgba(0,0,0,0.6); }
     .total-grand {
       display: flex; justify-content: space-between; padding: 14px;
       background: rgba(201,169,110,0.08); border: 0.5px solid rgba(201,169,110,0.2);
       border-radius: 6px; margin-top: 10px;
-      font-size: 22px; font-weight: 700; color: #c9a96e; font-family: Georgia, serif;
+      font-size: 22px; font-weight: 700; color: #8a6a3e; font-family: Georgia, serif;
     }
     .footer {
       margin-top: 32px; padding-top: 14px;
-      border-top: 0.5px solid rgba(255,255,255,0.06);
-      font-size: 10px; color: rgba(232,224,213,0.25); line-height: 2;
+      border-top: 0.5px solid rgba(0,0,0,0.08);
+      font-size: 10px; color: rgba(0,0,0,0.4); line-height: 2;
     }
     .watermark {
       position: fixed; top: 50%; left: 50%;
       transform: translate(-50%,-50%) rotate(-35deg);
-      font-size: 80px; color: rgba(255,255,255,0.02);
+      font-size: 80px; color: rgba(0,0,0,0.04);
       font-family: Georgia, serif; letter-spacing: 8px;
       pointer-events: none; white-space: nowrap;
     }
@@ -174,7 +174,7 @@ export async function GET(req: NextRequest) {
     <div class="doc-title">${typeLabel[vente.type_doc] || 'Document'}</div>
     <div class="doc-numero">${vente.numero}</div>
     <div class="doc-date">${dateDoc}</div>
-    ${vente.user?.prenom ? `<div class="doc-date" style="color:rgba(201,169,110,0.5);margin-top:2px">Vendeur&nbsp;: ${vente.user.prenom}</div>` : ''}
+    ${vente.user?.prenom ? `<div class="doc-date" style="color:rgba(138,106,62,0.85);margin-top:2px">Vendeur&nbsp;: ${vente.user.prenom}</div>` : ''}
   </div>
 </div>
 
@@ -205,8 +205,8 @@ export async function GET(req: NextRequest) {
 </div>
 
 ${paiements && paiements.length > 0 ? `
-<div style="background:rgba(255,255,255,0.03);border:0.5px solid rgba(255,255,255,0.08);border-radius:8px;padding:14px 18px;margin-top:20px">
-  <div style="font-size:9px;letter-spacing:2px;text-transform:uppercase;color:rgba(201,169,110,0.5);margin-bottom:8px">R&egrave;glement</div>
+<div style="background:rgba(0,0,0,0.04);border:0.5px solid rgba(0,0,0,0.1);border-radius:8px;padding:14px 18px;margin-top:20px">
+  <div style="font-size:9px;letter-spacing:2px;text-transform:uppercase;color:rgba(138,106,62,0.85);margin-bottom:8px">R&egrave;glement</div>
   ${paiementsHtml}
 </div>` : ''}
 

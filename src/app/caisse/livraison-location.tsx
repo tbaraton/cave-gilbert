@@ -156,31 +156,31 @@ export function ModuleLivraisonLocation({ onClose }: Props) {
 <title>Bon de livraison ${r.numero}</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: Arial, sans-serif; background: #0d0a08; color: #e8e0d5; max-width: 800px; margin: 0 auto; padding: 40px 32px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-@media print { body { background: #0d0a08 !important; } * { -webkit-print-color-adjust: exact !important; } }
+body { font-family: Arial, sans-serif; background: #ffffff; color: #1a1a1a; max-width: 800px; margin: 0 auto; padding: 40px 32px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+@media print { body { background: #ffffff !important; } * { -webkit-print-color-adjust: exact !important; } }
 .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 32px; padding-bottom: 20px; border-bottom: 1px solid rgba(201,169,110,0.3); }
-.cave-name { font-size: 20px; color: #c9a96e; font-family: Georgia, serif; letter-spacing: 2px; }
-.cave-info { font-size: 11px; color: rgba(232,224,213,0.4); line-height: 2; margin-top: 6px; }
-.doc-title { font-size: 11px; letter-spacing: 4px; text-transform: uppercase; color: rgba(201,169,110,0.6); margin-bottom: 6px; text-align: right; }
-.doc-numero { font-size: 22px; color: #c9a96e; font-family: Georgia, serif; text-align: right; }
-.doc-date { font-size: 12px; color: rgba(232,224,213,0.4); text-align: right; margin-top: 4px; }
-.section { background: rgba(255,255,255,0.03); border: 0.5px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 16px 20px; margin-bottom: 16px; }
-.section-title { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: rgba(201,169,110,0.6); margin-bottom: 12px; }
-.client-nom { font-size: 17px; color: #f0e8d8; font-family: Georgia, serif; margin-bottom: 4px; }
-.client-tel { font-size: 13px; color: rgba(232,224,213,0.5); }
+.cave-name { font-size: 20px; color: #8a6a3e; font-family: Georgia, serif; letter-spacing: 2px; }
+.cave-info { font-size: 11px; color: rgba(0,0,0,0.5); line-height: 2; margin-top: 6px; }
+.doc-title { font-size: 11px; letter-spacing: 4px; text-transform: uppercase; color: rgba(138,106,62,0.85); margin-bottom: 6px; text-align: right; }
+.doc-numero { font-size: 22px; color: #8a6a3e; font-family: Georgia, serif; text-align: right; }
+.doc-date { font-size: 12px; color: rgba(0,0,0,0.5); text-align: right; margin-top: 4px; }
+.section { background: rgba(0,0,0,0.04); border: 0.5px solid rgba(0,0,0,0.1); border-radius: 8px; padding: 16px 20px; margin-bottom: 16px; }
+.section-title { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: rgba(138,106,62,0.85); margin-bottom: 12px; }
+.client-nom { font-size: 17px; color: #0a0a0a; font-family: Georgia, serif; margin-bottom: 4px; }
+.client-tel { font-size: 13px; color: rgba(0,0,0,0.6); }
 .dates { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-.date-label { font-size: 10px; color: rgba(232,224,213,0.4); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 4px; }
-.date-val { font-size: 15px; color: #f0e8d8; }
+.date-label { font-size: 10px; color: rgba(0,0,0,0.5); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 4px; }
+.date-val { font-size: 15px; color: #0a0a0a; }
 .date-site { font-size: 12px; margin-top: 3px; }
-.item-ligne { display: flex; align-items: flex-start; gap: 10px; padding: 6px 0; border-bottom: 0.5px solid rgba(255,255,255,0.04); font-size: 14px; color: #e8e0d5; }
+.item-ligne { display: flex; align-items: flex-start; gap: 10px; padding: 6px 0; border-bottom: 0.5px solid rgba(0,0,0,0.06); font-size: 14px; color: #1a1a1a; }
 .item-ligne:last-child { border-bottom: none; }
-.check { color: #c9a96e; font-size: 16px; flex-shrink: 0; }
+.check { color: #8a6a3e; font-size: 16px; flex-shrink: 0; }
 .warning { background: rgba(201,110,110,0.12); border: 1px solid rgba(201,110,110,0.4); border-radius: 8px; padding: 14px 18px; margin: 16px 0; }
 .warning-text { font-size: 14px; color: #c96e6e; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; }
 .sig-zone { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 28px; }
 .sig-box { border-top: 0.5px solid rgba(201,169,110,0.3); padding-top: 10px; }
-.sig-label { font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: rgba(201,169,110,0.5); margin-bottom: 6px; }
-.footer { margin-top: 32px; padding-top: 14px; border-top: 0.5px solid rgba(255,255,255,0.06); font-size: 10px; color: rgba(232,224,213,0.2); line-height: 2; }
+.sig-label { font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: rgba(138,106,62,0.85); margin-bottom: 6px; }
+.footer { margin-top: 32px; padding-top: 14px; border-top: 0.5px solid rgba(0,0,0,0.08); font-size: 10px; color: rgba(0,0,0,0.35); line-height: 2; }
 </style></head><body>
 
 <div class="header">
@@ -240,8 +240,8 @@ ${lignesFuts || lignesTireuses ? `
 
 <div class="section" style="background:rgba(201,110,110,0.05);border-color:rgba(201,110,110,0.2)">
   <div class="section-title">Caution & conditions</div>
-  <div style="font-size:13px;color:rgba(232,224,213,0.6);line-height:1.8">
-    Caution tireuse : <strong style="color:#f0e8d8">${fmt(r.caution_tireuse_ttc || 0)}</strong>
+  <div style="font-size:13px;color:rgba(0,0,0,0.7);line-height:1.8">
+    Caution tireuse : <strong style="color:#0a0a0a">${fmt(r.caution_tireuse_ttc || 0)}</strong>
     ${r.acompte_ttc ? ` · Acompte versé : <strong style="color:#6ec96e">${fmt(r.acompte_ttc)}</strong>` : ''}
     <br>Le matériel est remis en parfait état de fonctionnement. Le locataire s'engage à le restituer dans le même état.
     <br>Tout dommage ou perte sera facturé au prix de remplacement.
@@ -255,7 +255,7 @@ ${lignesFuts || lignesTireuses ? `
   </div>
   <div class="sig-box">
     <div class="sig-label">Cave de Gilbert</div>
-    <div style="font-family:Georgia,serif;font-size:18px;color:#c9a96e;margin-top:8px">Cave de Gilbert</div>
+    <div style="font-family:Georgia,serif;font-size:18px;color:#8a6a3e;margin-top:8px">Cave de Gilbert</div>
   </div>
 </div>
 
