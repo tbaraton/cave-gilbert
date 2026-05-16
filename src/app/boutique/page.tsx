@@ -235,7 +235,7 @@ export default function BoutiquePage() {
               </button>
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))', gap: 18 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 18 }}>
               {produits.map(p => (
                 <ProductCard key={p.id} product={p} />
               ))}
@@ -294,18 +294,8 @@ function ProductCard({ product: p }: { product: any }) {
       onMouseEnter={e => { e.currentTarget.style.borderColor = accent; e.currentTarget.style.boxShadow = '0 6px 18px rgba(0,0,0,0.06)' }}
       onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(0,0,0,0.1)'; e.currentTarget.style.boxShadow = 'none' }}
     >
-      {/* Header coloré : appellation/région */}
-      <a href={`/boutique/${p.slug}`} style={{ textDecoration: 'none' }}>
-        <div style={{
-          background: accent, color: '#fff', padding: '10px 18px', textAlign: 'center' as const,
-          fontSize: 13, fontWeight: 600, letterSpacing: 0.5,
-        }}>
-          {p.appellation || p.region || COULEUR_LABEL_LONG[p.couleur] || p.couleur}
-        </div>
-      </a>
-
       {/* Corps : bouteille à gauche + infos à droite */}
-      <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr', gap: 14, padding: '18px', flex: 1 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: 14, padding: '18px', flex: 1 }}>
         <a href={`/boutique/${p.slug}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           {p.image_url ? (
             <img src={p.image_url} alt={p.nom} style={{ maxHeight: 240, maxWidth: '100%', objectFit: 'contain' as const }} />
@@ -316,6 +306,12 @@ function ProductCard({ product: p }: { product: any }) {
 
         <div style={{ display: 'flex', flexDirection: 'column' as const, minWidth: 0 }}>
           <a href={`/boutique/${p.slug}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+            <div style={{
+              fontSize: 9, letterSpacing: 2, color: accent, textTransform: 'uppercase' as const,
+              marginBottom: 6, fontWeight: 600,
+            }}>
+              {p.appellation || p.region || COULEUR_LABEL_LONG[p.couleur] || p.couleur}
+            </div>
             <div style={{
               fontFamily: 'Georgia, serif', fontSize: 16, color: '#0a0a0a', lineHeight: 1.3, marginBottom: 4,
               display: '-webkit-box' as const, WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, overflow: 'hidden' as const,
