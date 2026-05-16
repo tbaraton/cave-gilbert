@@ -481,6 +481,23 @@ function HistoriqueAchatsClient({ client, onClose, onAddToCart, onRetourDone }: 
   const STATUT_COLOR: Record<string, string> = { devis: '#6e9ec9', confirmée: '#c9a96e', en_cours: '#6ec96e', terminée: '#888', annulée: '#c96e6e' }
   const SITES: Record<string, string> = { cave_gilbert: 'Cave de Gilbert', petite_cave: 'La Petite Cave', entrepot: 'Entrepôt', livraison: '🚚 Livraison' }
 
+  const handleImprimerPiece = (piece: any, lignes: any[]) => {
+    const typeLabel: Record<string,string> = { ticket: 'TICKET', devis: 'DEVIS', commande: 'COMMANDE', bl: 'BON DE LIVRAISON', facture: 'FACTURE', avoir: 'AVOIR' }
+    const clientNomStr = client.est_societe ? client.raison_sociale : `${client.prenom || ''} ${client.nom || ''}`.trim()
+    const lignesHtml = lignes.map(l => `<tr><td>${l.nom_produit}${l.millesime ? ' ' + l.millesime : ''}</td><td style="text-align:center">${l.quantite}</td><td style="text-align:right">${parseFloat(l.prix_unitaire_ttc).toFixed(2)} EUR</td>${l.remise_pct > 0 ? `<td style="text-align:right">${l.remise_pct}%</td>` : '<td></td>'}<td style="text-align:right"><b>${parseFloat(l.total_ttc).toFixed(2)} EUR</b></td></tr>`).join('')
+    const sourceRef = piece.notes && piece.notes.startsWith('Issu') ? `<div style="font-size:11px;color:#6e9ec9;margin-bottom:4px">Ref: ${piece.notes}</div>` : ''
+    const corpsDoc = piece.notes && !piece.notes.startsWith('Issu')
+      ? `<div style="margin:16px 0;padding:12px;background:#f9f6f0;border-left:3px solid #c9a96e;font-style:italic;color:#555">${piece.notes}<br/><b>Total : ${parseFloat(piece.total_ttc).toFixed(2)} EUR TTC</b></div>`
+      : lignes.length > 0
+        ? `<table><thead><tr><th>Designation</th><th style="text-align:center">Qte</th><th style="text-align:right">P.U. TTC</th><th style="text-align:right">Remise</th><th style="text-align:right">Total TTC</th></tr></thead><tbody>${lignesHtml}</tbody></table><div style="text-align:right;margin-top:16px;padding-top:12px;border-top:1px solid #ddd"><div style="display:flex;justify-content:flex-end;gap:40px;margin:4px 0;font-size:13px;color:#666"><span>Montant HT</span><span>${(parseFloat(piece.total_ttc)/1.20).toFixed(2)} EUR</span></div><div style="display:flex;justify-content:flex-end;gap:40px;margin:4px 0;font-size:13px;color:#666"><span>TVA 20%</span><span>${(parseFloat(piece.total_ttc) - parseFloat(piece.total_ttc)/1.20).toFixed(2)} EUR</span></div><div style="display:flex;justify-content:flex-end;gap:40px;margin:10px 0;font-size:20px;font-weight:bold;color:#8B6914;font-family:Georgia,serif"><span>TOTAL TTC</span><span>${parseFloat(piece.total_ttc).toFixed(2)} EUR</span></div></div>`
+        : ''
+    const w = window.open('', '_blank')
+    if (!w) return
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:Arial,sans-serif;font-size:12px;max-width:210mm;margin:0 auto;padding:16mm;color:#222}.logo{font-family:Georgia,serif;font-size:22px;color:#8B6914;letter-spacing:2px}.type{font-size:26px;font-weight:bold;color:#8B6914;margin:20px 0 8px}.header{display:flex;justify-content:space-between;margin-bottom:28px}table{width:100%;border-collapse:collapse;margin:16px 0}th{background:#f5f0e8;padding:8px;text-align:left;border-bottom:2px solid #c9a96e;font-size:11px;letter-spacing:1px;text-transform:uppercase}td{padding:8px;border-bottom:1px solid #eee;font-size:13px}.footer{margin-top:40px;font-size:10px;color:#999;border-top:1px solid #eee;padding-top:10px;text-align:center}</style></head><body><div class="header"><div><div class="logo">Cave de Gilbert</div><div style="font-size:11px;color:#888;margin-top:4px">Marcy-l Etoile</div></div><div style="text-align:right"><div style="font-size:14px;font-weight:600">${clientNomStr}</div><div style="font-size:12px;color:#666">${client.email || ''}</div><div style="font-size:12px;color:#666">${client.telephone || ''}</div></div></div><div class="type">${typeLabel[piece.type_doc] || piece.type_doc.toUpperCase()}</div><div style="font-size:14px;color:#666;margin-bottom:8px">N ${piece.numero} - ${new Date(piece.created_at).toLocaleDateString('fr-FR')}</div>${sourceRef}${corpsDoc}<div class="footer">Cave de Gilbert - Document genere le ${new Date().toLocaleDateString('fr-FR')}</div></body></html>`)
+    w.document.close()
+    w.print()
+  }
+
   const handleTransformerPiece = async (piece: any, type: 'commande' | 'bl' | 'facture') => {
     const prefix = type === 'commande' ? 'CMD' : type === 'bl' ? 'BL' : 'FAC'
     const numero = `${prefix}-${new Date().getFullYear()}${String(new Date().getMonth()+1).padStart(2,'0')}-${String(Math.floor(Math.random()*9999)).padStart(4,'0')}`
