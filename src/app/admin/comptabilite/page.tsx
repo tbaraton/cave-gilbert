@@ -1760,6 +1760,46 @@ function OngletBanque({ currentUser }: { currentUser: any }) {
     if (releveActif) loadMouvements(releveActif.id)
   }
 
+  const handleAnnulerRapprochement = async (m: any) => {
+    const venteId = m.vente_id || null
+    const factureId = m.facture_id || m.facture_achat_id || null
+    const sourceLabel = venteId ? 'vente client' : factureId ? 'facture fournisseur' : 'mouvement'
+    const dateStr = new Date(m.date_operation).toLocaleDateString('fr-FR')
+    const montantStr = parseFloat(m.montant).toFixed(2)
+    if (!confirm(`Annuler le rapprochement du ${dateStr} (${montantStr} €) ?\n\nLa ${sourceLabel} liée repassera en "À régler".`)) return
+
+    // Reset le statut du mouvement (toujours)
+    await supabase.from('mouvements_bancaires').update({ statut: 'non_rapproche' }).eq('id', m.id)
+    // Tenter de vider les FK (les colonnes peuvent varier selon le schéma, on ignore les erreurs)
+    if (venteId) await supabase.from('mouvements_bancaires').update({ vente_id: null }).eq('id', m.id).then(() => {}, () => {})
+    if (factureId) {
+      await supabase.from('mouvements_bancaires').update({ facture_id: null }).eq('id', m.id).then(() => {}, () => {})
+      await supabase.from('mouvements_bancaires').update({ facture_achat_id: null }).eq('id', m.id).then(() => {}, () => {})
+    }
+
+    // Reverter le statut de la source
+    if (factureId) {
+      await supabase.from('factures_achat')
+        .update({ statut: 'validee', date_paiement: null, mode_paiement: null })
+        .eq('id', factureId)
+    }
+    if (venteId) {
+      // Supprimer le dernier paiement virement créé par le rapprochement (heuristique)
+      const { data: paiements } = await supabase.from('vente_paiements')
+        .select('id, mode, created_at')
+        .eq('vente_id', venteId)
+        .eq('mode', 'virement')
+        .order('created_at', { ascending: false })
+        .limit(1)
+      if (paiements && paiements.length > 0) {
+        await supabase.from('vente_paiements').delete().eq('id', paiements[0].id)
+      }
+      await supabase.from('ventes').update({ statut_paiement: 'non_regle' }).eq('id', venteId)
+    }
+
+    if (releveActif) loadMouvements(releveActif.id)
+  }
+
   const mouvementsFiltres = mouvements.filter(m =>
     filtreStatut === 'tous' ? true : m.statut === filtreStatut
   )
@@ -1861,7 +1901,7 @@ function OngletBanque({ currentUser }: { currentUser: any }) {
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 4 }}>
                   {mouvementsFiltres.map(m => (
-                    <MouvementRow key={m.id} mouvement={m} onRapprocher={handleRapprocher} onIgnorer={handleIgnorer} />
+                    <MouvementRow key={m.id} mouvement={m} onRapprocher={handleRapprocher} onIgnorer={handleIgnorer} onAnnuler={handleAnnulerRapprochement} />
                   ))}
                   {mouvementsFiltres.length === 0 && (
                     <div style={{ padding: 32, textAlign: 'center' as const, color: 'rgba(232,224,213,0.4)', fontSize: 13 }}>Aucun mouvement</div>
@@ -1876,10 +1916,11 @@ function OngletBanque({ currentUser }: { currentUser: any }) {
   )
 }
 
-function MouvementRow({ mouvement: m, onRapprocher, onIgnorer }: {
+function MouvementRow({ mouvement: m, onRapprocher, onIgnorer, onAnnuler }: {
   mouvement: any
   onRapprocher: (id: string, type: string, sourceId: string) => void
   onIgnorer: (id: string) => void
+  onAnnuler: (m: any) => void
 }) {
   const [suggestions, setSuggestions] = useState<any[]>([])
   const [loadingSugg, setLoadingSugg] = useState(false)
@@ -1929,7 +1970,12 @@ function MouvementRow({ mouvement: m, onRapprocher, onIgnorer }: {
             </>
           )}
           {m.statut === 'rapproche' && (
-            <span style={{ fontSize: 11, color: '#6ec96e', padding: '5px 0' }}>✓ Rapproché</span>
+            <>
+              <span style={{ fontSize: 11, color: '#6ec96e', padding: '5px 0' }}>✓ Rapproché</span>
+              <button onClick={() => onAnnuler(m)} title="Annuler le rapprochement" style={{ background: 'transparent', border: '0.5px solid rgba(201,110,110,0.3)', color: '#c96e6e', borderRadius: 4, padding: '5px 10px', fontSize: 11, cursor: 'pointer' }}>
+                ↶ Annuler
+              </button>
+            </>
           )}
         </div>
       </div>
