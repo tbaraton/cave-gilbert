@@ -482,6 +482,16 @@ function ModalEditProduit({ produit, regions: regionsProp, appellations: appella
     coeff_pro: '1.70',
     prix_vente_pro: produit.prix_vente_pro?.toString() || '',
     description_courte: produit.description_courte || '',
+    description_longue: produit.description_longue || '',
+    notes_degustation: produit.notes_degustation || '',
+    accords_mets: produit.accords_mets || '',
+    cepages: Array.isArray(produit.cepages) ? produit.cepages.join(', ') : '',
+    alcool: produit.alcool?.toString() || '',
+    temperature_service_min: produit.temperature_service_min?.toString() || '',
+    temperature_service_max: produit.temperature_service_max?.toString() || '',
+    garde_potentiel_annees: produit.garde_potentiel_annees?.toString() || '',
+    meta_title: produit.meta_title || '',
+    meta_description: produit.meta_description || '',
     image_url: produit.image_url || '',
     bio: produit.bio || false,
     vegan: produit.vegan || false,
@@ -540,6 +550,16 @@ function ModalEditProduit({ produit, regions: regionsProp, appellations: appella
       prix_vente_pro: form.prix_vente_pro ? parseFloat(form.prix_vente_pro) : null,
       prix_achat_ht: form.prix_achat_ht ? parseFloat(form.prix_achat_ht) : null,
       description_courte: form.description_courte || null,
+      description_longue: form.description_longue || null,
+      notes_degustation: form.notes_degustation || null,
+      accords_mets: form.accords_mets || null,
+      cepages: form.cepages ? form.cepages.split(',').map((c: string) => c.trim()).filter(Boolean) : null,
+      alcool: form.alcool ? parseFloat(form.alcool) : null,
+      temperature_service_min: form.temperature_service_min ? parseFloat(form.temperature_service_min) : null,
+      temperature_service_max: form.temperature_service_max ? parseFloat(form.temperature_service_max) : null,
+      garde_potentiel_annees: form.garde_potentiel_annees ? parseInt(form.garde_potentiel_annees) : null,
+      meta_title: form.meta_title || null,
+      meta_description: form.meta_description || null,
       image_url: form.image_url || null,
       bio: form.bio,
       vegan: form.vegan,
@@ -688,12 +708,64 @@ function ModalEditProduit({ produit, regions: regionsProp, appellations: appella
           <label style={lbl}>Description courte</label>
           <textarea value={form.description_courte} onChange={e => setForm(f => ({ ...f, description_courte: e.target.value }))} rows={2} style={{ ...inp, resize: 'vertical' as const }} />
         </div>
+        <div style={{ marginBottom: 12 }}>
+          <label style={lbl}>Description longue</label>
+          <textarea value={form.description_longue} onChange={e => setForm(f => ({ ...f, description_longue: e.target.value }))} rows={4} style={{ ...inp, resize: 'vertical' as const }} />
+        </div>
         <div style={{ marginBottom: 14 }}>
           <label style={lbl}>URL photo</label>
           <input value={form.image_url} onChange={e => setForm(f => ({ ...f, image_url: e.target.value }))} placeholder="https://..." style={inp} />
           {form.image_url && (
             <img src={form.image_url} alt="" style={{ height: 60, marginTop: 8, borderRadius: 4, objectFit: 'contain' as const, background: '#100d0a', padding: 4 }} onError={e => (e.currentTarget.style.display = 'none')} />
           )}
+        </div>
+
+        {/* Dégustation & service (généré par IA, éditable) */}
+        <div style={{ fontSize: 10, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 10 }}>✦ Dégustation & service</div>
+        <div style={{ marginBottom: 12 }}>
+          <label style={lbl}>Notes de dégustation (œil, nez, bouche)</label>
+          <textarea value={form.notes_degustation} onChange={e => setForm(f => ({ ...f, notes_degustation: e.target.value }))} rows={4} style={{ ...inp, resize: 'vertical' as const }} />
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <label style={lbl}>Accords mets-vins</label>
+          <textarea value={form.accords_mets} onChange={e => setForm(f => ({ ...f, accords_mets: e.target.value }))} rows={2} style={{ ...inp, resize: 'vertical' as const }} />
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12, marginBottom: 12 }}>
+          <div>
+            <label style={lbl}>Cépages (séparés par virgule)</label>
+            <input value={form.cepages} onChange={e => setForm(f => ({ ...f, cepages: e.target.value }))} placeholder="Syrah, Grenache, Mourvèdre" style={inp} />
+          </div>
+          <div>
+            <label style={lbl}>Alcool (°)</label>
+            <input type="number" step="0.1" value={form.alcool} onChange={e => setForm(f => ({ ...f, alcool: e.target.value }))} placeholder="13.5" style={inp} />
+          </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 16 }}>
+          <div>
+            <label style={lbl}>Temp. service min (°C)</label>
+            <input type="number" step="0.5" value={form.temperature_service_min} onChange={e => setForm(f => ({ ...f, temperature_service_min: e.target.value }))} placeholder="14" style={inp} />
+          </div>
+          <div>
+            <label style={lbl}>Temp. service max (°C)</label>
+            <input type="number" step="0.5" value={form.temperature_service_max} onChange={e => setForm(f => ({ ...f, temperature_service_max: e.target.value }))} placeholder="17" style={inp} />
+          </div>
+          <div>
+            <label style={lbl}>Garde (années)</label>
+            <input type="number" value={form.garde_potentiel_annees} onChange={e => setForm(f => ({ ...f, garde_potentiel_annees: e.target.value }))} placeholder="8" style={inp} />
+          </div>
+        </div>
+
+        {/* SEO */}
+        <div style={{ fontSize: 10, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 10 }}>🌐 SEO boutique</div>
+        <div style={{ marginBottom: 12 }}>
+          <label style={lbl}>Meta title <span style={{ color: 'rgba(232,224,213,0.3)', textTransform: 'none' as const, letterSpacing: 0 }}>(≤ 60 caractères, balise &lt;title&gt;)</span></label>
+          <input value={form.meta_title} onChange={e => setForm(f => ({ ...f, meta_title: e.target.value }))} maxLength={70} style={inp} />
+          <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.3)', marginTop: 4 }}>{form.meta_title.length}/60</div>
+        </div>
+        <div style={{ marginBottom: 16 }}>
+          <label style={lbl}>Meta description <span style={{ color: 'rgba(232,224,213,0.3)', textTransform: 'none' as const, letterSpacing: 0 }}>(≤ 160 caractères, balise &lt;meta description&gt;)</span></label>
+          <textarea value={form.meta_description} onChange={e => setForm(f => ({ ...f, meta_description: e.target.value }))} rows={2} maxLength={180} style={{ ...inp, resize: 'vertical' as const }} />
+          <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.3)', marginTop: 4 }}>{form.meta_description.length}/160</div>
         </div>
 
         {/* Certifications */}
@@ -2449,7 +2521,7 @@ function AdminPage() {
         { data: stock },
         { data: sitesData },
       ] = await Promise.all([
-        supabase.from('products').select('id, nom, nom_cuvee, contenance, millesime, couleur, categorie, prix_vente_ttc, prix_vente_pro, prix_achat_ht, actif, visible_boutique, bio, vegan, casher, naturel, biodynamique, ia_generated, domaine_id, slug, region_id, appellation_id, description_courte, image_url').order('nom').limit(5000),
+        supabase.from('products').select('id, nom, nom_cuvee, contenance, millesime, couleur, categorie, prix_vente_ttc, prix_vente_pro, prix_achat_ht, actif, visible_boutique, bio, vegan, casher, naturel, biodynamique, ia_generated, domaine_id, slug, region_id, appellation_id, description_courte, description_longue, notes_degustation, accords_mets, cepages, alcool, temperature_service_min, temperature_service_max, garde_potentiel_annees, meta_title, meta_description, image_url').order('nom').limit(5000),
         supabase.from('v_stock_agrege').select('*').range(0, 9999),
         supabase.from('sites').select('*').eq('actif', true).order('nom'),
       ])
