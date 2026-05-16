@@ -1346,12 +1346,24 @@ function ModalCatalogue({ session, client, onAjouter, onClose }: { session: Sess
   const [appellations, setAppellations] = useState<any[]>([])
   const [regions, setRegions] = useState<any[]>([])
   const [selection, setSelection] = useState<Record<string, number>>({})
+  const [otherSites, setOtherSites] = useState<any[]>([])
+  const [otherStockMaps, setOtherStockMaps] = useState<Record<string, Record<string, number>>>({})
 
   useEffect(() => {
     const load = async () => {
       setLoading(true)
       const { data: stockData } = await supabase.from('stock').select('product_id, quantite').eq('site_id', session.site_id).gt('quantite', 0)
       const stockMap = Object.fromEntries((stockData || []).map((s: any) => [s.product_id, s.quantite]))
+      const { data: sitesData } = await supabase.from('sites').select('id, nom, code').eq('actif', true).order('nom')
+      const others = (sitesData || []).filter((s: any) => s.id !== session.site_id)
+      const maps: Record<string, Record<string, number>> = {}
+      for (const s of others) maps[s.id] = {}
+      if (others.length) {
+        const { data: otherStockData } = await supabase.from('stock').select('product_id, quantite, site_id').in('site_id', others.map((s: any) => s.id)).gt('quantite', 0)
+        for (const st of (otherStockData || [])) { if (maps[st.site_id]) maps[st.site_id][st.product_id] = st.quantite }
+      }
+      setOtherSites(others)
+      setOtherStockMaps(maps)
       const { data: prodsData } = await supabase.from('products').select('id, nom, nom_cuvee, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id, appellation_id, region_id, bio').eq('actif', true).order('nom')
       const domaineIds = [...new Set((prodsData || []).map((p: any) => p.domaine_id).filter(Boolean))]
       let domaineMap: Record<string, string> = {}
@@ -1443,9 +1455,24 @@ function ModalCatalogue({ session, client, onAjouter, onClose }: { session: Sess
                   {p.nom_cuvee && <div style={{ fontSize: 11, color: '#c9a96e', marginTop: 1 }}>{p.nom_cuvee}</div>}
                   {p.domaine_nom && <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)' }}>{p.domaine_nom}</div>}
                 </div>
-                <div style={{ textAlign: 'right' as const, marginRight: selected ? 8 : 0 }}>
-                  <div style={{ fontSize: 15, color: '#c9a96e', fontFamily: 'Georgia, serif' }}>{prix?.toFixed(2)}€</div>
-                  <div style={{ fontSize: 11, color: p.stock === 0 ? '#c96e6e' : p.stock <= 3 ? '#c9b06e' : 'rgba(232,224,213,0.4)' }}>stk: {p.stock}</div>
+                <div style={{ display: 'flex', flexDirection: 'column' as const, alignItems: 'flex-end', marginRight: selected ? 8 : 0 }}>
+                  <div style={{ fontSize: 15, color: '#c9a96e', fontFamily: 'Georgia, serif', marginBottom: 4 }}>{prix?.toFixed(2)}€</div>
+                  <div style={{ display: 'flex', gap: 5 }}>
+                    <div style={{ textAlign: 'center' as const, minWidth: 28 }}>
+                      <div style={{ fontSize: 9, color: 'rgba(232,224,213,0.3)', lineHeight: 1 }}>ici</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: p.stock === 0 ? '#c96e6e' : p.stock <= 3 ? '#c9b06e' : '#6ec96e' }}>{p.stock}</div>
+                    </div>
+                    {otherSites.map(site => {
+                      const stk = otherStockMaps[site.id]?.[p.id] || 0
+                      const label = site.code === 'petite_cave' ? 'P.C' : site.code === 'entrepot' ? 'Ent' : site.code === 'cave_gilbert' ? 'CdG' : (site.nom || '').slice(0, 3)
+                      return (
+                        <div key={site.id} style={{ textAlign: 'center' as const, minWidth: 28 }}>
+                          <div style={{ fontSize: 9, color: 'rgba(232,224,213,0.3)', lineHeight: 1 }}>{label}</div>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: stk === 0 ? 'rgba(201,110,110,0.45)' : stk <= 3 ? '#c9b06e' : 'rgba(110,201,110,0.7)' }}>{stk}</div>
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
                 {selected && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(255,255,255,0.07)', borderRadius: 8, padding: '4px 6px' }}>
