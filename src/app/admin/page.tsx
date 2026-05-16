@@ -2639,6 +2639,7 @@ function AdminPage() {
     { label: 'Location',      href: '/admin/location',      icon: '🍺', groupe: 'gestion', perm: 'acces_location' },
     { label: 'Import',        href: '/admin/import',        icon: '↑',  groupe: 'gestion', perm: 'acces_import' },
     { label: 'Comptabilité',  href: '/admin/comptabilite',  icon: '€',  groupe: 'outils',  perm: 'acces_comptabilite' },
+    { label: 'Suivi paiements', href: '/admin/paiements',   icon: '💳', groupe: 'outils',  perm: 'acces_comptabilite' },
     { label: 'Statistiques',  href: '/admin/statistiques',  icon: '📊', groupe: 'outils',  perm: 'acces_statistiques' },
     { label: 'Congés',        href: '/admin/conges',        icon: '🏖', groupe: 'rh',      perm: 'acces_conges' },
     { label: 'Planning',      href: '/admin/rh/planning',   icon: '📅', groupe: 'rh',      perm: 'acces_planning' },
