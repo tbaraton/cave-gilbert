@@ -109,26 +109,26 @@ export async function POST(req: NextRequest) {
       .resize(resizedW, resizedH, { fit: 'contain', background: { r: 255, g: 255, b: 255, alpha: 0 } })
       .toBuffer()
 
-    // 3. Composite sur canvas blanc 800x800 centré
+    // 3. Composite sur canvas transparent 800x800 centré (PNG avec alpha)
     const left = Math.round((SIZE - resizedW) / 2)
     const top = Math.round((SIZE - resizedH) / 2)
     const final = await sharp({
       create: {
         width: SIZE,
         height: SIZE,
-        channels: 3,
-        background: { r: 255, g: 255, b: 255 },
+        channels: 4,
+        background: { r: 0, g: 0, b: 0, alpha: 0 },
       },
     })
       .composite([{ input: resizedBottle, top, left }])
-      .jpeg({ quality: 92, mozjpeg: true })
+      .png({ compressionLevel: 9 })
       .toBuffer()
 
     // 4. Upload sur Supabase Storage
-    const filename = `${productId || 'produit'}-${Date.now()}.jpg`
+    const filename = `${productId || 'produit'}-${Date.now()}.png`
     const { error: errUp } = await supabaseAdmin.storage
       .from(BUCKET)
-      .upload(filename, final, { contentType: 'image/jpeg', upsert: false })
+      .upload(filename, final, { contentType: 'image/png', upsert: false })
     if (errUp) {
       return NextResponse.json({ error: `Upload Supabase échec : ${errUp.message}. Vérifie que le bucket "${BUCKET}" existe et est public.` }, { status: 500 })
     }
