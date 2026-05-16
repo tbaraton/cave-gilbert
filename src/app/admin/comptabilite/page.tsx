@@ -1719,6 +1719,39 @@ function OngletBanque({ currentUser }: { currentUser: any }) {
     else if (type === 'facture_achat') args.p_facture_id = sourceId
     const { error } = await supabase.rpc('rapprocher_mouvement', args)
     if (error) { setMsg({ type: 'err', text: error.message }); return }
+
+    // Marquer la facture/vente correspondante comme réglée (au cas où le RPC ne le fait pas).
+    // Récupère la date du mouvement pour la date de paiement.
+    const { data: mvt } = await supabase
+      .from('mouvements_bancaires')
+      .select('date_operation, montant')
+      .eq('id', mouvementId)
+      .maybeSingle()
+    const datePaiement = mvt?.date_operation || today()
+
+    if (type === 'facture_achat') {
+      // Marquer la facture fournisseur comme payée si elle ne l'est pas déjà
+      const { data: fac } = await supabase.from('factures_achat').select('statut').eq('id', sourceId).maybeSingle()
+      if (fac && fac.statut !== 'payee') {
+        await supabase.from('factures_achat')
+          .update({ statut: 'payee', date_paiement: datePaiement, mode_paiement: 'virement' })
+          .eq('id', sourceId)
+      }
+    } else if (type === 'vente') {
+      // Marquer la vente client comme réglée si elle ne l'est pas déjà
+      const { data: vente } = await supabase.from('ventes').select('statut_paiement, total_ttc').eq('id', sourceId).maybeSingle()
+      if (vente && vente.statut_paiement !== 'regle') {
+        // Insérer un paiement de complément (mode virement) puis passer en réglé
+        const { data: existants } = await supabase.from('vente_paiements').select('montant').eq('vente_id', sourceId)
+        const dejaRegle = (existants || []).reduce((s: number, p: any) => s + parseFloat(p.montant || 0), 0)
+        const reste = parseFloat(vente.total_ttc || 0) - dejaRegle
+        if (reste > 0.005) {
+          await supabase.from('vente_paiements').insert({ vente_id: sourceId, mode: 'virement', montant: reste })
+        }
+        await supabase.from('ventes').update({ statut_paiement: 'regle' }).eq('id', sourceId)
+      }
+    }
+
     if (releveActif) loadMouvements(releveActif.id)
   }
 
