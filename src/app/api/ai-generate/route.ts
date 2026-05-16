@@ -122,7 +122,7 @@ Règles strictes :
         couleur,
         categorie: ['rouge', 'blanc', 'rosé', 'champagne', 'effervescent'].includes(couleur) ? 'vin' : couleur === 'spiritueux' ? 'spiritueux' : 'vin',
         prix_vente_ttc: parseFloat(prix_vente_ttc),
-        contenance: contenance || null,
+        contenance: contenance || '75cl',
         cepages: aiData.cepages || [],
         alcool: aiData.alcool || null,
         description_courte: aiData.description_courte,
