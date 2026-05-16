@@ -1464,7 +1464,7 @@ function ModalCatalogue({ session, client, onAjouter, onClose }: { session: Sess
                     </div>
                     {otherSites.map(site => {
                       const stk = otherStockMaps[site.id]?.[p.id] || 0
-                      const label = site.code === 'petite_cave' ? 'P.C' : site.code === 'entrepot' ? 'Ent' : site.code === 'cave_gilbert' ? 'CdG' : (site.nom || '').slice(0, 3)
+                      const label = site.code === 'petite_cave' ? 'LPC' : site.code === 'entrepot' ? 'E' : site.code === 'cave_gilbert' ? 'CDG' : (site.nom || '').slice(0, 3)
                       return (
                         <div key={site.id} style={{ textAlign: 'center' as const, minWidth: 28 }}>
                           <div style={{ fontSize: 9, color: 'rgba(232,224,213,0.3)', lineHeight: 1 }}>{label}</div>
