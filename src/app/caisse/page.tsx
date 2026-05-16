@@ -1100,97 +1100,6 @@ ${detail.type_doc === 'facture' ? `
 </body></html>`
   }
 
-  const lignesHtml = detail.notes
-      ? `<tr><td colspan="4" style="padding:12px;color:#e8e0d5;font-size:13px">${detail.notes}</td><td style="padding:12px;text-align:right;color:#c9a96e;font-size:14px;font-weight:700">${totalTTC.toFixed(2)} €</td></tr>`
-      : lignesDetail.map((l: any) => {
-          const prixHT = parseFloat(l.prix_unitaire_ttc) / (1 + tvaRate)
-          const remise = l.remise_pct > 0 ? ` <span style="font-size:10px;color:rgba(110,201,110,0.8)">(-${l.remise_pct}%)</span>` : ''
-          return `<tr style="border-bottom:0.5px solid rgba(255,255,255,0.06)">
-            <td style="padding:10px 12px;font-size:13px;color:#e8e0d5">${l.nom_produit}${l.millesime ? ` ${l.millesime}` : ''}${remise}</td>
-            <td style="padding:10px 12px;text-align:center;font-size:13px;color:rgba(232,224,213,0.6)">${l.quantite}</td>
-            <td style="padding:10px 12px;text-align:right;font-size:13px;color:rgba(232,224,213,0.6)">${prixHT.toFixed(2)} €</td>
-            <td style="padding:10px 12px;text-align:right;font-size:13px;color:rgba(232,224,213,0.4)">${(parseFloat(l.prix_unitaire_ttc) * tvaRate).toFixed(2)} €</td>
-            <td style="padding:10px 12px;text-align:right;font-size:14px;color:#c9a96e;font-weight:600">${parseFloat(l.total_ttc).toFixed(2)} €</td>
-          </tr>`
-        }).join('')
-    const paiementsHtml = paiementsDetail.map((p: any) =>
-      `<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:12px;color:rgba(232,224,213,0.5)">
-        <span>${p.mode === 'cb' ? 'Carte bancaire' : p.mode === 'especes' ? 'Espèces' : p.mode === 'virement' ? 'Virement' : p.mode === 'cheque' ? 'Chèque' : p.mode}</span>
-        <span>${parseFloat(p.montant).toFixed(2)} €</span>
-      </div>`
-    ).join('')
-    return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
-<title>${typeLabel[detail.type_doc] || 'DOCUMENT'} ${detail.numero}</title>
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:Arial,sans-serif;background:#0d0a08;color:#e8e0d5;max-width:860px;margin:0 auto;padding:48px 40px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-@media print{body{background:#0d0a08!important}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}}
-.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:40px;padding-bottom:24px;border-bottom:1px solid rgba(201,169,110,0.3)}
-.cave-name{font-size:20px;color:#c9a96e;font-family:Georgia,serif;letter-spacing:2px;margin-bottom:6px}
-.cave-info{font-size:11px;color:rgba(232,224,213,0.4);line-height:2}
-.doc-title{font-size:11px;letter-spacing:4px;text-transform:uppercase;color:rgba(201,169,110,0.6);margin-bottom:6px;text-align:right}
-.doc-numero{font-size:22px;color:#c9a96e;font-family:Georgia,serif;text-align:right}
-.doc-date{font-size:12px;color:rgba(232,224,213,0.4);text-align:right;margin-top:4px}
-.client-box{background:rgba(255,255,255,0.03);border-left:3px solid rgba(201,169,110,0.4);padding:12px 18px;margin-bottom:32px;font-size:13px;color:rgba(232,224,213,0.7);border-radius:0 6px 6px 0}
-.client-box strong{color:#c9a96e;font-size:15px}
-table{width:100%;border-collapse:collapse}
-thead tr{border-bottom:1px solid rgba(201,169,110,0.3)}
-thead th{padding:10px 12px;text-align:left;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:rgba(201,169,110,0.5);font-weight:400}
-.totaux{border-top:1px solid rgba(201,169,110,0.2);margin-top:8px}
-.total-line{display:flex;justify-content:space-between;padding:8px 12px;font-size:13px;color:rgba(232,224,213,0.5)}
-.total-grand{display:flex;justify-content:space-between;padding:14px;background:rgba(201,169,110,0.08);border:0.5px solid rgba(201,169,110,0.2);border-radius:6px;margin-top:10px;font-size:22px;font-weight:700;color:#c9a96e;font-family:Georgia,serif}
-.rib-box{background:rgba(255,255,255,0.03);border:0.5px solid rgba(255,255,255,0.08);border-radius:8px;padding:14px 18px;margin-top:20px}
-.rib-title{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:rgba(201,169,110,0.5);margin-bottom:8px}
-.rib-line{font-size:12px;color:rgba(232,224,213,0.5);line-height:2}
-.rib-val{color:#f0e8d8;font-family:monospace}
-.footer{margin-top:32px;padding-top:14px;border-top:0.5px solid rgba(255,255,255,0.06);font-size:10px;color:rgba(232,224,213,0.25);line-height:2}
-.watermark{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-35deg);font-size:80px;color:rgba(255,255,255,0.02);font-family:Georgia,serif;letter-spacing:8px;pointer-events:none;white-space:nowrap}
-</style></head><body>
-<div class="watermark">CAVE DE GILBERT</div>
-<div class="header">
-  <div>
-    <div class="cave-name">Cave de Gilbert</div>
-    <div class="cave-info">Avenue Jean Colomb — 69280 Marcy l'Étoile<br>04 22 91 41 09 · contact@cavedegilbert.fr<br>Mar–Sam : 9h30–13h / 15h30–19h</div>
-  </div>
-  <div>
-    <div class="doc-title">${typeLabel[detail.type_doc] || 'Document'}</div>
-    <div class="doc-numero">${detail.numero}</div>
-    <div class="doc-date">${dateDoc}</div>
-    <div class="doc-date" style="color:rgba(201,169,110,0.5);margin-top:2px">Vendeur : ${detail.user?.prenom || ''}</div>
-  </div>
-</div>
-<div class="client-box">
-  <strong>${clientN}</strong>
-  ${detail.customer?.email ? `<br>${detail.customer.email}` : ''}
-  ${detail.customer?.telephone ? `<br>📞 ${detail.customer.telephone}` : ''}
-  ${detail.customer?.adresse ? `<br>${detail.customer.adresse}, ${detail.customer.code_postal} ${detail.customer.ville}` : ''}
-</div>
-<table>
-  <thead><tr>
-    <th>Désignation</th>
-    <th style="text-align:center">Qté</th>
-    <th style="text-align:right">P.U. HT</th>
-    <th style="text-align:right">TVA 20%</th>
-    <th style="text-align:right">Total TTC</th>
-  </tr></thead>
-  <tbody>${lignesHtml}</tbody>
-</table>
-<div class="totaux">
-  <div class="total-line"><span>Total HT</span><span>${totalHT.toFixed(2)} €</span></div>
-  <div class="total-line"><span>TVA 20 %</span><span>${tva.toFixed(2)} €</span></div>
-  <div class="total-grand"><span>TOTAL TTC</span><span>${totalTTC.toFixed(2)} €</span></div>
-</div>
-${paiementsDetail.length > 0 ? `<div class="rib-box"><div class="rib-title">Règlement</div>${paiementsHtml}</div>` : ''}
-${detail.type_doc === 'facture' ? `<div class="rib-box"><div class="rib-title">Coordonnées bancaires</div><div class="rib-line">Banque : <span class="rib-val">Crédit Mutuel</span><br>IBAN : <span class="rib-val">FR76 1027 8072 5500 0206 6880 148</span><br>BIC : <span class="rib-val">CMCIFR2A</span></div></div>` : ''}
-<div class="footer">
-  SAS Cave de Gilbert — SIRET 898 622 055 00017 — TVA FR79 898 622 055<br>
-  Avenue Jean Colomb, 69280 Marcy-l'Étoile — contact@cavedegilbert.fr<br>
-  Tout litige relatif à cette facture devra être porté devant le Tribunal de Commerce de Lyon.<br>
-  ${detail.type_doc === 'facture' ? 'Tout retard de paiement entraînera des pénalités de retard au taux légal en vigueur.' : ''}
-</div>
-</body></html>`
-  }
-
   const DOCS = [
     { id: 'tous', label: 'Tous' },
     { id: 'ticket', label: '🧾 Tickets' },
@@ -1205,16 +1114,18 @@ ${detail.type_doc === 'facture' ? `<div class="rib-box"><div class="rib-title">C
   const statutLabel: Record<string, string> = { regle: 'Réglé', non_regle: 'Non réglé', partiel: 'Partiel' }
 
   // ── Détail vente ──
-  if (detail) return (
-    <div style={{ position: 'fixed' as const, inset: 0, background: '#0d0a08', zIndex: 600, display: 'flex', flexDirection: 'column' as const, fontFamily: "'DM Sans', system-ui, sans-serif", color: '#e8e0d5' }}>
-      <div style={{ padding: '14px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', gap: 12, background: '#0d0a08', position: 'sticky' as const, top: 0, zIndex: 10 }}>
-        <button onClick={() => { setDetail(null); setActionMsg('') }} style={{ background: 'transparent', border: 'none', color: '#c9a96e', fontSize: 22, cursor: 'pointer' }}>←</button>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontFamily: 'Georgia, serif', fontSize: 16, color: '#f0e8d8' }}>{detail.numero}</div>
-          <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>{clientNom(detail)} — {new Date(detail.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}</div>
-        </div>
-        <div style={{ fontSize: 20, color: '#c9a96e', fontFamily: 'Georgia, serif', fontWeight: 700 }}>{parseFloat(detail.total_ttc).toFixed(2)}€</div>
-      </div>
+  return (
+    <>
+      {detail ? (
+        <div style={{ position: 'fixed' as const, inset: 0, background: '#0d0a08', zIndex: 600, display: 'flex', flexDirection: 'column' as const, fontFamily: "'DM Sans', system-ui, sans-serif", color: '#e8e0d5' }}>
+          <div style={{ padding: '14px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', gap: 12, background: '#0d0a08', position: 'sticky' as const, top: 0, zIndex: 10 }}>
+            <button onClick={() => { setDetail(null); setActionMsg('') }} style={{ background: 'transparent', border: 'none', color: '#c9a96e', fontSize: 22, cursor: 'pointer' }}>←</button>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontFamily: 'Georgia, serif', fontSize: 16, color: '#f0e8d8' }}>{detail.numero}</div>
+              <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)' }}>{clientNom(detail)} — {new Date(detail.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}</div>
+            </div>
+            <div style={{ fontSize: 20, color: '#c9a96e', fontFamily: 'Georgia, serif', fontWeight: 700 }}>{parseFloat(detail.total_ttc).toFixed(2)}€</div>
+          </div>
 
       {actionMsg && <div style={{ background: 'rgba(110,201,110,0.1)', border: '0.5px solid rgba(110,201,110,0.3)', padding: '12px 16px', fontSize: 14, color: '#6ec96e' }}>{actionMsg}</div>}
 
@@ -1338,22 +1249,19 @@ ${detail.type_doc === 'facture' ? `<div class="rib-box"><div class="rib-title">C
         </div>
       </div>
     </div>
-  )
+      ) : (
+        <div style={{ position: 'fixed' as const, inset: 0, background: '#0d0a08', zIndex: 600, display: 'flex', flexDirection: 'column' as const, fontFamily: "'DM Sans', system-ui, sans-serif", color: '#e8e0d5' }}>
+          {/* Header */}
+          <div style={{ padding: '14px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: '#c9a96e', fontSize: 22, cursor: 'pointer' }}>←</button>
+            <div style={{ fontFamily: 'Georgia, serif', fontSize: 18, color: '#f0e8d8' }}>Historique des ventes</div>
+          </div>
 
-  // ── Liste ventes ──
-  return (
-    <div style={{ position: 'fixed' as const, inset: 0, background: '#0d0a08', zIndex: 600, display: 'flex', flexDirection: 'column' as const, fontFamily: "'DM Sans', system-ui, sans-serif", color: '#e8e0d5' }}>
-      {/* Header */}
-      <div style={{ padding: '14px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', gap: 12 }}>
-        <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: '#c9a96e', fontSize: 22, cursor: 'pointer' }}>←</button>
-        <div style={{ fontFamily: 'Georgia, serif', fontSize: 18, color: '#f0e8d8' }}>Historique des ventes</div>
-      </div>
-
-      {/* Filtres */}
-      <div style={{ padding: '12px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', background: '#100d0a' }}>
-        {/* Filtre type */}
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const, marginBottom: 10 }}>
-          {DOCS.map(d => (
+          {/* Filtres */}
+          <div style={{ padding: '12px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', background: '#100d0a' }}>
+            {/* Filtre type */}
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const, marginBottom: 10 }}>
+              {DOCS.map(d => (
             <button key={d.id} onClick={() => setFilterType(d.id)} style={{ background: filterType === d.id ? 'rgba(201,169,110,0.15)' : 'rgba(255,255,255,0.04)', border: `0.5px solid ${filterType === d.id ? 'rgba(201,169,110,0.4)' : 'rgba(255,255,255,0.1)'}`, color: filterType === d.id ? '#c9a96e' : 'rgba(232,224,213,0.5)', borderRadius: 20, padding: '5px 12px', fontSize: 12, cursor: 'pointer' }}>{d.label}</button>
           ))}
         </div>
@@ -1417,8 +1325,10 @@ ${detail.type_doc === 'facture' ? `<div class="rib-box"><div class="rib-title">C
             <div style={{ fontSize: 18, color: '#c9a96e', fontFamily: 'Georgia, serif', fontWeight: 600, marginLeft: 12 }}>{parseFloat(v.total_ttc).toFixed(2)}€</div>
           </button>
         ))}
-      </div>
-    </div>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 
