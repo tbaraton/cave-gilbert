@@ -568,7 +568,7 @@ function HistoriqueAchatsClient({ client, onClose, onAddToCart, onRetourDone }: 
     const { data: fresh } = await supabase.from('ventes').select('id, numero, created_at, type_doc, statut, statut_paiement, total_ttc, notes, site_id').eq('customer_id', client.id).order('created_at', { ascending: false }).limit(100)
     setPieces(fresh || [])
     setTimeout(() => setActionMsg(''), 3000)
-  } type: 'commande' | 'bl' | 'facture') => {
+   }
     const prefix = type === 'commande' ? 'CMD' : type === 'bl' ? 'BL' : 'FAC'
     const numero = `${prefix}-${new Date().getFullYear()}${String(new Date().getMonth()+1).padStart(2,'0')}-${String(Math.floor(Math.random()*9999)).padStart(4,'0')}`
     const labels: Record<string,string> = { commande: 'commande', bl: 'bon de livraison', facture: 'facture' }
