@@ -1119,6 +1119,7 @@ function ModalCatalogue({ session, client, onAjouter, onClose }: { session: Sess
   }
 
   const COULEURS_LIST = ['rouge', 'blanc', 'rosé', 'champagne', 'effervescent', 'spiritueux', 'autre']
+  const appellationsFiltrees = filterRegion ? appellations.filter((a: any) => a.region_id === filterRegion) : appellations
 
   return (
     <div style={{ position: 'fixed' as const, inset: 0, background: '#0d0a08', zIndex: 800, display: 'flex', flexDirection: 'column' as const, fontFamily: "'DM Sans', system-ui, sans-serif" }}>
