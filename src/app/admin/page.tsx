@@ -532,6 +532,12 @@ function ModalEditProduit({ produit, regions: regionsProp, appellations: appella
           garde_potentiel_annees: fresh.garde_potentiel_annees?.toString() || f.garde_potentiel_annees,
           meta_title: fresh.meta_title || f.meta_title,
           meta_description: fresh.meta_description || f.meta_description,
+          // Certifications : OU logique — l'IA ne désactive jamais, elle peut seulement activer
+          bio: fresh.bio || f.bio,
+          vegan: fresh.vegan || f.vegan,
+          naturel: fresh.naturel || f.naturel,
+          biodynamique: fresh.biodynamique || f.biodynamique,
+          casher: fresh.casher || f.casher,
         }))
       }
       setIaMsg(`✓ ${data.updated} champ${data.updated > 1 ? 's' : ''} complété${data.updated > 1 ? 's' : ''} par l'IA`)
