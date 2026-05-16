@@ -384,16 +384,25 @@ export default function ProductPageClient({ product, similaires }: { product: an
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 20, maxWidth: 1200, margin: '0 auto' }}>
             {similaires.map(p => (
               <a key={p.id} href={`/boutique/${p.slug}`} style={{ textDecoration: 'none', color: 'inherit' }}>
-                <div style={{ background: '#f5f1ea', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: 6, padding: '24px 20px', textAlign: 'center' as const, transition: 'border-color 0.2s' }}
+                <div style={{ background: '#f5f1ea', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: 6, overflow: 'hidden', textAlign: 'center' as const, transition: 'border-color 0.2s', display: 'flex', flexDirection: 'column' as const, height: '100%' }}
                   onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(201,169,110,0.3)')}
                   onMouseLeave={e => (e.currentTarget.style.borderColor = 'rgba(0,0,0,0.08)')}
                 >
-                  <div style={{ fontSize: 9, letterSpacing: 2, color: COULEUR_ACCENT[p.couleur] || '#8a6a3e', textTransform: 'uppercase' as const, marginBottom: 8 }}>
-                    {COULEUR_LABEL[p.couleur] || p.couleur}
+                  <div style={{ height: 200, background: '#fbfaf6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {p.image_url ? (
+                      <img src={p.image_url} alt={p.nom} style={{ maxHeight: 180, maxWidth: '80%', objectFit: 'contain' as const }} />
+                    ) : (
+                      <div style={{ fontSize: 48, opacity: 0.15, color: COULEUR_ACCENT[p.couleur] || '#8a6a3e' }}>🍷</div>
+                    )}
                   </div>
-                  <div style={{ fontFamily: 'Georgia, serif', fontSize: 14, color: '#0a0a0a', marginBottom: 4 }}>{p.nom}</div>
-                  <div style={{ fontSize: 11, color: 'rgba(0,0,0,0.5)', marginBottom: 12 }}>{p.domaine}{p.millesime ? ` · ${p.millesime}` : ''}</div>
-                  <div style={{ fontSize: 18, color: '#8a6a3e', fontFamily: 'Georgia, serif' }}>{p.prix_vente_ttc?.toFixed(2)}€</div>
+                  <div style={{ padding: '20px 16px', display: 'flex', flexDirection: 'column' as const, flex: 1 }}>
+                    <div style={{ fontSize: 9, letterSpacing: 2, color: COULEUR_ACCENT[p.couleur] || '#8a6a3e', textTransform: 'uppercase' as const, marginBottom: 8 }}>
+                      {COULEUR_LABEL[p.couleur] || p.couleur}
+                    </div>
+                    <div style={{ fontFamily: 'Georgia, serif', fontSize: 14, color: '#0a0a0a', marginBottom: 4, lineHeight: 1.3, display: '-webkit-box' as const, WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, overflow: 'hidden' as const }}>{p.nom}</div>
+                    <div style={{ fontSize: 11, color: 'rgba(0,0,0,0.5)', marginBottom: 12 }}>{p.domaine}{p.millesime ? ` · ${p.millesime}` : ''}</div>
+                    <div style={{ fontSize: 18, color: '#8a6a3e', fontFamily: 'Georgia, serif', marginTop: 'auto' as const }}>{p.prix_vente_ttc?.toFixed(2)}€</div>
+                  </div>
                 </div>
               </a>
             ))}

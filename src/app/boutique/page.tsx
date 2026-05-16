@@ -236,20 +236,21 @@ export default function BoutiquePage() {
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 20 }}>
               {produits.map(p => (
-                <a key={p.id} href={`/boutique/${p.slug}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+                <a key={p.id} href={`/boutique/${p.slug}`} style={{ textDecoration: 'none', color: 'inherit', height: '100%' }}>
                   <div style={{
                     background: '#f5f1ea', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: 6,
                     overflow: 'hidden', transition: 'border-color 0.2s, transform 0.2s',
+                    display: 'flex', flexDirection: 'column' as const, height: '100%',
                   }}
                     onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(201,169,110,0.3)'; e.currentTarget.style.transform = 'translateY(-2px)' }}
                     onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(0,0,0,0.08)'; e.currentTarget.style.transform = 'translateY(0)' }}
                   >
-                    {/* Image / Placeholder */}
-                    <div style={{ height: 200, background: '#fbfaf6', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' as const }}>
+                    {/* Image / Placeholder — hauteur fixe pour rectangles uniformes */}
+                    <div style={{ height: 260, background: '#fbfaf6', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' as const, flexShrink: 0 }}>
                       {p.image_url ? (
-                        <img src={p.image_url} alt={p.nom} style={{ maxHeight: 180, maxWidth: '80%', objectFit: 'contain' }} />
+                        <img src={p.image_url} alt={p.nom} style={{ height: '90%', width: '90%', objectFit: 'contain' as const }} />
                       ) : (
-                        <div style={{ fontSize: 48, opacity: 0.15, color: COULEUR_ACCENT[p.couleur] || '#8a6a3e' }}>🍷</div>
+                        <div style={{ fontSize: 64, opacity: 0.15, color: COULEUR_ACCENT[p.couleur] || '#8a6a3e' }}>🍷</div>
                       )}
                       {/* Badge stock */}
                       {p.stock_statut === 'alerte' && (
@@ -264,28 +265,23 @@ export default function BoutiquePage() {
                       )}
                     </div>
 
-                    {/* Infos */}
-                    <div style={{ padding: '16px' }}>
+                    {/* Infos — flex pour pousser le prix en bas, hauteur uniforme */}
+                    <div style={{ padding: '16px', display: 'flex', flexDirection: 'column' as const, flex: 1 }}>
                       <div style={{ fontSize: 9, letterSpacing: 2, color: COULEUR_ACCENT[p.couleur] || '#8a6a3e', textTransform: 'uppercase' as const, marginBottom: 6 }}>
                         {p.appellation || p.region || ''}
                       </div>
-                      <div style={{ fontFamily: 'Georgia, serif', fontSize: 15, color: '#0a0a0a', lineHeight: 1.3, marginBottom: 4 }}>
+                      <div style={{
+                        fontFamily: 'Georgia, serif', fontSize: 15, color: '#0a0a0a', lineHeight: 1.3, marginBottom: 4,
+                        display: '-webkit-box' as const, WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const,
+                        overflow: 'hidden' as const, minHeight: '2.6em',
+                      }}>
                         {p.nom}
                       </div>
                       <div style={{ fontSize: 11, color: 'rgba(0,0,0,0.45)', marginBottom: 12 }}>
                         {p.domaine}{p.millesime ? ` · ${p.millesime}` : ''}
                       </div>
 
-                      {/* Arômes (2 max) */}
-                      {p.aromes?.length > 0 && (
-                        <div style={{ display: 'flex', gap: 4, marginBottom: 12, flexWrap: 'wrap' as const }}>
-                          {p.aromes.slice(0, 2).map((a: string) => (
-                            <span key={a} style={{ fontSize: 9, color: 'rgba(0,0,0,0.45)', border: '0.5px solid rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: 2 }}>{a}</span>
-                          ))}
-                        </div>
-                      )}
-
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto' as const }}>
                         <span style={{ fontFamily: 'Georgia, serif', fontSize: 20, color: '#8a6a3e' }}>
                           {p.prix_vente_ttc?.toFixed(2)}€
                         </span>

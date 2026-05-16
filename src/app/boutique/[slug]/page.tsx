@@ -49,14 +49,16 @@ export default async function ProductPage(props: any) {
     petite_cave: stocks?.find(s => s.site_id === ID_ARBRESLE)?.quantite || 0,
   }
 
-  const { data: similaires } = await supabase
+  const { data: similairesRaw } = await supabase
     .from('products')
-    .select('id, nom, millesime, couleur, prix_vente_ttc, image_url, slug')
+    .select('id, nom, millesime, couleur, prix_vente_ttc, image_url, slug, domaine:domaines(nom)')
     .eq('couleur', product.couleur)
     .eq('actif', true)
     .eq('visible_boutique', true)
     .neq('id', product.id)
     .limit(4)
 
-  return <ProductPageClient product={{ ...product, ...tastingNote, _stockByEntity: stockByEntity }} similaires={similaires || []} />
+  const similaires = (similairesRaw || []).map((s: any) => ({ ...s, domaine: s.domaine?.nom || null }))
+
+  return <ProductPageClient product={{ ...product, ...tastingNote, _stockByEntity: stockByEntity }} similaires={similaires} />
 }
