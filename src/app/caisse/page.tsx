@@ -1069,6 +1069,12 @@ function ModalCatalogue({ session, client, onAjouter, onClose }: { session: Sess
   const [search, setSearch] = useState('')
   const [filterCouleur, setFilterCouleur] = useState('')
   const [filterStock, setFilterStock] = useState(true)
+  const [filterDomaine, setFilterDomaine] = useState('')
+  const [filterAppellation, setFilterAppellation] = useState('')
+  const [filterRegion, setFilterRegion] = useState('')
+  const [domaines, setDomaines] = useState<any[]>([])
+  const [appellations, setAppellations] = useState<any[]>([])
+  const [regions, setRegions] = useState<any[]>([])
   const [selection, setSelection] = useState<Record<string, number>>({})
 
   useEffect(() => {
@@ -1076,11 +1082,19 @@ function ModalCatalogue({ session, client, onAjouter, onClose }: { session: Sess
       setLoading(true)
       const { data: stockData } = await supabase.from('stock').select('product_id, quantite').eq('site_id', session.site_id).gt('quantite', 0)
       const stockMap = Object.fromEntries((stockData || []).map((s: any) => [s.product_id, s.quantite]))
-      const { data: prodsData } = await supabase.from('products').select('id, nom, nom_cuvee, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id, bio').eq('actif', true).order('nom')
+      const { data: prodsData } = await supabase.from('products').select('id, nom, nom_cuvee, millesime, couleur, prix_vente_ttc, prix_vente_pro, domaine_id, appellation_id, region_id, bio').eq('actif', true).order('nom')
       const domaineIds = [...new Set((prodsData || []).map((p: any) => p.domaine_id).filter(Boolean))]
       let domaineMap: Record<string, string> = {}
       if (domaineIds.length) { const { data: doms } = await supabase.from('domaines').select('id, nom').in('id', domaineIds); domaineMap = Object.fromEntries((doms || []).map((d: any) => [d.id, d.nom])) }
       setProduits((prodsData || []).map((p: any) => ({ ...p, stock: stockMap[p.id] || 0, domaine_nom: domaineMap[p.domaine_id] || '' })))
+      const [{ data: domsData }, { data: appsData }, { data: regsData }] = await Promise.all([
+        supabase.from('domaines').select('id, nom').order('nom'),
+        supabase.from('appellations').select('id, nom, region_id').order('nom'),
+        supabase.from('regions').select('id, nom').order('nom'),
+      ])
+      setDomaines(domsData || [])
+      setAppellations(appsData || [])
+      setRegions(regsData || [])
       setLoading(false)
     }
     load()
@@ -1115,9 +1129,26 @@ function ModalCatalogue({ session, client, onAjouter, onClose }: { session: Sess
       </div>
       <div style={{ padding: '12px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', background: '#100d0a' }}>
         <input type="text" placeholder="🔍 Rechercher par nom, cuvée, domaine..." value={search} onChange={e => setSearch(e.target.value)} style={{ width: '100%', background: 'rgba(255,255,255,0.07)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 8, color: '#f0e8d8', fontSize: 15, padding: '10px 14px', boxSizing: 'border-box' as const, marginBottom: 10, outline: 'none' }} />
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const, alignItems: 'center' }}>
+        {/* Ligne 1 — Stock + Couleurs */}
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const, alignItems: 'center', marginBottom: 8 }}>
           <button onClick={() => setFilterStock(!filterStock)} style={{ background: filterStock ? 'rgba(110,201,110,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${filterStock ? '#6ec96e' : 'rgba(255,255,255,0.1)'}`, color: filterStock ? '#6ec96e' : 'rgba(232,224,213,0.5)', borderRadius: 20, padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}>{filterStock ? '✓ ' : ''}En stock</button>
           {COULEURS_LIST.map(c => (<button key={c} onClick={() => setFilterCouleur(filterCouleur === c ? '' : c)} style={{ background: filterCouleur === c ? 'rgba(201,169,110,0.12)' : 'rgba(255,255,255,0.03)', border: `1px solid ${filterCouleur === c ? '#c9a96e' : 'rgba(255,255,255,0.07)'}`, color: filterCouleur === c ? '#c9a96e' : 'rgba(232,224,213,0.4)', borderRadius: 20, padding: '4px 10px', fontSize: 11, cursor: 'pointer' }}><span style={{ color: COULEURS[c] || '#888' }}>● </span>{c}</button>))}
+        </div>
+        {/* Ligne 2 — Région / Appellation / Domaine */}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
+          <select value={filterRegion} onChange={e => { setFilterRegion(e.target.value); setFilterAppellation('') }} style={{ background: filterRegion ? 'rgba(201,169,110,0.1)' : 'rgba(255,255,255,0.05)', border: `0.5px solid ${filterRegion ? 'rgba(201,169,110,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 8, color: filterRegion ? '#c9a96e' : 'rgba(232,224,213,0.5)', fontSize: 12, padding: '6px 10px', cursor: 'pointer', flex: 1, minWidth: 120 }}>
+            <option value="">— Région</option>
+            {regions.map(r => <option key={r.id} value={r.id}>{r.nom}</option>)}
+          </select>
+          <select value={filterAppellation} onChange={e => setFilterAppellation(e.target.value)} style={{ background: filterAppellation ? 'rgba(201,169,110,0.1)' : 'rgba(255,255,255,0.05)', border: `0.5px solid ${filterAppellation ? 'rgba(201,169,110,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 8, color: filterAppellation ? '#c9a96e' : 'rgba(232,224,213,0.5)', fontSize: 12, padding: '6px 10px', cursor: 'pointer', flex: 1, minWidth: 120 }}>
+            <option value="">— Appellation</option>
+            {appellationsFiltrees.map(a => <option key={a.id} value={a.id}>{a.nom}</option>)}
+          </select>
+          <select value={filterDomaine} onChange={e => setFilterDomaine(e.target.value)} style={{ background: filterDomaine ? 'rgba(201,169,110,0.1)' : 'rgba(255,255,255,0.05)', border: `0.5px solid ${filterDomaine ? 'rgba(201,169,110,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 8, color: filterDomaine ? '#c9a96e' : 'rgba(232,224,213,0.5)', fontSize: 12, padding: '6px 10px', cursor: 'pointer', flex: 1, minWidth: 120 }}>
+            <option value="">— Domaine</option>
+            {domaines.map(d => <option key={d.id} value={d.id}>{d.nom}</option>)}
+          </select>
+          {(filterRegion || filterAppellation || filterDomaine) && <button onClick={() => { setFilterRegion(''); setFilterAppellation(''); setFilterDomaine('') }} style={{ background: 'rgba(201,110,110,0.1)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 8, color: '#c96e6e', fontSize: 12, padding: '6px 10px', cursor: 'pointer' }}>✕ Effacer</button>}
         </div>
       </div>
       <div style={{ flex: 1, overflowY: 'auto' as const }}>
