@@ -681,11 +681,7 @@ function HistoriqueAchatsClient({ client, onClose, onAddToCart, onRetourDone }: 
               🖨 Imprimer / PDF
             </button>
           </div>
-          {selectedPiece.type_doc !== 'facture' && selectedPiece.type_doc !== 'avoir' && <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-            <button onClick={() => {
-              const typeLabel: Record<string,string> = { ticket: 'TICKET', devis: 'DEVIS', commande: 'COMMANDE', bl: 'BON DE LIVRAISON', facture: 'FACTURE', avoir: 'AVOIR' }
-              const clientNomStr = client.est_societe ? client.raison_sociale : `${client.prenom || ''} ${client.nom || ''}`.trim()
-              const lignesHtml = lignesSelectedPiece.map(l => `<tr><td>${l.nom_produit}${l.millesime ? ' ' + l.millesime : ''}</td><td style="text-align:center">${l.quantite}</td><td style="text-align:right">${parseFloat(l.prix_unitaire_ttc).toFixed(2)} €</td>${l.remise_pct > 0 ? `<td style="text-align:right">${l.remise_pct}%</td>` : '<td></td>'}<td style="text-align:right"><b>${parseFloat(l.total_ttc).toFixed(2)} €</b></td></tr>`).join('')
+          
               const html = `<html><head><style>
                 body{font-family:Arial,sans-serif;font-size:12px;max-width:210mm;margin:0 auto;padding:16mm;color:#222}
                 .header{display:flex;justify-content:space-between;margin-bottom:28px}
