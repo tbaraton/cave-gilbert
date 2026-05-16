@@ -40,7 +40,9 @@ export default function BoutiquePage() {
   useEffect(() => {
     const load = async () => {
       setLoading(true)
+      const ID_MARCY = 'ee3afa96-0c45-407f-87fc-e503fbada6c4'
       const ID_ENTREPOT = 'e12d7e47-23dc-4011-95fc-e9e975fc4307'
+      const ID_ARBRESLE = '3097e864-f452-4c2e-9af3-21e26f0330b7'
 
       // 1) Catalogue de base (filtré sur les produits actifs)
       let query = supabase
@@ -71,18 +73,33 @@ export default function BoutiquePage() {
       const visibleIds = new Set((visibles || []).map((v: any) => v.id))
       let filtered = (catalog || []).filter((p: any) => visibleIds.has(p.id))
 
-      // 3) Le stock affiché en boutique = stock entrepôt (stock disponible à la vente en ligne)
-      const { data: stockEntrepot } = await supabase
+      // 3) Fetch stock des 3 sites (entrepôt = livraison, Marcy/Arbresle = retrait 2h)
+      const { data: allStock } = await supabase
         .from('stock')
-        .select('product_id, quantite')
-        .eq('site_id', ID_ENTREPOT)
+        .select('product_id, site_id, quantite')
+        .in('site_id', [ID_MARCY, ID_ENTREPOT, ID_ARBRESLE])
         .in('product_id', Array.from(visibleIds))
-      const stockMap = new Map<string, number>((stockEntrepot || []).map((s: any) => [s.product_id, s.quantite]))
+      const stockByProd = new Map<string, { entrepot: number; marcy: number; arbresle: number }>()
+      for (const s of (allStock || [])) {
+        const cur = stockByProd.get(s.product_id) || { entrepot: 0, marcy: 0, arbresle: 0 }
+        if (s.site_id === ID_ENTREPOT) cur.entrepot = s.quantite
+        else if (s.site_id === ID_MARCY) cur.marcy = s.quantite
+        else if (s.site_id === ID_ARBRESLE) cur.arbresle = s.quantite
+        stockByProd.set(s.product_id, cur)
+      }
       filtered = filtered.map((p: any) => {
-        const qte = stockMap.get(p.id) || 0
-        return { ...p, stock_total: qte, stock_statut: qte === 0 ? 'rupture' : qte < 5 ? 'limite' : 'ok' }
+        const s = stockByProd.get(p.id) || { entrepot: 0, marcy: 0, arbresle: 0 }
+        const total = s.entrepot + s.marcy + s.arbresle
+        return {
+          ...p,
+          stock_total: total,
+          stock_entrepot: s.entrepot,
+          stock_retrait: s.marcy + s.arbresle,
+          stock_statut: total === 0 ? 'rupture' : total < 5 ? 'limite' : 'ok',
+        }
       })
 
+      // Le filtre "en stock" cache uniquement les ruptures totales (aucun site)
       if (stockOnly) filtered = filtered.filter((p: any) => p.stock_total > 0)
 
       setProduits(filtered)
