@@ -32,9 +32,9 @@ const getLogoForSite = (siteName: string) => {
 function getSiteInfo(siteNomOrLabel: string) {
   const n = (siteNomOrLabel || '').toLowerCase()
   if (n.includes('petite cave') || n === 'lpc') {
-    return { nom: 'La Petite Cave', adresse: '3 Rue Peillon', ville: "69210 L'Arbresle", tel: '09 60 50 15 72', email: 'contact@petitecave.net', siret: '452 841 562 00039', logo: '/logo-petite-cave.png' }
+    return { nom: 'La Petite Cave', adresse: '3 Rue Peillon', ville: "69210 L'Arbresle", tel: '09 60 50 15 72', email: 'contact@petitecave.net', siret: '452 841 562 00039', tva: 'FR25 452 841 562', logo: '/logo-petite-cave.png', tribunal: 'Lyon' }
   }
-  return { nom: 'Cave de Gilbert', adresse: 'Avenue Jean Colomb', ville: "69280 Marcy l'Étoile", tel: '04 22 91 41 09', email: 'contact@cavedegilbert.fr', siret: '898 622 055 00017', logo: '/logo.png' }
+  return { nom: 'Cave de Gilbert', adresse: 'Avenue Jean Colomb', ville: "69280 Marcy l'Étoile", tel: '04 22 91 41 09', email: 'contact@cavedegilbert.fr', siret: '898 622 055 00017', tva: 'FR79 898 622 055', logo: '/logo.png', tribunal: 'Lyon' }
 }
 
 function genererHTMLTicket({ numero, dateStr, heureStr, vendeur, lignes, totalTTC, paiements, siteInfo, notes }: {
@@ -1002,13 +1002,16 @@ function HistoriqueVentes({ session, onClose, onAddToCart }: {
       if (win) { win.document.write(html); win.document.close(); win.print() }
       return
     }
-    const html = genererFactureCaisse(detail, lignesDetail, paiementsDetail)
+    const html = genererFactureCaisse(detail, lignesDetail, paiementsDetail, siteLabels[detail.site_id] || '')
     const win = window.open('', '_blank')
     if (win) { win.document.write(html); win.document.close(); win.print() }
   }
-const genererFactureCaisse = (detail: any, lignesDetail: any[], paiementsDetail: any[]) => {
+const genererFactureCaisse = (detail: any, lignesDetail: any[], paiementsDetail: any[], siteLabel = '') => {
+    const siteInfo = getSiteInfo(siteLabel)
+    const logoUrl = (typeof window !== 'undefined' ? window.location.origin : '') + siteInfo.logo
     const clientN = !detail.customer ? 'Client anonyme' : detail.customer.est_societe ? detail.customer.raison_sociale : `${detail.customer.prenom || ''} ${detail.customer.nom || ''}`.trim()
     const dateDoc = new Date(detail.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })
+    const dateEcheance = (() => { const d = new Date(detail.created_at); d.setDate(d.getDate() + 14); return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' }) })()
     const typeLabel: Record<string, string> = { facture: 'FACTURE', devis: 'DEVIS', commande: 'BON DE COMMANDE', bl: 'BON DE LIVRAISON', avoir: 'AVOIR', ticket: 'REÇU' }
     const tvaRate = 0.20
     const totalTTC = parseFloat(detail.total_ttc)
@@ -1063,14 +1066,15 @@ thead th { padding: 10px 12px; text-align: left; font-size: 9px; letter-spacing:
 .footer { margin-top: 32px; padding-top: 14px; border-top: 0.5px solid rgba(255,255,255,0.06); font-size: 10px; color: rgba(232,224,213,0.25); line-height: 2; }
 .watermark { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%) rotate(-35deg); font-size: 80px; color: rgba(255,255,255,0.02); font-family: Georgia, serif; letter-spacing: 8px; pointer-events: none; white-space: nowrap; }
 </style></head><body>
-<div class="watermark">CAVE DE GILBERT</div>
+<div class="watermark">${siteInfo.nom.toUpperCase()}</div>
 <div class="header">
   <div>
-    <div class="cave-name">Cave de Gilbert</div>
+    <img src="${logoUrl}" style="max-height:44px;max-width:130px;object-fit:contain;display:block;margin-bottom:8px" onerror="this.style.display='none'"/>
+    <div class="cave-name">${siteInfo.nom}</div>
     <div class="cave-info">
-      Avenue Jean Colomb — 69280 Marcy l'Étoile<br>
-      04 22 91 41 09 · contact@cavedegilbert.fr<br>
-      Mar–Sam : 9h30–13h / 15h30–19h
+      ${siteInfo.adresse} — ${siteInfo.ville}<br>
+      ${siteInfo.tel} · ${siteInfo.email}<br>
+      SIRET : ${siteInfo.siret} — TVA : ${siteInfo.tva}
     </div>
   </div>
   <div>
@@ -1123,11 +1127,36 @@ ${detail.type_doc === 'facture' ? `
   </div>
 </div>` : ''}
 
+${detail.type_doc === 'devis' ? `
+<div style="background:rgba(110,158,201,0.06);border:0.5px solid rgba(110,158,201,0.2);border-radius:8px;padding:16px 20px;margin-top:24px">
+  <div style="font-size:9px;letter-spacing:2px;text-transform:uppercase;color:rgba(110,158,201,0.6);margin-bottom:8px">Conditions d'acceptation</div>
+  <div style="font-size:12px;color:rgba(232,224,213,0.7);line-height:2">
+    Ce devis est valable <strong style="color:#e8e0d5">2 semaines</strong> à compter de la date d'émission, soit jusqu'au <strong style="color:#e8e0d5">${dateEcheance}</strong>.<br>
+    Pour accepter ce devis, retournez-le signé avec la mention <em style="color:#c9a96e">« Bon pour accord »</em>.<br>
+    Les prix sont indiqués en TTC. TVA acquittée sur les débits. Paiement à la commande sauf accord préalable.
+  </div>
+</div>
+<div style="margin-top:24px;border:0.5px solid rgba(255,255,255,0.1);border-radius:8px;overflow:hidden">
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr">
+    <div style="padding:14px 16px;border-right:0.5px solid rgba(255,255,255,0.08)">
+      <div style="font-size:8px;letter-spacing:2px;text-transform:uppercase;color:rgba(232,224,213,0.3);margin-bottom:36px">Date d'acceptation</div>
+      <div style="border-bottom:0.5px solid rgba(255,255,255,0.25)"></div>
+    </div>
+    <div style="padding:14px 16px;border-right:0.5px solid rgba(255,255,255,0.08)">
+      <div style="font-size:8px;letter-spacing:2px;text-transform:uppercase;color:rgba(232,224,213,0.3);margin-bottom:36px">Bon pour accord</div>
+      <div style="border-bottom:0.5px solid rgba(255,255,255,0.25)"></div>
+    </div>
+    <div style="padding:14px 16px">
+      <div style="font-size:8px;letter-spacing:2px;text-transform:uppercase;color:rgba(232,224,213,0.3);margin-bottom:36px">Signature / Cachet</div>
+      <div style="border-bottom:0.5px solid rgba(255,255,255,0.25)"></div>
+    </div>
+  </div>
+</div>` : ''}
 <div class="footer">
-  SAS Cave de Gilbert — SIRET 898 622 055 00017 — TVA FR79 898 622 055<br>
-  Avenue Jean Colomb, 69280 Marcy-l'Étoile — contact@cavedegilbert.fr<br>
-  Tout litige relatif à cette facture devra être porté devant le Tribunal de Commerce de Lyon.<br>
-  ${detail.type_doc === 'facture' ? 'Tout retard de paiement entraînera des pénalités de retard au taux légal en vigueur.' : ''}
+  ${siteInfo.nom} — SIRET ${siteInfo.siret} — TVA ${siteInfo.tva}<br>
+  ${siteInfo.adresse}, ${siteInfo.ville} — ${siteInfo.email}<br>
+  Tout litige relatif à ce document devra être porté devant le Tribunal de Commerce de ${siteInfo.tribunal}.<br>
+  ${detail.type_doc === 'facture' ? 'Tout retard de paiement entraînera des pénalités de retard au taux légal en vigueur (art. L.441-10 C. com.).' : ''}${detail.type_doc === 'devis' ? 'Devis valable 2 semaines. Les prix indiqués s\'entendent TTC, TVA acquittée sur les débits.' : ''}
 </div>
 </body></html>`
   }
