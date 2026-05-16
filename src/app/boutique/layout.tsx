@@ -295,9 +295,9 @@ function CartDrawer() {
 
 // ── Nav ───────────────────────────────────────────────────────
 // ── Modal Login / Inscription ────────────────────────────────
-function LoginModal({ onClose }: { onClose: () => void }) {
+function LoginModal({ onClose, initialMode = 'login', initialType = 'particulier' }: { onClose: () => void; initialMode?: 'login' | 'signup'; initialType?: 'particulier' | 'pro' }) {
   const { signIn, signUp } = useAuth()
-  const [mode, setMode] = useState<'login' | 'signup'>('login')
+  const [mode, setMode] = useState<'login' | 'signup'>(initialMode)
   // Login
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -306,7 +306,7 @@ function LoginModal({ onClose }: { onClose: () => void }) {
   const [prenom, setPrenom] = useState('')
   const [nom, setNom] = useState('')
   const [telephone, setTelephone] = useState('')
-  const [typeCompte, setTypeCompte] = useState<'particulier' | 'pro'>('particulier')
+  const [typeCompte, setTypeCompte] = useState<'particulier' | 'pro'>(initialType)
   const [raisonSociale, setRaisonSociale] = useState('')
   const [siret, setSiret] = useState('')
   const [accepteCgv, setAccepteCgv] = useState(false)
@@ -448,18 +448,27 @@ function AccountButton() {
   const [showLogin, setShowLogin] = useState(false)
   const [showMenu, setShowMenu] = useState(false)
 
+  const [proSignup, setProSignup] = useState(false)
+
   // Affiche le bouton login même pendant le chargement (sécurité : pas de bouton fantôme)
   if (loading || !user) {
     return (
       <>
-        <button onClick={() => setShowLogin(true)} style={{
-          background: 'transparent', border: '0.5px solid rgba(138,106,62,0.4)',
+        <button onClick={() => { setProSignup(false); setShowLogin(true) }} style={{
+          background: 'transparent', border: '0.5px solid rgba(0,0,0,0.15)',
+          color: 'rgba(0,0,0,0.65)', borderRadius: 8, padding: '8px 14px',
+          fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' as const,
+        }}>
+          👤 Connexion
+        </button>
+        <button onClick={() => { setProSignup(true); setShowLogin(true) }} style={{
+          background: 'rgba(138,106,62,0.08)', border: '0.5px solid rgba(138,106,62,0.4)',
           color: '#8a6a3e', borderRadius: 8, padding: '8px 14px',
           fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' as const, fontWeight: 600,
         }}>
-          👤 Connexion / Inscription
+          🔑 Demander un compte pro
         </button>
-        {showLogin && <LoginModal onClose={() => setShowLogin(false)} />}
+        {showLogin && <LoginModal onClose={() => setShowLogin(false)} initialMode={proSignup ? 'signup' : 'login'} initialType={proSignup ? 'pro' : 'particulier'} />}
       </>
     )
   }
