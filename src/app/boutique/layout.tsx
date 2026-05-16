@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from './AuthContext'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
@@ -343,8 +344,9 @@ function LoginModal({ onClose }: { onClose: () => void }) {
     }
   }
 
-  return (
-    <div onClick={onClose} style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 850, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, overflowY: 'auto' as const }}>
+  if (typeof window === 'undefined') return null
+  return createPortal(
+    <div onClick={onClose} style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, overflowY: 'auto' as const }}>
       <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 6, padding: '28px 32px', maxWidth: 460, width: '100%', boxShadow: '0 24px 48px rgba(0,0,0,0.15)', maxHeight: '90vh', overflowY: 'auto' as const }}>
         <div style={{ fontFamily: 'Georgia, serif', fontSize: 22, color: '#0a0a0a', marginBottom: 6 }}>
           {mode === 'login' ? 'Connexion' : 'Créer un compte'}
@@ -424,7 +426,8 @@ function LoginModal({ onClose }: { onClose: () => void }) {
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
