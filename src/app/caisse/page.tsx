@@ -823,12 +823,34 @@ function HistoriqueVentes({ session, onClose, onAddToCart }: {
   const [showEmail, setShowEmail] = useState(false)
   const [emailDest, setEmailDest] = useState('')
   const searchTimer = useRef<any>(null)
+  const [siteIds, setSiteIds] = useState<string[]>([session.site_id])
+  const [siteLabels, setSiteLabels] = useState<Record<string, string>>({})
+
+  const getSiteLabelHist = (nom: string) => { const n = (nom || '').toLowerCase(); if (n.includes('petite cave')) return 'LPC'; if (n.includes('entrepôt') || n.includes('entrepot')) return 'E'; if (n.includes('gilbert')) return 'CDG'; return (nom || '').slice(0, 3).toUpperCase() }
+
+  useEffect(() => {
+    const loadSites = async () => {
+      const { data: sitesData } = await supabase.from('sites').select('id, nom').eq('actif', true)
+      if (!sitesData) return
+      const labels: Record<string, string> = {}
+      for (const s of sitesData) labels[s.id] = getSiteLabelHist(s.nom)
+      setSiteLabels(labels)
+      const currentSite = sitesData.find((s: any) => s.id === session.site_id)
+      const n = (currentSite?.nom || '').toLowerCase()
+      const isGilbertOrEnt = n.includes('gilbert') || n.includes('entrepôt') || n.includes('entrepot')
+      if (isGilbertOrEnt) {
+        const ids = sitesData.filter((s: any) => { const sn = s.nom.toLowerCase(); return sn.includes('gilbert') || sn.includes('entrepôt') || sn.includes('entrepot') }).map((s: any) => s.id)
+        setSiteIds(ids)
+      }
+    }
+    loadSites()
+  }, [])
 
   const loadVentes = useCallback(async () => {
     setLoading(true)
     let q = supabase.from('ventes')
-      .select('id, numero, created_at, type_doc, statut, statut_paiement, total_ttc, notes, customer:customers(id, prenom, nom, raison_sociale, est_societe, email), user:users(prenom, nom)')
-      .eq('site_id', session.site_id)
+      .select('id, numero, created_at, type_doc, statut, statut_paiement, total_ttc, notes, site_id, customer:customers(id, prenom, nom, raison_sociale, est_societe, email), user:users(prenom, nom)')
+      .in('site_id', siteIds)
       .order('created_at', { ascending: false })
       .limit(200)
     if (filterType !== 'tous') q = q.eq('type_doc', filterType)
@@ -837,7 +859,7 @@ function HistoriqueVentes({ session, onClose, onAddToCart }: {
     const { data } = await q
     setVentes(data || [])
     setLoading(false)
-  }, [filterType, filterDate, selectedClientId])
+  }, [filterType, filterDate, selectedClientId, siteIds])
 
   useEffect(() => { loadVentes() }, [loadVentes])
 
@@ -1254,7 +1276,10 @@ ${detail.type_doc === 'facture' ? `
           {/* Header */}
           <div style={{ padding: '14px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', gap: 12 }}>
             <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: '#c9a96e', fontSize: 22, cursor: 'pointer' }}>←</button>
-            <div style={{ fontFamily: 'Georgia, serif', fontSize: 18, color: '#f0e8d8' }}>Historique des ventes</div>
+            <div>
+              <div style={{ fontFamily: 'Georgia, serif', fontSize: 18, color: '#f0e8d8' }}>Historique des ventes</div>
+              {siteIds.length > 1 && <div style={{ fontSize: 11, color: 'rgba(201,169,110,0.6)', marginTop: 2 }}>{siteIds.map(id => siteLabels[id]).filter(Boolean).join(' + ')}</div>}
+            </div>
           </div>
 
           {/* Filtres */}
@@ -1313,6 +1338,7 @@ ${detail.type_doc === 'facture' ? `
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' as const }}>
                 <span style={{ fontSize: 13, color: '#f0e8d8', fontFamily: 'monospace' }}>{v.numero}</span>
                 <span style={{ fontSize: 10, background: `${typeColor[v.type_doc] || '#888'}22`, color: typeColor[v.type_doc] || '#888', padding: '2px 7px', borderRadius: 3, textTransform: 'uppercase' as const }}>{v.type_doc}</span>
+                {siteIds.length > 1 && siteLabels[v.site_id] && <span style={{ fontSize: 10, background: 'rgba(201,169,110,0.08)', color: 'rgba(201,169,110,0.6)', padding: '2px 7px', borderRadius: 3 }}>{siteLabels[v.site_id]}</span>}
                 {v.statut === 'annulee'
                   ? <span style={{ fontSize: 10, background: 'rgba(201,110,110,0.15)', color: '#c96e6e', padding: '2px 7px', borderRadius: 3 }}>Annulée</span>
                   : <span style={{ fontSize: 10, background: `${statutColor[v.statut_paiement] || '#888'}22`, color: statutColor[v.statut_paiement] || '#888', padding: '2px 7px', borderRadius: 3 }}>{statutLabel[v.statut_paiement]}</span>
