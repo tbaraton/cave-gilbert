@@ -16,7 +16,7 @@ type User = { id: string; nom: string; prenom: string; email: string; pin: strin
 type Session = { id: string; user_id: string; site_id: string; statut: string; especes_ouverture: number; site_nom?: string }
 type Client = { id: string; prenom: string; nom: string; raison_sociale: string; est_societe: boolean; tarif_pro: boolean; remise_pct: number; email: string; telephone: string }
 type Ligne = { id: string; product_id: string; nom: string; nom_modifie?: string; millesime: number; qte: number; prix_unit: number; remise_pct: number; total: number; commentaire?: string; domaine_nom?: string; tva_pct?: number; is_divers?: boolean }
-type Paiement = { mode: string; montant: number; label: string }
+type Paiement = { mode: string; montant: number; label: string; bon_cadeau_id?: string; bon_cadeau_code?: string }
 type VenteEnAttente = { id: string; client: Client | null; lignes: Ligne[]; typeDoc: string; remise: string; remiseType: 'pct' | 'eur'; label: string; noteGlobale: string; noteGlobaleActive: boolean }
 
 const COULEURS: Record<string, string> = { rouge: '#e07070', blanc: '#c9b06e', rosé: '#e8a0b0', champagne: '#d4c88a', effervescent: '#a0b0e0', autre: '#888' }
@@ -2531,6 +2531,66 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
   return null
 }
 
+// ── Modal Créer Bon Cadeau ─────────────────────────────────────
+function ModalCreerBonCadeau({ session, onClose, onCreer }: {
+  session: Session
+  onClose: () => void
+  onCreer: (bon: { id: string; code: string; montant: number }) => void
+}) {
+  const [montant, setMontant] = useState('')
+  const [benefNom, setBenefNom] = useState('')
+  const [benefEmail, setBenefEmail] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  const genCode = () => {
+    const now = new Date()
+    const yy = String(now.getFullYear()).slice(-2)
+    const mm = String(now.getMonth() + 1).padStart(2, '0')
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+    const rand = Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
+    return `BC-${yy}${mm}-${rand}`
+  }
+
+  const handleCreer = async () => {
+    const m = parseFloat(montant)
+    if (!m || m <= 0) { setError('Montant invalide'); return }
+    setLoading(true); setError('')
+    const code = genCode()
+    const { data, error: err } = await supabase.from('bons_cadeaux').insert({
+      code, montant_initial: m, solde_restant: m,
+      site_id: session.site_id, statut: 'actif',
+      beneficiaire_nom: benefNom.trim() || null,
+      beneficiaire_email: benefEmail.trim() || null,
+    }).select('id').single()
+    if (err || !data) { setError('Erreur lors de la création'); setLoading(false); return }
+    onCreer({ id: data.id, code, montant: m })
+  }
+
+  return (
+    <div style={{ position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999 }}>
+      <div style={{ background: '#18130e', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 16, padding: '32px', maxWidth: 420, width: '90%' }}>
+        <div style={{ fontFamily: 'Georgia, serif', fontSize: 22, color: '#c9a96e', marginBottom: 24 }}>🎁 Bon cadeau</div>
+        <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', marginBottom: 6, letterSpacing: 1 }}>MONTANT (€)</div>
+        <input type="number" step="0.01" min="0" autoFocus value={montant} onChange={e => setMontant(e.target.value)} placeholder="50.00"
+          style={{ width: '100%', background: 'rgba(255,255,255,0.07)', border: '0.5px solid rgba(201,169,110,0.4)', borderRadius: 8, color: '#f0e8d8', fontSize: 22, padding: '14px', boxSizing: 'border-box' as const, marginBottom: 16, textAlign: 'center' as const }} />
+        <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', marginBottom: 6, letterSpacing: 1 }}>BÉNÉFICIAIRE (optionnel)</div>
+        <input value={benefNom} onChange={e => setBenefNom(e.target.value)} placeholder="Prénom Nom"
+          style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#f0e8d8', fontSize: 14, padding: '12px', boxSizing: 'border-box' as const, marginBottom: 10 }} />
+        <input type="email" value={benefEmail} onChange={e => setBenefEmail(e.target.value)} placeholder="email@beneficiaire.fr"
+          style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#f0e8d8', fontSize: 14, padding: '12px', boxSizing: 'border-box' as const, marginBottom: 16 }} />
+        {error && <div style={{ color: '#c96e6e', fontSize: 13, marginBottom: 12 }}>{error}</div>}
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={onClose} style={{ flex: 1, background: 'transparent', border: '0.5px solid rgba(255,255,255,0.15)', borderRadius: 8, color: 'rgba(232,224,213,0.5)', padding: '14px', fontSize: 14, cursor: 'pointer' }}>Annuler</button>
+          <button onClick={handleCreer} disabled={loading || !montant} style={{ flex: 2, background: !loading && montant ? '#c9a96e' : '#2a2a1e', border: 'none', borderRadius: 8, color: !loading && montant ? '#0d0a08' : '#555', padding: '14px', fontSize: 14, cursor: !loading && montant ? 'pointer' : 'not-allowed', fontWeight: 700 }}>
+            {loading ? 'Création...' : '🎁 Créer le bon cadeau'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Caisse Desktop ────────────────────────────────────────────
 function CaisseDesktop({ user, session, onFermer }: { user: User; session: Session; onFermer: () => void }) {
   const [client, setClient] = useState<Client | null>(null)
@@ -2574,6 +2634,12 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
   const [derniereVente, setDerniereVente] = useState<any>(null)
   const [showEmailVente, setShowEmailVente] = useState(false)
   const [emailVente, setEmailVente] = useState('')
+  const [showBonCadeau, setShowBonCadeau] = useState(false)
+  const [avoirClient, setAvoirClient] = useState(0)
+  const [codeBonCadeauSaisi, setCodeBonCadeauSaisi] = useState('')
+  const [errBonCadeau, setErrBonCadeau] = useState('')
+  const [bonCadeauValidated, setBonCadeauValidated] = useState<{id:string;code:string;solde:number}|null>(null)
+  const [bonCadeauCree, setBonCadeauCree] = useState<{id:string;code:string;montant:number}|null>(null)
   const searchTimer = useRef<any>(null)
   const prodTimer = useRef<any>(null)
   const searchRef = useRef<HTMLInputElement>(null)
@@ -2608,12 +2674,15 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
   }
 
   const selectClient = async (c: Client | null) => {
-    if (!c) { setClient(null); setShowClientPanel(false); return }
-    const [{ data: bons }, { data: demandes }, { data: factures }] = await Promise.all([
+    if (!c) { setClient(null); setShowClientPanel(false); setAvoirClient(0); return }
+    const [{ data: bons }, { data: demandes }, { data: factures }, { data: credits }] = await Promise.all([
       supabase.from('loyalty_vouchers').select('*').eq('customer_id', c.id).eq('utilise', false),
       supabase.from('customer_requests').select('*').eq('customer_id', c.id).eq('statut', 'en_attente'),
       supabase.from('ventes').select('id, numero, total_ttc').eq('customer_id', c.id).eq('statut_paiement', 'non_regle').eq('statut', 'validee'),
+      supabase.from('customer_credits').select('montant').eq('customer_id', c.id),
     ])
+    const totalAvoir = Math.max(0, (credits || []).reduce((acc: number, cr: any) => acc + Number(cr.montant), 0))
+    setAvoirClient(totalAvoir)
     const a = { bons: bons || [], demandes: demandes || [], factures: factures || [] }
     if (a.bons.length || a.demandes.length || a.factures.length) setAlertesClient({ client: c, ...a })
     else { setClient(c); setShowClientPanel(false) }
@@ -2684,7 +2753,7 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
     setAttentes(prev => prev.filter(x => x.id !== a.id))
   }
 
-  const resetVente = () => { setClient(null); setLignes([]); setTypeDoc('ticket'); setRemise(''); setRemiseType('pct'); setPaiements([]); setSearchClient(''); setClientsFound([]); setNoteGlobale(''); setNoteGlobaleActive(false); setDerniereVente(null); setShowEmailVente(false); setEmailVente('') }
+  const resetVente = () => { setClient(null); setLignes([]); setTypeDoc('ticket'); setRemise(''); setRemiseType('pct'); setPaiements([]); setSearchClient(''); setClientsFound([]); setNoteGlobale(''); setNoteGlobaleActive(false); setDerniereVente(null); setShowEmailVente(false); setEmailVente(''); setAvoirClient(0); setCodeBonCadeauSaisi(''); setErrBonCadeau(''); setBonCadeauValidated(null); setBonCadeauCree(null) }
 
   const addArticleDivers = () => {
     if (!diversNom.trim() || !diversPrix) return
@@ -2703,10 +2772,22 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
     setLignes(prev => [...prev, { id: Math.random().toString(36).slice(2), product_id: l.product_id, nom: l.nom_produit, millesime: l.millesime, qte: 1, prix_unit: prix, remise_pct: 0, total: prix }])
   }
 
+  const validateBonCadeau = async () => {
+    if (!codeBonCadeauSaisi.trim()) return
+    const { data } = await supabase.from('bons_cadeaux').select('id, code, solde_restant').eq('code', codeBonCadeauSaisi.trim()).eq('statut', 'actif').maybeSingle()
+    if (!data || data.solde_restant <= 0) { setErrBonCadeau('Code invalide ou bon cadeau épuisé'); return }
+    setBonCadeauValidated({ id: data.id, code: data.code, solde: data.solde_restant })
+    setErrBonCadeau('')
+    setMontantSaisi(Math.min(data.solde_restant, resteAPayer).toFixed(2))
+  }
+
   const addPaiement = () => {
-    const montant = modeCourant === 'non_regle' ? resteAPayer : (parseFloat(montantSaisi) || resteAPayer)
+    const labels: Record<string, string> = { cb: 'CB', especes: 'Espèces', virement: 'Virement', bon_achat: "Bon d'achat", non_regle: 'Non réglé', bon_cadeau: 'Bon cadeau', avoir_client: 'Avoir client' }
+    if (modeCourant === 'non_regle') { if (resteAPayer <= 0) return; setPaiements(prev => [...prev, { mode: modeCourant, montant: resteAPayer, label: labels[modeCourant] }]); setMontantSaisi(''); return }
+    if (modeCourant === 'bon_cadeau') { if (!bonCadeauValidated) return; const m = parseFloat(montantSaisi) || Math.min(bonCadeauValidated.solde, resteAPayer); if (m <= 0 || m > bonCadeauValidated.solde) return; setPaiements(prev => [...prev, { mode: modeCourant, montant: m, label: `Bon cadeau ${bonCadeauValidated.code}`, bon_cadeau_id: bonCadeauValidated.id, bon_cadeau_code: bonCadeauValidated.code }]); setMontantSaisi(''); return }
+    if (modeCourant === 'avoir_client') { const m = parseFloat(montantSaisi) || Math.min(avoirClient, resteAPayer); if (m <= 0) return; setPaiements(prev => [...prev, { mode: modeCourant, montant: Math.min(m, avoirClient), label: 'Avoir client' }]); setMontantSaisi(''); return }
+    const montant = parseFloat(montantSaisi) || resteAPayer
     if (montant <= 0) return
-    const labels: Record<string, string> = { cb: 'CB', especes: 'Espèces', virement: 'Virement', bon_achat: "Bon d'achat", non_regle: 'Non réglé' }
     setPaiements(prev => [...prev, { mode: modeCourant, montant, label: labels[modeCourant] }])
     setMontantSaisi('')
   }
@@ -2718,6 +2799,28 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
     const paiements = (vente.paiements || []).map((p: any) => ({ label: p.mode || p.label, montant: p.montant }))
     const html = genererHTMLTicket({ numero: vente.numero, dateStr: now.toLocaleDateString('fr-FR'), heureStr: now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }), vendeur: vendeur?.prenom, lignes, totalTTC: vente.total, paiements, siteInfo, notes: noteGlobaleActive && noteGlobale ? noteGlobale : undefined })
     const win = window.open('', '_blank'); if (win) { win.document.write(html); win.document.close(); win.print() }
+  }
+
+  const imprimerBonCadeau = (code: string, montant: number) => {
+    const siteInfo = getSiteInfo(session.site_nom || '')
+    const logoUrl = (typeof window !== 'undefined' ? window.location.origin : '') + siteInfo.logo
+    const now = new Date()
+    const sep = '<hr style="border:none;border-top:1px dashed #000;margin:6px 0"/>'
+    const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:monospace;font-size:11px;width:80mm;margin:0 auto;padding:3mm}.center{text-align:center}</style></head><body>
+<div class="center"><img src="${logoUrl}" style="max-width:44mm;max-height:22mm;display:block;margin:0 auto 4px" onerror="this.style.display='none'"/><div style="font-size:10px">${siteInfo.adresse} — ${siteInfo.ville}</div><div style="font-size:9px">SIRET : ${siteInfo.siret}</div></div>
+${sep}<div class="center" style="font-weight:bold;font-size:14px;margin:8px 0">BON CADEAU</div>
+<div class="center" style="font-size:36px;font-weight:bold;font-family:Georgia,serif;margin:10px 0">${montant.toFixed(2)}€</div>
+${sep}<div class="center" style="font-size:10px;color:#555;margin:4px 0">Présentez ce code en caisse</div>
+<div class="center" style="font-size:20px;font-weight:bold;letter-spacing:3px;margin:8px 0">${code}</div>
+${sep}<div class="center" style="font-size:9px;color:#444;line-height:1.7;margin-top:6px">Valable dans nos établissements<br/>Émis le ${now.toLocaleDateString('fr-FR')}<br/>${siteInfo.email}</div>
+</body></html>`
+    const win = window.open('', '_blank'); if (win) { win.document.write(html); win.document.close(); win.print() }
+  }
+
+  const handleBonCadeauCree = (bon: { id: string; code: string; montant: number }) => {
+    setShowBonCadeau(false)
+    setBonCadeauCree(bon)
+    setLignes(prev => [...prev, { id: Math.random().toString(36).slice(2), product_id: `bon-cadeau-${Date.now()}`, nom: 'Bon cadeau', nom_modifie: `Bon cadeau — ${bon.code}`, millesime: 0, qte: 1, prix_unit: bon.montant, remise_pct: 0, total: bon.montant, domaine_nom: 'TVA 20%', tva_pct: 20, is_divers: true }])
   }
 
   const handleSauvegarderDevis = async () => {
@@ -2738,6 +2841,18 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
       await supabase.from('vente_paiements').insert(paiements.map(p=>({vente_id:v.id,mode:p.mode,montant:p.montant})))
       for (const l of lignes) { if (!l.is_divers) await supabase.rpc('move_stock',{p_product_id:l.product_id,p_site_id:session.site_id,p_raison:'vente',p_quantite:l.qte,p_note:`Vente ${numero}`,p_order_id:null,p_transfer_id:null}) }
       if (client&&!client.tarif_pro&&sp==='regle') await supabase.from('loyalty_points').insert({customer_id:client.id,points:Math.floor(totalNet),raison:`Vente ${numero}`})
+      const bcPaiement = paiements.find(p => p.mode === 'bon_cadeau' && p.bon_cadeau_id)
+      if (bcPaiement && bonCadeauValidated) {
+        const nouveauSolde = Math.max(0, bonCadeauValidated.solde - bcPaiement.montant)
+        if (client && nouveauSolde > 0) {
+          await supabase.from('bons_cadeaux').update({ solde_restant: 0, statut: 'utilise' }).eq('id', bonCadeauValidated.id)
+          await supabase.from('customer_credits').insert({ customer_id: client.id, montant: nouveauSolde, raison: `Reste bon cadeau ${bonCadeauValidated.code}`, bon_cadeau_id: bonCadeauValidated.id, vente_id: v.id })
+        } else {
+          await supabase.from('bons_cadeaux').update({ solde_restant: nouveauSolde, statut: nouveauSolde <= 0 ? 'utilise' : 'actif' }).eq('id', bonCadeauValidated.id)
+        }
+      }
+      const avoirPaiement = paiements.find(p => p.mode === 'avoir_client')
+      if (avoirPaiement && client) { await supabase.from('customer_credits').insert({ customer_id: client.id, montant: -avoirPaiement.montant, raison: `Utilisation avoir — Vente ${numero}`, vente_id: v.id }) }
     }
     setDerniereVente({numero,total:totalNet,lignes:[...lignes],paiements:[...paiements]})
     setEmailVente(client?.email||'')
@@ -2745,7 +2860,15 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
   }
 
   const DOCS = ['ticket','devis','commande','bl','facture']
-  const MODES = [{id:'cb',label:'💳 CB',c:'#6e9ec9'},{id:'especes',label:'💶 Espèces',c:'#6ec96e'},{id:'virement',label:'🏦 Virement',c:'#c9b06e'},{id:'bon_achat',label:'🎟 Bon',c:'#c9a96e'},{id:'non_regle',label:'📋 Non réglé',c:'#c96e6e'}]
+  const MODES = [
+    {id:'cb',label:'💳 CB',c:'#6e9ec9'},
+    {id:'especes',label:'💶 Espèces',c:'#6ec96e'},
+    {id:'virement',label:'🏦 Virement',c:'#c9b06e'},
+    {id:'bon_cadeau',label:'🎁 Bon cadeau',c:'#c96ec9'},
+    {id:'bon_achat',label:'🎟 Bon achat',c:'#c9a96e'},
+    {id:'non_regle',label:'📋 Non réglé',c:'#c96e6e'},
+    ...(avoirClient > 0 ? [{id:'avoir_client',label:`⬆ Avoir ${avoirClient.toFixed(2)}€`,c:'#6ec9b0'}] : []),
+  ]
 
   return (
     <div style={{display:'flex',height:'100vh',background:'#0d0a08',fontFamily:"'DM Sans', system-ui, sans-serif",color:'#e8e0d5',overflow:'hidden'}}>
@@ -2760,6 +2883,7 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
           {attentes.length>0&&attentes.map(a=>(
             <button key={a.id} onClick={()=>reprendreAttente(a)} style={{background:'rgba(201,169,110,0.1)',border:'0.5px solid rgba(201,169,110,0.3)',borderRadius:6,color:'#c9a96e',padding:'5px 10px',fontSize:11,cursor:'pointer'}}>⏸ {a.label}</button>
           ))}
+          <button onClick={()=>setShowBonCadeau(true)} style={{background:'rgba(201,110,201,0.1)',border:'0.5px solid rgba(201,110,201,0.3)',color:'#c96ec9',borderRadius:4,padding:'6px 12px',fontSize:11,cursor:'pointer'}}>🎁 Bon cadeau</button>
           <button onClick={()=>setShowCatalogue(true)} style={{background:'rgba(201,169,110,0.1)',border:'0.5px solid rgba(201,169,110,0.3)',color:'#c9a96e',borderRadius:4,padding:'6px 12px',fontSize:11,cursor:'pointer'}}>📚 Catalogue</button>
           <button onClick={()=>setShowHistorique(true)} style={{background:'transparent',border:'0.5px solid rgba(255,255,255,0.15)',color:'rgba(232,224,213,0.5)',borderRadius:4,padding:'6px 12px',fontSize:11,cursor:'pointer'}}>📋 Historique</button>
           <button onClick={()=>setShowLocation(true)} style={{background:'transparent',border:'0.5px solid rgba(255,255,255,0.15)',color:'rgba(232,224,213,0.5)',borderRadius:4,padding:'6px 12px',fontSize:11,cursor:'pointer'}}>🍺 Location</button>
@@ -2853,7 +2977,7 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
       <div style={{width:360,display:'flex',flexDirection:'column' as const,background:'#100d0a'}}>
         <div style={{padding:'12px 16px',borderBottom:'0.5px solid rgba(255,255,255,0.07)',position:'relative' as const}}>
           <button onClick={()=>setShowClientPanel(!showClientPanel)} style={{width:'100%',background:client?'rgba(201,169,110,0.08)':'rgba(255,255,255,0.04)',border:`1px solid ${client?'rgba(201,169,110,0.3)':'rgba(255,255,255,0.1)'}`,borderRadius:8,padding:'12px',cursor:'pointer',textAlign:'left' as const}}>
-            {client?(<div><div style={{fontSize:12,color:'#c9a96e',marginBottom:2}}>👤 Client</div><div style={{fontSize:15,color:'#f0e8d8'}}>{client.est_societe?client.raison_sociale:`${client.prenom} ${client.nom}`}</div><div style={{display:'flex',gap:6,marginTop:4}}>{client.tarif_pro&&<span style={{fontSize:10,background:'#2a2a1e',color:'#c9b06e',padding:'2px 6px',borderRadius:3}}>PRO</span>}{client.remise_pct>0&&<span style={{fontSize:10,background:'#2a1e2a',color:'#c96ec9',padding:'2px 6px',borderRadius:3}}>-{client.remise_pct}%</span>}</div></div>)
+            {client?(<div><div style={{fontSize:12,color:'#c9a96e',marginBottom:2}}>👤 Client</div><div style={{fontSize:15,color:'#f0e8d8'}}>{client.est_societe?client.raison_sociale:`${client.prenom} ${client.nom}`}</div><div style={{display:'flex',gap:6,marginTop:4}}>{client.tarif_pro&&<span style={{fontSize:10,background:'#2a2a1e',color:'#c9b06e',padding:'2px 6px',borderRadius:3}}>PRO</span>}{client.remise_pct>0&&<span style={{fontSize:10,background:'#2a1e2a',color:'#c96ec9',padding:'2px 6px',borderRadius:3}}>-{client.remise_pct}%</span>}{avoirClient>0&&<span style={{fontSize:10,background:'rgba(110,201,176,0.15)',color:'#6ec9b0',padding:'2px 6px',borderRadius:3}}>Avoir {avoirClient.toFixed(2)}€</span>}</div></div>)
             :<div style={{fontSize:14,color:'rgba(232,224,213,0.4)',textAlign:'center' as const}}>👤 Sélectionner un client</div>}
           </button>
           {client&&<button onClick={()=>setShowAchatsClient(true)} style={{width:'100%',background:'rgba(201,169,110,0.06)',border:'0.5px solid rgba(201,169,110,0.2)',borderRadius:6,color:'#c9a96e',padding:'7px 12px',fontSize:12,cursor:'pointer',marginTop:6,textAlign:'left' as const}}>🕐 Voir les achats précédents</button>}
@@ -2902,7 +3026,10 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
             <div style={{display:'grid',gridTemplateColumns:'repeat(3, 1fr)',gap:8,marginBottom:12}}>
               {MODES.map(m=>(<button key={m.id} onClick={()=>setModeCourant(m.id)} style={{background:modeCourant===m.id?'rgba(255,255,255,0.08)':'rgba(255,255,255,0.03)',border:`2px solid ${modeCourant===m.id?m.c:'rgba(255,255,255,0.07)'}`,color:modeCourant===m.id?m.c:'rgba(232,224,213,0.5)',borderRadius:8,padding:'10px 4px',fontSize:11,cursor:'pointer'}}>{m.label}</button>))}
             </div>
-            {modeCourant!=='non_regle'&&(<div style={{display:'flex',gap:8,marginBottom:10}}><input type="number" step="0.01" placeholder={fmt(resteAPayer)} value={montantSaisi} onChange={e=>setMontantSaisi(e.target.value)} style={{flex:1,background:'rgba(255,255,255,0.07)',border:'0.5px solid rgba(201,169,110,0.3)',borderRadius:6,color:'#f0e8d8',fontSize:16,padding:'10px',outline:'none'}}/><button onClick={addPaiement} style={{background:'#c9a96e',border:'none',borderRadius:6,color:'#0d0a08',padding:'10px 16px',fontSize:16,cursor:'pointer',fontWeight:700}}>+</button></div>)}
+            {modeCourant==='bon_cadeau'&&!bonCadeauValidated&&(<div style={{marginBottom:10}}><div style={{display:'flex',gap:8,marginBottom:6}}><input value={codeBonCadeauSaisi} onChange={e=>setCodeBonCadeauSaisi(e.target.value.toUpperCase())} placeholder="BC-YYMM-XXXXXX" style={{flex:1,background:'rgba(255,255,255,0.07)',border:'0.5px solid rgba(201,110,201,0.3)',borderRadius:6,color:'#f0e8d8',fontSize:14,padding:'10px',outline:'none',letterSpacing:2}}/><button onClick={validateBonCadeau} style={{background:'#c96ec9',border:'none',borderRadius:6,color:'#0d0a08',padding:'10px 14px',fontSize:13,cursor:'pointer',fontWeight:700}}>Valider</button></div>{errBonCadeau&&<div style={{color:'#c96e6e',fontSize:12}}>{errBonCadeau}</div>}</div>)}
+            {modeCourant==='bon_cadeau'&&bonCadeauValidated&&(<div style={{marginBottom:10}}><div style={{background:'rgba(110,201,176,0.08)',border:'0.5px solid rgba(110,201,176,0.2)',borderRadius:6,padding:'8px 12px',marginBottom:8,fontSize:12,color:'#6ec9b0'}}>✓ {bonCadeauValidated.code} — Solde : {bonCadeauValidated.solde.toFixed(2)}€</div><div style={{display:'flex',gap:8}}><input type="number" step="0.01" placeholder={Math.min(bonCadeauValidated.solde,resteAPayer).toFixed(2)} value={montantSaisi} onChange={e=>setMontantSaisi(e.target.value)} style={{flex:1,background:'rgba(255,255,255,0.07)',border:'0.5px solid rgba(201,110,201,0.3)',borderRadius:6,color:'#f0e8d8',fontSize:16,padding:'10px',outline:'none'}}/><button onClick={addPaiement} style={{background:'#c96ec9',border:'none',borderRadius:6,color:'#0d0a08',padding:'10px 16px',fontSize:16,cursor:'pointer',fontWeight:700}}>+</button></div><button onClick={()=>{setBonCadeauValidated(null);setCodeBonCadeauSaisi('');setErrBonCadeau('')}} style={{marginTop:6,background:'transparent',border:'none',color:'rgba(232,224,213,0.4)',fontSize:11,cursor:'pointer'}}>✕ Changer de code</button></div>)}
+            {modeCourant==='avoir_client'&&(<div style={{marginBottom:10}}><div style={{background:'rgba(110,201,176,0.08)',border:'0.5px solid rgba(110,201,176,0.2)',borderRadius:6,padding:'8px 12px',marginBottom:8,fontSize:12,color:'#6ec9b0'}}>Avoir disponible : {avoirClient.toFixed(2)}€</div><div style={{display:'flex',gap:8}}><input type="number" step="0.01" placeholder={Math.min(avoirClient,resteAPayer).toFixed(2)} value={montantSaisi} onChange={e=>setMontantSaisi(e.target.value)} style={{flex:1,background:'rgba(255,255,255,0.07)',border:'0.5px solid rgba(110,201,176,0.3)',borderRadius:6,color:'#f0e8d8',fontSize:16,padding:'10px',outline:'none'}}/><button onClick={addPaiement} style={{background:'#6ec9b0',border:'none',borderRadius:6,color:'#0d0a08',padding:'10px 16px',fontSize:16,cursor:'pointer',fontWeight:700}}>+</button></div></div>)}
+            {modeCourant!=='non_regle'&&modeCourant!=='bon_cadeau'&&modeCourant!=='avoir_client'&&(<div style={{display:'flex',gap:8,marginBottom:10}}><input type="number" step="0.01" placeholder={fmt(resteAPayer)} value={montantSaisi} onChange={e=>setMontantSaisi(e.target.value)} style={{flex:1,background:'rgba(255,255,255,0.07)',border:'0.5px solid rgba(201,169,110,0.3)',borderRadius:6,color:'#f0e8d8',fontSize:16,padding:'10px',outline:'none'}}/><button onClick={addPaiement} style={{background:'#c9a96e',border:'none',borderRadius:6,color:'#0d0a08',padding:'10px 16px',fontSize:16,cursor:'pointer',fontWeight:700}}>+</button></div>)}
             {modeCourant==='non_regle'&&<button onClick={addPaiement} style={{width:'100%',background:'rgba(201,110,110,0.12)',border:'1px solid rgba(201,110,110,0.3)',borderRadius:8,color:'#c96e6e',padding:'12px',fontSize:14,cursor:'pointer',marginBottom:10}}>Mettre en compte</button>}
             {paiements.map((p,i)=>(<div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 0',borderBottom:'0.5px solid rgba(255,255,255,0.05)'}}><span style={{fontSize:14,color:'rgba(232,224,213,0.7)'}}>{p.label}</span><div style={{display:'flex',gap:10}}><span style={{color:'#c9a96e',fontFamily:'Georgia, serif'}}>{fmt(p.montant)}</span><button onClick={()=>setPaiements(prev=>prev.filter((_,j)=>j!==i))} style={{background:'transparent',border:'none',color:'#c96e6e',cursor:'pointer'}}>✕</button></div></div>))}
             {paiements.length>0&&<div style={{marginTop:8,fontSize:14,color:resteAPayer>0?'#c96e6e':'#6ec96e',fontWeight:600}}>{resteAPayer>0?`Reste: ${fmt(resteAPayer)}`:monnaie>0?`Monnaie: ${fmt(monnaie)}`:'✓ Soldé'}</div>}
@@ -2924,8 +3051,9 @@ function CaisseDesktop({ user, session, onFermer }: { user: User; session: Sessi
         </div>
       </div>
       {alertesClient&&(<div style={{position:'fixed' as const,inset:0,background:'rgba(0,0,0,0.85)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:200}}><div style={{background:'#18130e',border:'0.5px solid rgba(201,169,110,0.3)',borderRadius:12,padding:'28px',maxWidth:460,width:'90%'}}><div style={{fontFamily:'Georgia, serif',fontSize:20,color:'#f0e8d8',marginBottom:16}}>⚠ Alertes — {alertesClient.client.est_societe?alertesClient.client.raison_sociale:`${alertesClient.client.prenom} ${alertesClient.client.nom}`}</div>{alertesClient.bons?.length>0&&<div style={{marginBottom:12}}><div style={{fontSize:12,color:'#c9a96e',marginBottom:8}}>🎟 BONS D'ACHAT</div>{alertesClient.bons.map((b:any)=><div key={b.id} style={{background:'rgba(201,169,110,0.1)',borderRadius:6,padding:'10px',marginBottom:6,color:'#c9a96e',fontFamily:'Georgia, serif',fontSize:16}}>{b.montant}€ — {b.code}</div>)}</div>}{alertesClient.demandes?.length>0&&<div style={{marginBottom:12}}><div style={{fontSize:12,color:'#6e9ec9',marginBottom:8}}>📋 DEMANDES</div>{alertesClient.demandes.map((d:any)=><div key={d.id} style={{background:'rgba(110,158,201,0.08)',borderRadius:6,padding:'10px',marginBottom:6,fontSize:14}}>{d.titre}</div>)}</div>}{alertesClient.factures?.length>0&&<div style={{marginBottom:12}}><div style={{fontSize:12,color:'#c96e6e',marginBottom:8}}>💳 FACTURES NON RÉGLÉES</div>{alertesClient.factures.map((f:any)=><div key={f.id} style={{background:'rgba(201,110,110,0.08)',borderRadius:6,padding:'10px',marginBottom:6,fontSize:14,color:'#c96e6e'}}>{f.numero} — {parseFloat(f.total_ttc).toFixed(2)}€</div>)}</div>}<div style={{display:'flex',gap:10,marginTop:20}}><button onClick={()=>setAlertesClient(null)} style={{flex:1,background:'transparent',border:'0.5px solid rgba(255,255,255,0.15)',color:'rgba(232,224,213,0.5)',borderRadius:8,padding:'12px',fontSize:13,cursor:'pointer'}}>← Retour</button><button onClick={()=>{setClient(alertesClient.client);setAlertesClient(null);setShowClientPanel(false)}} style={{flex:2,background:'#c9a96e',color:'#0d0a08',border:'none',borderRadius:8,padding:'12px',fontSize:14,cursor:'pointer',fontWeight:600}}>Continuer →</button></div></div></div>)}
-      {venteOk&&derniereVente&&(<div style={{position:'fixed' as const,inset:0,background:'rgba(0,0,0,0.88)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:999,fontFamily:"'DM Sans', system-ui, sans-serif"}}><div style={{background:'#18130e',border:'0.5px solid rgba(201,169,110,0.3)',borderRadius:16,padding:'36px 40px',maxWidth:420,width:'90%'}}><div style={{textAlign:'center' as const,marginBottom:28}}><div style={{fontSize:56,marginBottom:8}}>✓</div><div style={{fontFamily:'Georgia, serif',fontSize:22,color:'#6ec96e'}}>Vente enregistrée !</div><div style={{fontSize:14,color:'rgba(232,224,213,0.5)',marginTop:4}}>{derniereVente.numero} — {fmt(derniereVente.total)}</div></div><div style={{display:'flex',flexDirection:'column' as const,gap:10}}><button onClick={()=>imprimerTicket(derniereVente)} style={{width:'100%',background:'rgba(255,255,255,0.06)',border:'0.5px solid rgba(255,255,255,0.12)',borderRadius:10,color:'#e8e0d5',padding:'14px',fontSize:15,cursor:'pointer'}}>🖨 Imprimer le ticket</button>{!showEmailVente?(<button onClick={()=>setShowEmailVente(true)} style={{width:'100%',background:'rgba(255,255,255,0.06)',border:'0.5px solid rgba(255,255,255,0.12)',borderRadius:10,color:'#e8e0d5',padding:'14px',fontSize:15,cursor:'pointer'}}>📧 Envoyer par email</button>):(<div style={{display:'flex',gap:8}}><input type="email" value={emailVente} onChange={e=>setEmailVente(e.target.value)} placeholder={client?.email||'email@client.fr'} style={{flex:1,background:'rgba(255,255,255,0.06)',border:'0.5px solid rgba(201,169,110,0.3)',borderRadius:8,color:'#f0e8d8',fontSize:14,padding:'12px'}}/><button onClick={()=>{alert(`Email envoyé à ${emailVente||client?.email}`);setShowEmailVente(false)}} style={{background:'#c9a96e',border:'none',borderRadius:8,color:'#0d0a08',padding:'12px 16px',fontSize:14,cursor:'pointer',fontWeight:700}}>→</button><button onClick={()=>setShowEmailVente(false)} style={{background:'transparent',border:'0.5px solid rgba(255,255,255,0.1)',borderRadius:8,color:'rgba(232,224,213,0.4)',padding:'12px',cursor:'pointer'}}>✕</button></div>)}<button onClick={()=>{setVenteOk(false);setDerniereVente(null);resetVente()}} style={{width:'100%',background:'#c9a96e',border:'none',borderRadius:10,color:'#0d0a08',padding:'14px',fontSize:15,cursor:'pointer',fontWeight:700}}>✓ Fin de la vente</button></div></div></div>)}
+      {venteOk&&derniereVente&&(<div style={{position:'fixed' as const,inset:0,background:'rgba(0,0,0,0.88)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:999,fontFamily:"'DM Sans', system-ui, sans-serif"}}><div style={{background:'#18130e',border:'0.5px solid rgba(201,169,110,0.3)',borderRadius:16,padding:'36px 40px',maxWidth:420,width:'90%'}}><div style={{textAlign:'center' as const,marginBottom:28}}><div style={{fontSize:56,marginBottom:8}}>✓</div><div style={{fontFamily:'Georgia, serif',fontSize:22,color:'#6ec96e'}}>Vente enregistrée !</div><div style={{fontSize:14,color:'rgba(232,224,213,0.5)',marginTop:4}}>{derniereVente.numero} — {fmt(derniereVente.total)}</div></div><div style={{display:'flex',flexDirection:'column' as const,gap:10}}><button onClick={()=>imprimerTicket(derniereVente)} style={{width:'100%',background:'rgba(255,255,255,0.06)',border:'0.5px solid rgba(255,255,255,0.12)',borderRadius:10,color:'#e8e0d5',padding:'14px',fontSize:15,cursor:'pointer'}}>🖨 Imprimer le ticket</button>{bonCadeauCree&&<button onClick={()=>imprimerBonCadeau(bonCadeauCree.code,bonCadeauCree.montant)} style={{width:'100%',background:'rgba(201,110,201,0.08)',border:'0.5px solid rgba(201,110,201,0.3)',borderRadius:10,color:'#c96ec9',padding:'14px',fontSize:15,cursor:'pointer'}}>🎁 Imprimer le bon cadeau</button>}{!showEmailVente?(<button onClick={()=>setShowEmailVente(true)} style={{width:'100%',background:'rgba(255,255,255,0.06)',border:'0.5px solid rgba(255,255,255,0.12)',borderRadius:10,color:'#e8e0d5',padding:'14px',fontSize:15,cursor:'pointer'}}>📧 Envoyer par email</button>):(<div style={{display:'flex',gap:8}}><input type="email" value={emailVente} onChange={e=>setEmailVente(e.target.value)} placeholder={client?.email||'email@client.fr'} style={{flex:1,background:'rgba(255,255,255,0.06)',border:'0.5px solid rgba(201,169,110,0.3)',borderRadius:8,color:'#f0e8d8',fontSize:14,padding:'12px'}}/><button onClick={()=>{alert(`Email envoyé à ${emailVente||client?.email}`);setShowEmailVente(false)}} style={{background:'#c9a96e',border:'none',borderRadius:8,color:'#0d0a08',padding:'12px 16px',fontSize:14,cursor:'pointer',fontWeight:700}}>→</button><button onClick={()=>setShowEmailVente(false)} style={{background:'transparent',border:'0.5px solid rgba(255,255,255,0.1)',borderRadius:8,color:'rgba(232,224,213,0.4)',padding:'12px',cursor:'pointer'}}>✕</button></div>)}<button onClick={()=>{setVenteOk(false);setDerniereVente(null);resetVente()}} style={{width:'100%',background:'#c9a96e',border:'none',borderRadius:10,color:'#0d0a08',padding:'14px',fontSize:15,cursor:'pointer',fontWeight:700}}>✓ Fin de la vente</button></div></div></div>)}
       {showFermeture&&(<div style={{position:'fixed' as const,inset:0,background:'rgba(0,0,0,0.9)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:999}}><div style={{background:'#18130e',border:'0.5px solid rgba(201,169,110,0.3)',borderRadius:12,padding:'32px',maxWidth:420,width:'90%'}}><div style={{fontFamily:'Georgia, serif',fontSize:20,color:'#f0e8d8',marginBottom:20}}>Fermeture de caisse</div><div style={{fontSize:12,color:'rgba(232,224,213,0.4)',marginBottom:8}}>ESPÈCES EN CAISSE</div><input type="number" step="0.01" placeholder="0.00" value={espacesFermeture} onChange={e=>setEspacesFermeture(e.target.value)} style={{width:'100%',background:'rgba(255,255,255,0.06)',border:'0.5px solid rgba(201,169,110,0.3)',borderRadius:8,color:'#f0e8d8',fontSize:20,padding:'14px',boxSizing:'border-box' as const,textAlign:'center' as const,marginBottom:20}}/><div style={{display:'flex',gap:10}}><button onClick={()=>setShowFermeture(false)} style={{flex:1,background:'transparent',border:'0.5px solid rgba(255,255,255,0.15)',color:'rgba(232,224,213,0.5)',borderRadius:8,padding:'14px',fontSize:14,cursor:'pointer'}}>Annuler</button><button onClick={async()=>{await supabase.from('caisse_sessions').update({statut:'fermee',ferme_le:new Date().toISOString(),especes_fermeture:parseFloat(espacesFermeture)||0}).eq('id',session.id);onFermer()}} style={{flex:2,background:'#c96e6e',color:'#fff',border:'none',borderRadius:8,padding:'14px',fontSize:14,cursor:'pointer',fontWeight:700}}>Fermer la caisse</button></div></div></div>)}
+      {showBonCadeau&&<ModalCreerBonCadeau session={session} onClose={()=>setShowBonCadeau(false)} onCreer={handleBonCadeauCree}/>}
       {showCatalogue&&<ModalCatalogue session={session} client={client} onAjouter={items=>{items.forEach(({produit:p,qte})=>{const prix=(client?.tarif_pro?p.prix_vente_pro:p.prix_vente_ttc)||p.prix_vente_ttc;const rp=client?.remise_pct||0;const ex=lignes.find(l=>l.product_id===p.id);if(ex)setLignes(prev=>prev.map(l=>l.product_id===p.id?{...l,qte:l.qte+qte,total:(l.qte+qte)*l.prix_unit*(1-l.remise_pct/100)}:l));else setLignes(prev=>[...prev,{id:Math.random().toString(36).slice(2),product_id:p.id,nom:p.nom,millesime:p.millesime,qte,prix_unit:prix,remise_pct:rp,total:prix*qte*(1-rp/100),domaine_nom:p.domaine_nom||''}])})}} onClose={()=>setShowCatalogue(false)}/>}
       {showNouveauClient&&<ModalClientForm onClose={()=>setShowNouveauClient(false)} onSaved={(c)=>{setClient(c);setShowNouveauClient(false)}}/>}
       {editingClient&&<ModalClientForm client={editingClient} onClose={()=>setEditingClient(null)} onSaved={(c)=>{if(client?.id===c.id)setClient(c);setClientsFound(prev=>prev.map((x:any)=>x.id===c.id?c:x));setEditingClient(null)}}/>}
