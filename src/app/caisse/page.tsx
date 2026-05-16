@@ -1100,7 +1100,6 @@ ${detail.type_doc === 'facture' ? `
 </body></html>`
   }
 
-  const DOCS = [
   const genererFactureCaisse = (detail: any, lignesDetail: any[], paiementsDetail: any[]) => {
     const clientN = !detail.customer ? 'Client anonyme' : detail.customer.est_societe ? detail.customer.raison_sociale : `${detail.customer.prenom || ''} ${detail.customer.nom || ''}`.trim()
     const dateDoc = new Date(detail.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })
