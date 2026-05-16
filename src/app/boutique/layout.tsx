@@ -3,6 +3,106 @@
 import { CartProvider, useCart, FRANCO_PORT, FRAIS_PORT } from './CartContext'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useState, useEffect, useRef } from 'react'
+import { createClient } from '@supabase/supabase-js'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+)
+
+// ── Recherche typeahead ──────────────────────────────────────
+function SearchTypeahead() {
+  const [q, setQ] = useState('')
+  const [results, setResults] = useState<any[]>([])
+  const [open, setOpen] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const timer = useRef<any>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onClick)
+    return () => document.removeEventListener('mousedown', onClick)
+  }, [])
+
+  useEffect(() => {
+    if (!q.trim() || q.trim().length < 2) { setResults([]); setOpen(false); return }
+    clearTimeout(timer.current)
+    timer.current = setTimeout(async () => {
+      setLoading(true)
+      const { data } = await supabase
+        .from('products')
+        .select('id, nom, millesime, couleur, prix_vente_ttc, image_url, slug, domaine:domaines(nom)')
+        .eq('actif', true)
+        .eq('visible_boutique', true)
+        .ilike('nom', `%${q.trim()}%`)
+        .limit(8)
+      setResults(data || [])
+      setOpen(true)
+      setLoading(false)
+    }, 200)
+    return () => clearTimeout(timer.current)
+  }, [q])
+
+  return (
+    <div ref={containerRef} style={{ flex: 1, maxWidth: 420, position: 'relative' as const, margin: '0 24px' }}>
+      <input
+        type="text"
+        value={q}
+        onChange={e => setQ(e.target.value)}
+        onFocus={() => { if (results.length > 0) setOpen(true) }}
+        placeholder="🔍 Rechercher un vin, un domaine…"
+        style={{
+          width: '100%', background: 'rgba(0,0,0,0.04)', border: '0.5px solid rgba(0,0,0,0.12)',
+          borderRadius: 999, color: '#1a1a1a', fontSize: 13, padding: '10px 18px',
+          outline: 'none', transition: 'border-color 0.2s, background 0.2s',
+        }}
+        onFocusCapture={e => { e.currentTarget.style.borderColor = '#8a6a3e'; e.currentTarget.style.background = '#fff' }}
+        onBlurCapture={e => { e.currentTarget.style.borderColor = 'rgba(0,0,0,0.12)'; e.currentTarget.style.background = 'rgba(0,0,0,0.04)' }}
+      />
+      {open && (
+        <div style={{
+          position: 'absolute' as const, top: 'calc(100% + 6px)', left: 0, right: 0,
+          background: '#fff', border: '0.5px solid rgba(0,0,0,0.1)', borderRadius: 6,
+          boxShadow: '0 10px 30px rgba(0,0,0,0.1)', maxHeight: 420, overflowY: 'auto' as const, zIndex: 100,
+        }}>
+          {loading ? (
+            <div style={{ padding: 20, fontSize: 12, color: 'rgba(0,0,0,0.4)', textAlign: 'center' as const }}>⟳ Recherche…</div>
+          ) : results.length === 0 ? (
+            <div style={{ padding: 20, fontSize: 12, color: 'rgba(0,0,0,0.4)', textAlign: 'center' as const }}>Aucun résultat pour « {q} »</div>
+          ) : (
+            results.map((p: any) => (
+              <Link key={p.id} href={`/boutique/${p.slug}`} onClick={() => { setOpen(false); setQ('') }} style={{
+                display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px',
+                textDecoration: 'none', color: '#1a1a1a', borderBottom: '0.5px solid rgba(0,0,0,0.05)',
+              }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(0,0,0,0.03)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                <div style={{ width: 36, height: 48, background: '#fbfaf6', borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  {p.image_url ? <img src={p.image_url} alt="" style={{ maxWidth: '90%', maxHeight: '90%', objectFit: 'contain' as const }} /> : <span style={{ fontSize: 18 }}>🍷</span>}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, color: '#0a0a0a', fontFamily: 'Georgia, serif', overflow: 'hidden' as const, textOverflow: 'ellipsis' as const, whiteSpace: 'nowrap' as const }}>
+                    {p.nom}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'rgba(0,0,0,0.5)' }}>
+                    {p.domaine?.nom || ''}{p.millesime ? ` · ${p.millesime}` : ''}
+                  </div>
+                </div>
+                <div style={{ fontSize: 13, color: '#8a6a3e', fontFamily: 'Georgia, serif' }}>
+                  {p.prix_vente_ttc?.toFixed(2)}€
+                </div>
+              </Link>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ── Cart Drawer ───────────────────────────────────────────────
 function CartDrawer() {
@@ -201,63 +301,67 @@ function BoutiqueNav() {
   return (
     <nav style={{
       position: 'sticky', top: 0, zIndex: 800,
-      background: 'rgba(13,10,8,0.95)', backdropFilter: 'blur(12px)',
-      borderBottom: '0.5px solid rgba(255,255,255,0.07)',
-      padding: '0 40px', height: 64,
+      background: 'rgba(255,255,255,0.96)', backdropFilter: 'blur(12px)',
+      borderBottom: '0.5px solid rgba(0,0,0,0.08)',
+      padding: '0 32px', height: 64,
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       fontFamily: "'DM Sans', system-ui, sans-serif",
     }}>
       {/* Logo */}
-      <Link href="/boutique" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 12 }}>
+      <Link href="/boutique" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
         <img src="/logo.png" alt="Cave de Gilbert" style={{ height: 36, objectFit: 'contain' }}
           onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
-        <span style={{ fontFamily: 'Georgia, serif', fontSize: 16, color: '#c9a96e', letterSpacing: 2 }}>
+        <span style={{ fontFamily: 'Georgia, serif', fontSize: 16, color: '#8a6a3e', letterSpacing: 2 }}>
           Cave de Gilbert
         </span>
       </Link>
 
-      {/* Nav links */}
-      {!isCheckout && (
-        <div style={{ display: 'flex', gap: 32, alignItems: 'center' }}>
-          {[
-            { href: '/boutique', label: 'Nos vins' },
-            { href: '/boutique?couleur=rouge', label: 'Rouges' },
-            { href: '/boutique?couleur=blanc', label: 'Blancs' },
-            { href: '/boutique?couleur=rosé', label: 'Rosés' },
-          ].map(({ href, label }) => (
-            <Link key={href} href={href} style={{
-              fontSize: 13, letterSpacing: 0.5,
-              color: 'rgba(232,224,213,0.6)',
-              textDecoration: 'none',
-              transition: 'color 0.2s',
-            }}
-            onMouseEnter={e => (e.currentTarget.style.color = '#f0e8d8')}
-            onMouseLeave={e => (e.currentTarget.style.color = 'rgba(232,224,213,0.6)')}>
-              {label}
-            </Link>
-          ))}
-        </div>
-      )}
+      {/* Recherche typeahead — au centre */}
+      {!isCheckout && <SearchTypeahead />}
 
-      {/* Panier */}
-      <button onClick={openCart} style={{
-        background: 'transparent', border: '0.5px solid rgba(201,169,110,0.3)',
-        borderRadius: 8, padding: '8px 16px', cursor: 'pointer',
-        display: 'flex', alignItems: 'center', gap: 8, color: '#c9a96e',
-        fontSize: 13, position: 'relative',
-      }}>
-        <span style={{ fontSize: 16 }}>🛒</span>
-        <span>Panier</span>
-        {totalItems > 0 && (
-          <span style={{
-            background: '#c9a96e', color: '#0d0a08', borderRadius: '50%',
-            width: 20, height: 20, display: 'flex', alignItems: 'center',
-            justifyContent: 'center', fontSize: 11, fontWeight: 700,
-          }}>
-            {totalItems}
-          </span>
+      {/* Right side : nav links + panier */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexShrink: 0 }}>
+        {!isCheckout && (
+          <div style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
+            {[
+              { href: '/boutique', label: 'Nos vins' },
+              { href: '/boutique?couleur=rouge', label: 'Rouges' },
+              { href: '/boutique?couleur=blanc', label: 'Blancs' },
+              { href: '/boutique?couleur=rosé', label: 'Rosés' },
+            ].map(({ href, label }) => (
+              <Link key={href} href={href} style={{
+                fontSize: 12, letterSpacing: 0.5,
+                color: 'rgba(0,0,0,0.6)',
+                textDecoration: 'none',
+                transition: 'color 0.2s',
+              }}
+              onMouseEnter={e => (e.currentTarget.style.color = '#8a6a3e')}
+              onMouseLeave={e => (e.currentTarget.style.color = 'rgba(0,0,0,0.6)')}>
+                {label}
+              </Link>
+            ))}
+          </div>
         )}
-      </button>
+
+        <button onClick={openCart} style={{
+          background: 'transparent', border: '0.5px solid rgba(138,106,62,0.4)',
+          borderRadius: 8, padding: '8px 14px', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', gap: 8, color: '#8a6a3e',
+          fontSize: 13, position: 'relative',
+        }}>
+          <span style={{ fontSize: 16 }}>🛒</span>
+          <span>Panier</span>
+          {totalItems > 0 && (
+            <span style={{
+              background: '#8a6a3e', color: '#fff', borderRadius: '50%',
+              width: 20, height: 20, display: 'flex', alignItems: 'center',
+              justifyContent: 'center', fontSize: 11, fontWeight: 700,
+            }}>
+              {totalItems}
+            </span>
+          )}
+        </button>
+      </div>
     </nav>
   )
 }
@@ -267,8 +371,8 @@ export default function BoutiqueLayout({ children }: { children: React.ReactNode
   return (
     <CartProvider>
       <div style={{
-        minHeight: '100vh', background: '#0d0a08',
-        color: '#e8e0d5', fontFamily: "'DM Sans', system-ui, sans-serif",
+        minHeight: '100vh', background: '#ffffff',
+        color: '#1a1a1a', fontFamily: "'DM Sans', system-ui, sans-serif",
       }}>
         <BoutiqueNav />
         <CartDrawer />

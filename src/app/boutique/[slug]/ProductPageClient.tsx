@@ -97,23 +97,35 @@ export default function ProductPageClient({ product, similaires }: { product: an
     setTimeout(() => setAddedToCart(false), 2500)
   }
 
+  // Alerte retour de stock
+  const [showStockAlert, setShowStockAlert] = useState(false)
+  const [alertEmail, setAlertEmail] = useState('')
+  const [alertSent, setAlertSent] = useState(false)
+  const [alertError, setAlertError] = useState('')
+  const [alertSending, setAlertSending] = useState(false)
+
+  const handleStockAlert = async () => {
+    if (!alertEmail.trim()) { setAlertError('Renseigne ton email'); return }
+    setAlertSending(true); setAlertError('')
+    try {
+      const res = await fetch('/api/stock-alert', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ product_id: product.id, email: alertEmail.trim() }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setAlertError(data.error || 'Erreur'); return }
+      setAlertSent(true)
+    } catch (e: any) {
+      setAlertError(`Erreur : ${e.message}`)
+    } finally {
+      setAlertSending(false)
+    }
+  }
+
   return (
     <div style={{ background: '#ffffff', minHeight: '100vh', fontFamily: "'DM Sans', system-ui, sans-serif", color: '#1a1a1a' }}>
 
-      {/* Navigation */}
-      <nav style={{ padding: '16px 40px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '0.5px solid rgba(0,0,0,0.08)' }}>
-        <a href="/" style={{ fontFamily: 'Georgia, serif', fontSize: 16, color: '#8a6a3e', letterSpacing: 4, textTransform: 'uppercase' as const, textDecoration: 'none', fontWeight: 300 }}>Cave de Gilbert</a>
-        <div style={{ display: 'flex', gap: 28, fontSize: 11, letterSpacing: 1.5, color: 'rgba(0,0,0,0.5)', textTransform: 'uppercase' as const }}>
-          <a href="/boutique" style={{ color: 'inherit', textDecoration: 'none' }}>Vins</a>
-          <a href="/boutique?couleur=champagne" style={{ color: 'inherit', textDecoration: 'none' }}>Champagnes</a>
-          <a href="/boutique?couleur=spiritueux" style={{ color: 'inherit', textDecoration: 'none' }}>Spiritueux</a>
-        </div>
-        <a href="/panier" style={{ fontSize: 11, color: '#8a6a3e', textDecoration: 'none', letterSpacing: 1.5, border: '0.5px solid rgba(201,169,110,0.4)', padding: '8px 16px', borderRadius: 2 }}>
-          Panier
-        </a>
-      </nav>
-
-      {/* Breadcrumb */}
+      {/* Breadcrumb (le nav principal est dans layout.tsx, sticky) */}
       <div style={{ padding: '12px 40px', fontSize: 11, color: 'rgba(0,0,0,0.4)', letterSpacing: 0.5 }}>
         <a href="/" style={{ color: 'inherit', textDecoration: 'none' }}>Accueil</a>
         <span style={{ margin: '0 8px' }}>·</span>
@@ -433,6 +445,47 @@ export default function ProductPageClient({ product, similaires }: { product: an
               color: 'rgba(0,0,0,0.6)', borderRadius: 3, padding: '14px 16px', cursor: 'pointer', fontSize: 16,
             }}>♡</button>
           </div>
+
+          {/* Alerte retour de stock (seulement si rupture totale boutique + retrait) */}
+          {!disponible && stockCaveGilbert === 0 && stockPetiteCave === 0 && (
+            <div style={{ marginTop: 12 }}>
+              {!showStockAlert && !alertSent && (
+                <button onClick={() => setShowStockAlert(true)} style={{
+                  width: '100%', padding: '12px 16px',
+                  background: 'rgba(138,106,62,0.06)', border: '0.5px solid rgba(138,106,62,0.3)',
+                  color: '#8a6a3e', borderRadius: 3, fontSize: 12, letterSpacing: 1,
+                  cursor: 'pointer', fontWeight: 500,
+                }}>
+                  ✉ Me prévenir quand ce vin revient en stock
+                </button>
+              )}
+              {showStockAlert && !alertSent && (
+                <div style={{ padding: '14px', background: 'rgba(138,106,62,0.06)', border: '0.5px solid rgba(138,106,62,0.3)', borderRadius: 3 }}>
+                  <div style={{ fontSize: 11, color: '#8a6a3e', marginBottom: 8, letterSpacing: 0.5 }}>Laisse ton email, on te prévient dès qu'il revient.</div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input
+                      type="email" value={alertEmail} onChange={e => setAlertEmail(e.target.value)}
+                      placeholder="ton@email.fr"
+                      style={{ flex: 1, background: '#fff', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 3, padding: '10px 12px', fontSize: 13, color: '#1a1a1a' }}
+                    />
+                    <button onClick={handleStockAlert} disabled={alertSending} style={{
+                      background: alertSending ? '#ccc' : '#8a6a3e', color: '#fff', border: 'none',
+                      padding: '10px 18px', fontSize: 11, letterSpacing: 1, textTransform: 'uppercase' as const,
+                      cursor: alertSending ? 'wait' : 'pointer', borderRadius: 3, fontWeight: 600, whiteSpace: 'nowrap' as const,
+                    }}>
+                      {alertSending ? '⟳' : 'M\'inscrire'}
+                    </button>
+                  </div>
+                  {alertError && <div style={{ fontSize: 11, color: '#a04444', marginTop: 8 }}>{alertError}</div>}
+                </div>
+              )}
+              {alertSent && (
+                <div style={{ padding: '14px', background: '#d4e9d4', border: '0.5px solid rgba(42,138,42,0.3)', borderRadius: 3, fontSize: 12, color: '#2a8a2a', textAlign: 'center' as const }}>
+                  ✓ Parfait, on t'écrira à <strong>{alertEmail}</strong> dès le retour en stock.
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Retrait en cave */}
           {(stockCaveGilbert > 0 || stockPetiteCave > 0) && (
