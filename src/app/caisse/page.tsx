@@ -448,6 +448,8 @@ function HistoriqueAchatsClient({ client, onClose, onAddToCart, onRetourDone }: 
   const [locations, setLocations] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [onglet, setOnglet] = useState<'pieces' | 'locations'>('pieces')
+  const [selectedPiece, setSelectedPiece] = useState<any>(null)
+  const [actionMsg, setActionMsg] = useState('')
   const [retourResa, setRetourResa] = useState<any>(null)
 
   const loadHistorique = async () => {
@@ -477,6 +479,38 @@ function HistoriqueAchatsClient({ client, onClose, onAddToCart, onRetourDone }: 
   const clientNom = client.est_societe ? client.raison_sociale : `${client.prenom || ''} ${client.nom}`
   const STATUT_COLOR: Record<string, string> = { devis: '#6e9ec9', confirmée: '#c9a96e', en_cours: '#6ec96e', terminée: '#888', annulée: '#c96e6e' }
   const SITES: Record<string, string> = { cave_gilbert: 'Cave de Gilbert', petite_cave: 'La Petite Cave', entrepot: 'Entrepôt', livraison: '🚚 Livraison' }
+
+  const handleTransformerPiece = async (piece: any, type: 'commande' | 'bl' | 'facture') => {
+    const prefix = type === 'commande' ? 'CMD' : type === 'bl' ? 'BL' : 'FAC'
+    const numero = `${prefix}-${new Date().getFullYear()}${String(new Date().getMonth()+1).padStart(2,'0')}-${String(Math.floor(Math.random()*9999)).padStart(4,'0')}`
+    const labels: Record<string,string> = { commande: 'commande', bl: 'bon de livraison', facture: 'facture' }
+    if (!confirm(`Transformer ${piece.numero} en ${labels[type]} — ${numero} ?`)) return
+    const { data: lignes } = await supabase.from('vente_lignes').select('*').eq('vente_id', piece.id)
+    const { data: nouv } = await supabase.from('ventes').insert({
+      numero, user_id: null, customer_id: client.id, site_id: piece.site_id,
+      type_doc: type, statut: 'validee', statut_paiement: 'non_regle',
+      total_ht: parseFloat(piece.total_ttc) / 1.20, total_ttc: parseFloat(piece.total_ttc),
+      notes: `Issu de ${piece.type_doc === 'devis' ? 'devis' : piece.type_doc} ${piece.numero}`,
+    }).select('id').single()
+    if (nouv && lignes) {
+      await supabase.from('vente_lignes').insert(lignes.map((l: any) => ({ vente_id: nouv.id, product_id: l.product_id, nom_produit: l.nom_produit, millesime: l.millesime, quantite: l.quantite, prix_unitaire_ttc: l.prix_unitaire_ttc, remise_pct: l.remise_pct, total_ttc: l.total_ttc })))
+      if (type === 'bl' || type === 'facture') {
+        for (const l of lignes) {
+          if (l.product_id && !String(l.product_id).startsWith('divers-')) {
+            await supabase.rpc('move_stock', { p_product_id: l.product_id, p_site_id: piece.site_id, p_raison: 'vente', p_quantite: l.quantite, p_note: `${piece.numero} → ${numero}`, p_order_id: null, p_transfer_id: null })
+          }
+        }
+      }
+      if (piece.type_doc === 'devis' || piece.type_doc === 'commande') {
+        await supabase.from('ventes').update({ statut: 'annulee' }).eq('id', piece.id)
+      }
+    }
+    setActionMsg(`✓ ${piece.numero} transformé en ${labels[type]} — ${numero}`)
+    setSelectedPiece(null)
+    const { data: fresh } = await supabase.from('ventes').select('id, numero, created_at, type_doc, statut, statut_paiement, total_ttc, notes, site_id').eq('customer_id', client.id).order('created_at', { ascending: false }).limit(100)
+    setPieces(fresh || [])
+    setTimeout(() => setActionMsg(''), 3000)
+  }
 
   if (retourResa) return (
     <ModuleRetourLocation
@@ -523,6 +557,32 @@ function HistoriqueAchatsClient({ client, onClose, onAddToCart, onRetourDone }: 
         ))}
       </div>
 
+      {actionMsg && <div style={{ background: 'rgba(110,201,110,0.1)', border: '0.5px solid rgba(110,201,110,0.3)', padding: '10px 16px', fontSize: 13, color: '#6ec96e' }}>{actionMsg}</div>}
+
+      {selectedPiece && (
+        <div style={{ background: '#18130e', borderTop: '0.5px solid rgba(201,169,110,0.2)', padding: '14px 16px', position: 'sticky' as const, bottom: 0, zIndex: 10 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <div>
+              <span style={{ fontSize: 13, color: '#c9a96e', fontFamily: 'monospace' }}>{selectedPiece.numero}</span>
+              <span style={{ fontSize: 12, color: 'rgba(232,224,213,0.5)', marginLeft: 8 }}>{parseFloat(selectedPiece.total_ttc).toFixed(2)} €</span>
+            </div>
+            <button onClick={() => setSelectedPiece(null)} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.4)', fontSize: 18, cursor: 'pointer' }}>✕</button>
+          </div>
+          <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', marginBottom: 8 }}>TRANSFORMER EN :</div>
+          <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
+            {selectedPiece.type_doc !== 'commande' && selectedPiece.type_doc !== 'bl' && selectedPiece.type_doc !== 'facture' && (
+              <button onClick={() => handleTransformerPiece(selectedPiece, 'commande')} style={{ background: 'rgba(201,169,110,0.08)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 8, color: '#c9b06e', padding: '10px 14px', fontSize: 13, cursor: 'pointer', textAlign: 'left' as const }}>📦 Commande (réservation stock)</button>
+            )}
+            {selectedPiece.type_doc !== 'bl' && selectedPiece.type_doc !== 'facture' && (
+              <button onClick={() => handleTransformerPiece(selectedPiece, 'bl')} style={{ background: 'rgba(110,201,176,0.08)', border: '0.5px solid rgba(110,201,176,0.3)', borderRadius: 8, color: '#6ec9b0', padding: '10px 14px', fontSize: 13, cursor: 'pointer', textAlign: 'left' as const }}>🚚 Bon de livraison (sortie stock)</button>
+            )}
+            {selectedPiece.type_doc !== 'facture' && (
+              <button onClick={() => handleTransformerPiece(selectedPiece, 'facture')} style={{ background: 'rgba(201,169,110,0.12)', border: '0.5px solid rgba(201,169,110,0.5)', borderRadius: 8, color: '#c9a96e', padding: '10px 14px', fontSize: 13, cursor: 'pointer', textAlign: 'left' as const }}>💼 Facture (entrée compta)</button>
+            )}
+          </div>
+        </div>
+      )}
+
       <div style={{ flex: 1, overflowY: 'auto' as const }}>
         {loading ? (
           <div style={{ textAlign: 'center' as const, padding: 48, color: 'rgba(232,224,213,0.3)' }}>Chargement...</div>
@@ -535,7 +595,9 @@ function HistoriqueAchatsClient({ client, onClose, onAddToCart, onRetourDone }: 
             const typeIcon: Record<string, string> = { ticket: '🧾', devis: '📄', commande: '📦', bl: '🚚', facture: '💼', avoir: '↩' }
             const sourceDevis = v.notes && v.notes.match(/Issu du devis (DEV-[\w-]+)/)
             return (
-              <div key={v.id} style={{ padding: '12px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.04)', opacity: estTransforme ? 0.45 : 1, background: estTransforme ? 'rgba(255,255,255,0.01)' : 'transparent' }}>
+              <div key={v.id} onClick={() => !estTransforme && v.statut !== 'annulee' && setSelectedPiece(v)} style={{ padding: '12px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.04)', opacity: estTransforme ? 0.45 : 1, background: estTransforme ? 'rgba(255,255,255,0.01)' : 'transparent', cursor: estTransforme || v.statut === 'annulee' ? 'default' : 'pointer' }}
+                onMouseEnter={e => { if (!estTransforme && v.statut !== 'annulee') (e.currentTarget as HTMLDivElement).style.background = 'rgba(201,169,110,0.05)' }}
+                onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = estTransforme ? 'rgba(255,255,255,0.01)' : 'transparent' }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' as const, marginBottom: 4 }}>
@@ -547,9 +609,12 @@ function HistoriqueAchatsClient({ client, onClose, onAddToCart, onRetourDone }: 
                     <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)' }}>{new Date(v.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
                     {sourceDevis && <div style={{ fontSize: 11, color: '#6e9ec9', marginTop: 3 }}>↳ {sourceDevis[1]}</div>}
                   </div>
-                  <div style={{ textAlign: 'right' as const }}>
-                    <div style={{ fontSize: 16, color: estTransforme ? 'rgba(232,224,213,0.3)' : '#c9a96e', fontFamily: 'Georgia, serif' }}>{parseFloat(v.total_ttc || 0).toFixed(2)} €</div>
-                    <div style={{ fontSize: 11, color: v.statut_paiement === 'regle' ? '#6ec96e' : v.statut_paiement === 'non_regle' ? '#c96e6e' : 'rgba(232,224,213,0.4)' }}>{v.statut_paiement === 'regle' ? 'Réglé' : v.statut_paiement === 'non_regle' ? 'Non réglé' : ''}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ textAlign: 'right' as const }}>
+                      <div style={{ fontSize: 16, color: estTransforme ? 'rgba(232,224,213,0.3)' : '#c9a96e', fontFamily: 'Georgia, serif' }}>{parseFloat(v.total_ttc || 0).toFixed(2)} €</div>
+                      <div style={{ fontSize: 11, color: v.statut_paiement === 'regle' ? '#6ec96e' : v.statut_paiement === 'non_regle' ? '#c96e6e' : 'rgba(232,224,213,0.4)' }}>{v.statut_paiement === 'regle' ? 'Réglé' : v.statut_paiement === 'non_regle' ? 'Non réglé' : ''}</div>
+                    </div>
+                    {!estTransforme && v.statut !== 'annulee' && <span style={{ color: 'rgba(232,224,213,0.3)', fontSize: 16 }}>›</span>}
                   </div>
                 </div>
               </div>
