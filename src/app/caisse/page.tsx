@@ -2844,7 +2844,7 @@ ${sep}<div class="center" style="font-size:9px;color:#444;line-height:1.7;margin
   return (
     <div style={{display:'flex',height:'100vh',background:'#0d0a08',fontFamily:"'DM Sans', system-ui, sans-serif",color:'#e8e0d5',overflow:'hidden'}}>
       <div style={{flex:1,display:'flex',flexDirection:'column' as const,overflow:'hidden',borderRight:'0.5px solid rgba(255,255,255,0.07)'}}>
-        <div style={{padding:'12px 16px',borderBottom:'0.5px solid rgba(255,255,255,0.07)',display:'flex',alignItems:'center',gap:10}}>
+        <div style={{padding:'12px 16px',borderBottom:'0.5px solid rgba(255,255,255,0.07)',display:'flex',alignItems:'center',gap:10,flexWrap:'wrap' as const,rowGap:8}}>
           <img src={getLogoForSite(session.site_nom||'')} alt="Logo" style={{height:28,maxWidth:70,objectFit:'contain'}} onError={e=>{(e.currentTarget as HTMLImageElement).style.display='none'}} />
           <div style={{fontFamily:'Georgia, serif',fontSize:15,color:'#c9a96e'}}>Cave de Gilbert</div>
           <div style={{flex:1}}/>

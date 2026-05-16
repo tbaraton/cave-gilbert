@@ -1313,7 +1313,7 @@ function OngletVentes() {
     const dateFin = new Date(annee, mois, 0).toISOString().split('T')[0]
     const [{ data: ecr }, { data: tvaData }] = await Promise.all([
       supabase.from('ecritures_comptables')
-        .select('*, compte:plan_comptable(numero, libelle), vente:ventes(numero, type_doc)')
+        .select('*, compte:plan_comptable(numero, libelle), vente:ventes(numero, type_doc, customer:customers(prenom, nom, raison_sociale, est_societe))')
         .eq('entreprise_id', entrepriseId)
         .eq('journal', 'VE')
         .gte('date_ecriture', dateDebut)
@@ -1437,8 +1437,15 @@ function OngletVentes() {
                   const isNewPiece = i === 0 || ecritures[i - 1].numero_piece !== e.numero_piece
                   return (
                     <tr key={e.id} style={{ borderTop: isNewPiece && i > 0 ? '0.5px solid rgba(255,255,255,0.06)' : 'none' }}>
-                      <td style={{ padding: '8px 14px', color: 'rgba(232,224,213,0.6)' }}>{isNewPiece ? new Date(e.date_ecriture).toLocaleDateString('fr-FR') : ''}</td>
-                      <td style={{ padding: '8px 14px', color: isNewPiece ? '#c9a96e' : 'rgba(201,169,110,0.4)', fontFamily: 'monospace', fontSize: 11 }}>{isNewPiece ? e.numero_piece : ''}</td>
+                      <td style={{ padding: '8px 14px', color: 'rgba(232,224,213,0.6)', verticalAlign: 'top' as const }}>{isNewPiece ? new Date(e.date_ecriture).toLocaleDateString('fr-FR') : ''}</td>
+                      <td style={{ padding: '8px 14px', verticalAlign: 'top' as const }}>
+                        {isNewPiece && <div style={{ color: '#c9a96e', fontFamily: 'monospace', fontSize: 11 }}>{e.numero_piece}</div>}
+                        {isNewPiece && e.vente?.customer && (
+                          <div style={{ color: 'rgba(232,224,213,0.6)', fontSize: 11, marginTop: 2 }}>
+                            {e.vente.customer.est_societe ? e.vente.customer.raison_sociale : `${e.vente.customer.prenom || ''} ${e.vente.customer.nom || ''}`.trim()}
+                          </div>
+                        )}
+                      </td>
                       <td style={{ padding: '8px 14px', color: '#e8e0d5' }}>
                         <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#c9a96e' }}>{e.compte?.numero}</span>
                         <span style={{ marginLeft: 8, color: 'rgba(232,224,213,0.5)' }}>{e.compte?.libelle}</span>
