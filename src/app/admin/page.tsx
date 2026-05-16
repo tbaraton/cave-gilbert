@@ -503,6 +503,44 @@ function ModalEditProduit({ produit, regions: regionsProp, appellations: appella
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [uploadingImage, setUploadingImage] = useState(false)
+  const [completingIa, setCompletingIa] = useState(false)
+  const [iaMsg, setIaMsg] = useState('')
+
+  const handleCompleterIa = async () => {
+    setCompletingIa(true); setError(''); setIaMsg('')
+    try {
+      const res = await fetch('/api/ai-complete-product', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ product_id: produit.id }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setError(data.error || 'Échec génération IA'); return }
+      if (data.updated === 0) { setIaMsg('Tous les champs sont déjà renseignés.'); return }
+      // Recharger les champs depuis la DB pour refléter les nouvelles valeurs
+      const { data: fresh } = await supabase.from('products').select('*').eq('id', produit.id).single()
+      if (fresh) {
+        setForm(f => ({
+          ...f,
+          description_courte: fresh.description_courte || f.description_courte,
+          description_longue: fresh.description_longue || f.description_longue,
+          notes_degustation: fresh.notes_degustation || f.notes_degustation,
+          accords_mets: fresh.accords_mets || f.accords_mets,
+          cepages: Array.isArray(fresh.cepages) ? fresh.cepages.join(', ') : (f.cepages || ''),
+          alcool: fresh.alcool?.toString() || f.alcool,
+          temperature_service_min: fresh.temperature_service_min?.toString() || f.temperature_service_min,
+          temperature_service_max: fresh.temperature_service_max?.toString() || f.temperature_service_max,
+          garde_potentiel_annees: fresh.garde_potentiel_annees?.toString() || f.garde_potentiel_annees,
+          meta_title: fresh.meta_title || f.meta_title,
+          meta_description: fresh.meta_description || f.meta_description,
+        }))
+      }
+      setIaMsg(`✓ ${data.updated} champ${data.updated > 1 ? 's' : ''} complété${data.updated > 1 ? 's' : ''} par l'IA`)
+    } catch (e: any) {
+      setError(`Erreur IA : ${e.message}`)
+    } finally {
+      setCompletingIa(false)
+    }
+  }
 
   const handleUploadBottlePhoto = async (file: File) => {
     setUploadingImage(true)
@@ -720,6 +758,23 @@ function ModalEditProduit({ produit, regions: regionsProp, appellations: appella
             {' · '}× {form.coeff_pro} = <strong style={{ color: '#c9a96e' }}>{(parseFloat(form.prix_achat_ht) * parseFloat(form.coeff_pro)).toFixed(2)}€</strong> pro
           </div>
         )}
+
+        {/* Bouton compléter avec l'IA */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, padding: '12px 14px', background: 'rgba(175,169,236,0.06)', border: '0.5px solid rgba(175,169,236,0.2)', borderRadius: 4 }}>
+          <button onClick={handleCompleterIa} disabled={completingIa} style={{
+            background: completingIa ? '#2a2a2a' : 'rgba(175,169,236,0.18)',
+            border: '0.5px solid rgba(175,169,236,0.5)',
+            color: completingIa ? '#888' : '#afa9ec',
+            borderRadius: 4, padding: '9px 16px', fontSize: 12, cursor: completingIa ? 'wait' : 'pointer',
+            fontWeight: 600, whiteSpace: 'nowrap' as const,
+          }}>
+            {completingIa ? '⟳ Génération en cours…' : '✦ Compléter avec l\'IA'}
+          </button>
+          <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.5)', lineHeight: 1.5 }}>
+            Remplit uniquement les champs vides (description, notes dégustation, accords, SEO, etc.) sans écraser tes saisies manuelles.
+          </div>
+        </div>
+        {iaMsg && <div style={{ fontSize: 12, color: '#afa9ec', marginBottom: 12 }}>{iaMsg}</div>}
 
         {/* Description & Photo */}
         <div style={{ fontSize: 10, letterSpacing: 2, color: '#c9a96e', textTransform: 'uppercase' as const, marginBottom: 10 }}>Description & Photo</div>
