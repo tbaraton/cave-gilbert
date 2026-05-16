@@ -490,14 +490,68 @@ function OngletAchats({ currentUser }: { currentUser: any }) {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [{ data: facs }, { data: ents }] = await Promise.all([
+    const [{ data: facs }, { data: ents }, { data: facsInter }] = await Promise.all([
       supabase.from('factures_achat')
         .select('*, fournisseur:fournisseurs(id, nom, categorie), entreprise:entreprises(id, code, raison_sociale)')
         .order('date_facture', { ascending: false })
         .limit(500),
       supabase.from('entreprises').select('id, code, raison_sociale').order('code'),
+      supabase.from('factures_intersocietes')
+        .select('*, transfer:stock_transfers(numero)')
+        .neq('statut', 'brouillon')
+        .order('date_emission', { ascending: false })
+        .limit(500),
     ])
-    setFactures(facs || [])
+
+    // Mapping site → entreprise (CDG = Marcy + Entrepôt, LPC = Arbresle)
+    const ID_MARCY = 'ee3afa96-0c45-407f-87fc-e503fbada6c4'
+    const ID_ENTREPOT = 'e12d7e47-23dc-4011-95fc-e9e975fc4307'
+    const ID_ARBRESLE = '3097e864-f452-4c2e-9af3-21e26f0330b7'
+    const entCDG = (ents || []).find((e: any) => e.code === 'CDG')
+    const entLPC = (ents || []).find((e: any) => e.code === 'LPC')
+    const siteToEnt = (siteId: string) => {
+      if (siteId === ID_ARBRESLE) return entLPC
+      if (siteId === ID_MARCY || siteId === ID_ENTREPOT) return entCDG
+      return null
+    }
+
+    // Factures inter-sociétés vues comme Achat par l'entité destinataire (ou émettrice pour les avoirs).
+    // type='facture' : émetteur vend → destinataire achète. L'entité destinataire voit l'achat.
+    // type='avoir'   : émetteur/destinataire flippés à la création. L'entité émettrice (= acheteur d'origine)
+    //                  reçoit un avoir réduisant son achat.
+    const facsInterMapped = (facsInter || []).map((f: any) => {
+      const isAvoir = f.type === 'avoir'
+      const buyerEnt = isAvoir ? siteToEnt(f.site_emetteur_id) : siteToEnt(f.site_destinataire_id)
+      const sellerEnt = isAvoir ? siteToEnt(f.site_destinataire_id) : siteToEnt(f.site_emetteur_id)
+      const ht = parseFloat(f.total_ht || 0)
+      const ttc = parseFloat(f.total_ttc || 0)
+      const sign = isAvoir ? -1 : 1
+      return {
+        id: `inter-${f.id}`,
+        numero_interne: f.numero,
+        numero_fournisseur: f.transfer?.numero || null,
+        entreprise_id: buyerEnt?.id || null,
+        entreprise: buyerEnt,
+        fournisseur: {
+          id: null,
+          nom: `${sellerEnt?.raison_sociale || '—'} (inter-société)`,
+          categorie: 'inter_societe',
+        },
+        date_facture: f.date_emission,
+        date_reception: f.date_emission,
+        date_echeance: null,
+        total_ht: sign * ht,
+        total_tva: sign * (ttc - ht),
+        total_ttc: sign * ttc,
+        statut: f.statut === 'reglee' ? 'reglee' : 'a_valider',
+        _isInterCo: true,
+        _docType: f.type,
+      } as any
+    })
+
+    const merged = [...(facs || []), ...facsInterMapped]
+      .sort((a, b) => (b.date_facture || '').localeCompare(a.date_facture || ''))
+    setFactures(merged)
     setEntreprises(ents || [])
     setLoading(false)
   }, [])
@@ -586,11 +640,15 @@ function OngletAchats({ currentUser }: { currentUser: any }) {
               {filtrees.map((f, i) => {
                 const st = STATUT_LABELS[f.statut]
                 const enRetard = f.statut === 'validee' && f.date_echeance && f.date_echeance < today()
+                const isInterCo = (f as any)._isInterCo
                 return (
-                  <tr key={f.id} onClick={() => setDetailFacture(f)} style={{ borderBottom: i < filtrees.length - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none', cursor: 'pointer' }}
+                  <tr key={f.id} onClick={isInterCo ? undefined : () => setDetailFacture(f)} style={{ borderBottom: i < filtrees.length - 1 ? '0.5px solid rgba(255,255,255,0.04)' : 'none', cursor: isInterCo ? 'default' : 'pointer' }}
                     onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
                     onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                    <td style={{ padding: '10px 10px', fontSize: 11, color: '#e8e0d5', fontFamily: 'monospace' }}>{f.numero_interne}</td>
+                    <td style={{ padding: '10px 10px', fontSize: 11, color: '#e8e0d5', fontFamily: 'monospace' }}>
+                      {f.numero_interne}
+                      {isInterCo && <span style={{ marginLeft: 6, fontSize: 9, background: 'rgba(110,158,201,0.12)', color: '#6e9ec9', padding: '1px 6px', borderRadius: 3, letterSpacing: 0.5, textTransform: 'uppercase' as const, fontFamily: 'inherit' }}>{(f as any)._docType === 'avoir' ? '↩ avoir' : '↔ inter-soc'}</span>}
+                    </td>
                     <td style={{ padding: '10px 10px', fontSize: 11, color: 'rgba(232,224,213,0.6)' }}>{f.numero_fournisseur || '—'}</td>
                     <td style={{ padding: '10px 10px', fontSize: 11 }}>
                       <span style={{ fontSize: 10, background: f.entreprise?.code === 'CDG' ? 'rgba(201,169,110,0.12)' : 'rgba(110,158,201,0.12)', color: f.entreprise?.code === 'CDG' ? '#c9a96e' : '#6e9ec9', padding: '2px 8px', borderRadius: 3 }}>{f.entreprise?.code}</span>
