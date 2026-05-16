@@ -59,10 +59,18 @@ Réponds UNIQUEMENT en JSON valide, en français impeccable et engageant :
   "temperature_service_min": 14,
   "temperature_service_max": 17,
   "meta_title": "Balise SEO <title> 50-60 caractères (nom + appellation + millésime)",
-  "meta_description": "Balise SEO <meta description> 140-160 caractères, accrocheuse"
+  "meta_description": "Balise SEO <meta description> 140-160 caractères, accrocheuse",
+  "bio": false,
+  "vegan": false,
+  "naturel": false,
+  "biodynamique": false,
+  "casher": false
 }
 
-Règles strictes : pas de \\n dans les chaînes, nombres en number, températures en °C.`
+Règles strictes : pas de \\n dans les chaînes, nombres en number, températures en °C.
+Certifications : true UNIQUEMENT si le domaine est connu et reconnu pour cette
+certification (Coulée de Serrant en biodynamie, Marcel Lapierre en naturel, etc.).
+En cas de doute, mets false.`
 
     const mistralRes = await fetch('https://api.mistral.ai/v1/chat/completions', {
       method: 'POST',
@@ -104,6 +112,11 @@ Règles strictes : pas de \\n dans les chaînes, nombres en number, température
     ]
     for (const [key, value] of fields) {
       if (isEmpty(produit[key]) && !isEmpty(value)) updates[key] = value
+    }
+    // Certifications : ne flip false → true que si l'IA est confiante.
+    // Jamais l'inverse (on ne retire pas une certif manuelle).
+    for (const cert of ['bio', 'vegan', 'naturel', 'biodynamique', 'casher']) {
+      if (produit[cert] !== true && aiData[cert] === true) updates[cert] = true
     }
     if (Object.keys(updates).length === 0) {
       return NextResponse.json({ success: true, updated: 0, message: 'Aucun champ vide à compléter' })

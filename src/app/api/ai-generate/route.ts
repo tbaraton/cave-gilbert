@@ -74,7 +74,12 @@ Structure attendue :
     "complexite": 85
   },
   "meta_title": "Balise SEO <title> 50-60 caractères, inclure nom + appellation + millésime si pertinent",
-  "meta_description": "Balise SEO <meta description> 140-160 caractères, accrocheuse, inclure 2-3 mots-clés vin/appellation/cépage et inciter au clic"
+  "meta_description": "Balise SEO <meta description> 140-160 caractères, accrocheuse, inclure 2-3 mots-clés vin/appellation/cépage et inciter au clic",
+  "bio": false,
+  "vegan": false,
+  "naturel": false,
+  "biodynamique": false,
+  "casher": false
 }
 
 Règles strictes :
@@ -82,7 +87,11 @@ Règles strictes :
 - Tous les nombres sont des numbers (pas de chaînes).
 - Profil : valeurs 0-100 (intensité perçue).
 - Garde : nombre d'années à compter du millésime.
-- Températures en °C.`
+- Températures en °C.
+- Certifications (bio/vegan/naturel/biodynamique/casher) : true UNIQUEMENT si le
+  domaine est connu et reconnu pour cette certification (Coulée de Serrant en
+  biodynamie, Marcel Lapierre en naturel, etc.). En cas de doute, mets false.
+  Ne devine pas — base-toi sur tes connaissances du domaine.`
 
     const mistralRes = await fetch('https://api.mistral.ai/v1/chat/completions', {
       method: 'POST',
@@ -139,6 +148,11 @@ Règles strictes :
         garde_potentiel_annees: aiData.garde_potentiel_annees || null,
         meta_title: aiData.meta_title || null,
         meta_description: aiData.meta_description || null,
+        bio: aiData.bio === true,
+        vegan: aiData.vegan === true,
+        naturel: aiData.naturel === true,
+        biodynamique: aiData.biodynamique === true,
+        casher: aiData.casher === true,
         ia_generated: true,
         ia_generated_at: new Date().toISOString(),
         actif: false,
