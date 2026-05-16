@@ -2,6 +2,9 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
+import { genererFactureCaisseHtml } from '@/lib/pdf-templates'
+import { envoyerDocument, buildPdfFilename } from '@/lib/email-sender'
+import { getSiteInfo } from '@/lib/site-info'
 
 const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -208,19 +211,25 @@ function OngletFournisseurs({ currentUser }: { currentUser: any }) {
 // ───────────────────────────────────────────────────────────────
 function OngletClients({ currentUser }: { currentUser: any }) {
   const [ventes, setVentes] = useState<any[]>([])
+  const [sitesMap, setSitesMap] = useState<Map<string, any>>(new Map())
   const [loading, setLoading] = useState(true)
   const [filtre, setFiltre] = useState<'tous' | 'retard' | 'semaine'>('tous')
+  const [sending, setSending] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
-    const { data } = await supabase.from('ventes')
-      .select('id, numero, type_doc, created_at, total_ttc, total_ht, customer_id, site_id, statut_paiement, customer:customers(id, prenom, nom, raison_sociale, est_societe, email, telephone)')
-      .eq('statut', 'validee')
-      .eq('statut_paiement', 'non_regle')
-      .neq('type_doc', 'devis')
-      .order('created_at', { ascending: true })
-      .limit(500)
-    setVentes(data || [])
+    const [{ data: v }, { data: s }] = await Promise.all([
+      supabase.from('ventes')
+        .select('id, numero, type_doc, created_at, total_ttc, total_ht, customer_id, site_id, statut_paiement, notes, customer:customers(id, prenom, nom, raison_sociale, est_societe, email, telephone, adresse, code_postal, ville)')
+        .eq('statut', 'validee')
+        .eq('statut_paiement', 'non_regle')
+        .neq('type_doc', 'devis')
+        .order('created_at', { ascending: true })
+        .limit(500),
+      supabase.from('sites').select('id, nom').eq('actif', true),
+    ])
+    setVentes(v || [])
+    setSitesMap(new Map((s || []).map((x: any) => [x.id, x])))
     setLoading(false)
   }, [])
 
@@ -261,6 +270,80 @@ function OngletClients({ currentUser }: { currentUser: any }) {
   }
 
   const clientNom = (c: any) => !c ? 'Client anonyme' : c.est_societe ? c.raison_sociale : `${c.prenom || ''} ${c.nom || ''}`.trim()
+
+  // Construit le HTML de la facture à partir des données complètes
+  const buildPdfHtml = async (v: any) => {
+    const [{ data: lignes }, { data: paiements }] = await Promise.all([
+      supabase.from('vente_lignes').select('*').eq('vente_id', v.id),
+      supabase.from('vente_paiements').select('*').eq('vente_id', v.id),
+    ])
+    const siteName = sitesMap.get(v.site_id)?.nom || ''
+    const siteInfo = getSiteInfo(siteName)
+    const detail = {
+      numero: v.numero,
+      type_doc: v.type_doc,
+      created_at: v.created_at,
+      total_ttc: v.total_ttc,
+      notes: v.notes,
+      customer: v.customer,
+      user: null,
+    }
+    const lignesPdf = (lignes || []).map((l: any) => ({
+      quantite: l.quantite,
+      nom_produit: l.nom_produit,
+      millesime: l.millesime,
+      prix_unitaire_ttc: l.prix_unitaire_ttc,
+      total_ttc: l.total_ttc,
+      remise_pct: l.remise_pct,
+    }))
+    const paiementsPdf = (paiements || []).map((p: any) => ({ mode: p.mode, montant: p.montant }))
+    return { html: genererFactureCaisseHtml(detail, lignesPdf, paiementsPdf, siteInfo), siteName }
+  }
+
+  const handleConsulter = async (v: any) => {
+    try {
+      const { html } = await buildPdfHtml(v)
+      const win = window.open('', '_blank')
+      if (win) { win.document.write(html); win.document.close() }
+    } catch (e: any) {
+      alert(`Erreur : ${e.message}`)
+    }
+  }
+
+  const handleRelancer = async (v: any) => {
+    const email = (v.customer?.email || '').trim()
+    if (!email) { alert('Pas d\'email enregistré pour ce client'); return }
+    if (!confirm(`Envoyer une relance à ${email} pour la facture ${v.numero} (${parseFloat(v.total_ttc).toFixed(2)} €) ?`)) return
+    setSending(v.id)
+    try {
+      const { html, siteName } = await buildPdfHtml(v)
+      const dateVente = new Date(v.created_at).toLocaleDateString('fr-FR')
+      const echeance = v._echeance ? new Date(v._echeance).toLocaleDateString('fr-FR') : '—'
+      const cNom = clientNom(v.customer)
+      const montant = parseFloat(v.total_ttc).toFixed(2)
+      const entiteNom = getSiteInfo(siteName).nom
+      const emailBody = `<div style="font-family:Georgia,serif;max-width:600px;margin:0 auto;color:#222;line-height:1.6;padding:20px">
+<p>Bonjour ${cNom},</p>
+<p>Sauf erreur de notre part, nous n'avons pas reçu le règlement de la facture <strong>${v.numero}</strong> d'un montant de <strong>${montant} €</strong>, émise le ${dateVente}, dont l'échéance était fixée au <strong>${echeance}</strong>.</p>
+<p>Nous vous remercions de bien vouloir procéder au règlement dans les meilleurs délais. Si votre paiement a été effectué entre-temps, merci de ne pas tenir compte de ce message.</p>
+<p>Vous trouverez ci-joint un nouvel exemplaire de la facture.</p>
+<p style="color:#666;font-size:13px;margin-top:24px">Cordialement,<br>L'équipe ${entiteNom}</p>
+</div>`
+      await envoyerDocument({
+        to: email,
+        subject: `Rappel — Facture ${v.numero} en attente de règlement`,
+        pdfHtml: html,
+        pdfFilename: buildPdfFilename(v.type_doc, v.numero),
+        emailBody,
+        siteNom: siteName,
+      })
+      alert(`Relance envoyée à ${email}`)
+    } catch (e: any) {
+      alert(`Erreur d'envoi : ${e.message}`)
+    } finally {
+      setSending(null)
+    }
+  }
 
   return (
     <div>
@@ -310,7 +393,11 @@ function OngletClients({ currentUser }: { currentUser: any }) {
                     <td style={{ ...td, textAlign: 'right' as const, fontFamily: 'Georgia, serif' }}>{fmtMontant(parseFloat(v.total_ttc || 0))}</td>
                     <td style={{ ...td, fontSize: 11, color: 'rgba(232,224,213,0.5)' }}>{v.customer?.email || '—'}</td>
                     <td style={td}>
-                      <PayerMenu onPay={(mode) => handleMarquerReglee(v, mode)} />
+                      <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                        <button onClick={() => handleConsulter(v)} title="Voir la facture" style={btnIcon}>📄</button>
+                        <button onClick={() => handleRelancer(v)} disabled={!v.customer?.email || sending === v.id} title={v.customer?.email ? `Relancer ${v.customer.email}` : 'Pas d\'email'} style={{ ...btnIcon, opacity: (!v.customer?.email || sending === v.id) ? 0.4 : 1, cursor: (!v.customer?.email || sending === v.id) ? 'not-allowed' : 'pointer' }}>{sending === v.id ? '⟳' : '✉'}</button>
+                        <PayerMenu onPay={(mode) => handleMarquerReglee(v, mode)} />
+                      </div>
                     </td>
                   </tr>
                 )
@@ -401,6 +488,7 @@ const empty: any = { padding: 60, textAlign: 'center', color: 'rgba(232,224,213,
 const th: any = { padding: '10px 12px', textAlign: 'left', fontSize: 10, letterSpacing: 1.5, color: 'rgba(232,224,213,0.3)', fontWeight: 400, textTransform: 'uppercase' }
 const td: any = { padding: '12px 12px', fontSize: 12, color: '#e8e0d5' }
 const btnPay: any = { background: 'rgba(110,201,176,0.12)', border: '0.5px solid rgba(110,201,176,0.3)', color: '#6ec9b0', borderRadius: 4, padding: '6px 12px', fontSize: 11, cursor: 'pointer', fontWeight: 600 }
+const btnIcon: any = { background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.12)', color: '#e8e0d5', borderRadius: 4, padding: '6px 9px', fontSize: 13, cursor: 'pointer', lineHeight: 1 }
 const pill = (active: boolean): any => ({
   background: active ? 'rgba(201,169,110,0.18)' : 'rgba(255,255,255,0.04)',
   border: `0.5px solid ${active ? 'rgba(201,169,110,0.4)' : 'rgba(255,255,255,0.1)'}`,
