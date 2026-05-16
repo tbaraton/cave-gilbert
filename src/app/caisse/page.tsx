@@ -1348,6 +1348,8 @@ function ModalCatalogue({ session, client, onAjouter, onClose }: { session: Sess
   const [selection, setSelection] = useState<Record<string, number>>({})
   const [otherSites, setOtherSites] = useState<any[]>([])
   const [otherStockMaps, setOtherStockMaps] = useState<Record<string, Record<string, number>>>({})
+  const [currentSiteLabel, setCurrentSiteLabel] = useState('ici')
+  const getSiteLabel = (code: string) => code === 'petite_cave' ? 'LPC' : code === 'entrepot' ? 'E' : code === 'cave_gilbert' ? 'CDG' : (code || '').slice(0, 3)
 
   useEffect(() => {
     const load = async () => {
@@ -1356,6 +1358,8 @@ function ModalCatalogue({ session, client, onAjouter, onClose }: { session: Sess
       const stockMap = Object.fromEntries((stockData || []).map((s: any) => [s.product_id, s.quantite]))
       const { data: sitesData } = await supabase.from('sites').select('id, nom, code').eq('actif', true).order('nom')
       const others = (sitesData || []).filter((s: any) => s.id !== session.site_id)
+      const currentSite = (sitesData || []).find((s: any) => s.id === session.site_id)
+      if (currentSite?.code) setCurrentSiteLabel(getSiteLabel(currentSite.code))
       const maps: Record<string, Record<string, number>> = {}
       for (const s of others) maps[s.id] = {}
       if (others.length) {
@@ -1459,12 +1463,12 @@ function ModalCatalogue({ session, client, onAjouter, onClose }: { session: Sess
                   <div style={{ fontSize: 15, color: '#c9a96e', fontFamily: 'Georgia, serif', marginBottom: 4 }}>{prix?.toFixed(2)}€</div>
                   <div style={{ display: 'flex', gap: 5 }}>
                     <div style={{ textAlign: 'center' as const, minWidth: 28 }}>
-                      <div style={{ fontSize: 9, color: 'rgba(232,224,213,0.3)', lineHeight: 1 }}>ici</div>
+                      <div style={{ fontSize: 9, color: 'rgba(232,224,213,0.3)', lineHeight: 1 }}>{currentSiteLabel}</div>
                       <div style={{ fontSize: 12, fontWeight: 700, color: p.stock === 0 ? '#c96e6e' : p.stock <= 3 ? '#c9b06e' : '#6ec96e' }}>{p.stock}</div>
                     </div>
                     {otherSites.map(site => {
                       const stk = otherStockMaps[site.id]?.[p.id] || 0
-                      const label = site.code === 'petite_cave' ? 'LPC' : site.code === 'entrepot' ? 'E' : site.code === 'cave_gilbert' ? 'CDG' : (site.nom || '').slice(0, 3)
+                      const label = getSiteLabel(site.code)
                       return (
                         <div key={site.id} style={{ textAlign: 'center' as const, minWidth: 28 }}>
                           <div style={{ fontSize: 9, color: 'rgba(232,224,213,0.3)', lineHeight: 1 }}>{label}</div>
