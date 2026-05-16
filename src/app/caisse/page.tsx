@@ -1100,15 +1100,7 @@ ${detail.type_doc === 'facture' ? `
 </body></html>`
   }
 
-  const genererFactureCaisse = (detail: any, lignesDetail: any[], paiementsDetail: any[]) => {
-    const clientN = !detail.customer ? 'Client anonyme' : detail.customer.est_societe ? detail.customer.raison_sociale : `${detail.customer.prenom || ''} ${detail.customer.nom || ''}`.trim()
-    const dateDoc = new Date(detail.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })
-    const typeLabel: Record<string, string> = { facture: 'FACTURE', devis: 'DEVIS', commande: 'BON DE COMMANDE', bl: 'BON DE LIVRAISON', avoir: 'AVOIR', ticket: 'REÇU' }
-    const tvaRate = 0.20
-    const totalTTC = parseFloat(detail.total_ttc)
-    const totalHT = totalTTC / (1 + tvaRate)
-    const tva = totalTTC - totalHT
-    const lignesHtml = detail.notes
+  const lignesHtml = detail.notes
       ? `<tr><td colspan="4" style="padding:12px;color:#e8e0d5;font-size:13px">${detail.notes}</td><td style="padding:12px;text-align:right;color:#c9a96e;font-size:14px;font-weight:700">${totalTTC.toFixed(2)} €</td></tr>`
       : lignesDetail.map((l: any) => {
           const prixHT = parseFloat(l.prix_unitaire_ttc) / (1 + tvaRate)
