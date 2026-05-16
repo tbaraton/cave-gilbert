@@ -1349,7 +1349,7 @@ function ModalCatalogue({ session, client, onAjouter, onClose }: { session: Sess
   const [otherSites, setOtherSites] = useState<any[]>([])
   const [otherStockMaps, setOtherStockMaps] = useState<Record<string, Record<string, number>>>({})
   const [currentSiteLabel, setCurrentSiteLabel] = useState('ici')
-  const getSiteLabel = (code: string) => code === 'petite_cave' ? 'LPC' : code === 'entrepot' ? 'E' : code === 'cave_gilbert' ? 'CDG' : (code || '').slice(0, 3)
+  const getSiteLabel = (nom: string) => { const n = (nom || '').toLowerCase(); if (n.includes('petite cave')) return 'LPC'; if (n.includes('entrepôt') || n.includes('entrepot')) return 'E'; if (n.includes('gilbert')) return 'CDG'; return (nom || '').slice(0, 3).toUpperCase() }
 
   useEffect(() => {
     const load = async () => {
@@ -1359,7 +1359,7 @@ function ModalCatalogue({ session, client, onAjouter, onClose }: { session: Sess
       const { data: sitesData } = await supabase.from('sites').select('id, nom, code').eq('actif', true).order('nom')
       const others = (sitesData || []).filter((s: any) => s.id !== session.site_id)
       const currentSite = (sitesData || []).find((s: any) => s.id === session.site_id)
-      if (currentSite?.code) setCurrentSiteLabel(getSiteLabel(currentSite.code))
+      if (currentSite?.nom) setCurrentSiteLabel(getSiteLabel(currentSite.nom))
       const maps: Record<string, Record<string, number>> = {}
       for (const s of others) maps[s.id] = {}
       if (others.length) {
@@ -1468,7 +1468,7 @@ function ModalCatalogue({ session, client, onAjouter, onClose }: { session: Sess
                     </div>
                     {otherSites.map(site => {
                       const stk = otherStockMaps[site.id]?.[p.id] || 0
-                      const label = getSiteLabel(site.code)
+                      const label = getSiteLabel(site.nom)
                       return (
                         <div key={site.id} style={{ textAlign: 'center' as const, minWidth: 28 }}>
                           <div style={{ fontSize: 9, color: 'rgba(232,224,213,0.3)', lineHeight: 1 }}>{label}</div>
