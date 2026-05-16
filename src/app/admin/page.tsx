@@ -502,6 +502,25 @@ function ModalEditProduit({ produit, regions: regionsProp, appellations: appella
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [uploadingImage, setUploadingImage] = useState(false)
+
+  const handleUploadBottlePhoto = async (file: File) => {
+    setUploadingImage(true)
+    setError('')
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('product_id', produit.id)
+      const res = await fetch('/api/upload-bottle-image', { method: 'POST', body: fd })
+      const data = await res.json()
+      if (!res.ok) { setError(data.error || 'Échec upload photo'); return }
+      setForm(f => ({ ...f, image_url: data.url }))
+    } catch (e: any) {
+      setError(`Erreur upload : ${e.message}`)
+    } finally {
+      setUploadingImage(false)
+    }
+  }
 
   const appsFiltrees = form.region_id
     ? appellations.filter((a: any) => a.region_id === form.region_id)
@@ -713,10 +732,25 @@ function ModalEditProduit({ produit, regions: regionsProp, appellations: appella
           <textarea value={form.description_longue} onChange={e => setForm(f => ({ ...f, description_longue: e.target.value }))} rows={4} style={{ ...inp, resize: 'vertical' as const }} />
         </div>
         <div style={{ marginBottom: 14 }}>
-          <label style={lbl}>URL photo</label>
-          <input value={form.image_url} onChange={e => setForm(f => ({ ...f, image_url: e.target.value }))} placeholder="https://..." style={inp} />
+          <label style={lbl}>Photo bouteille</label>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+            <input value={form.image_url} onChange={e => setForm(f => ({ ...f, image_url: e.target.value }))} placeholder="https://... ou upload ci-contre →" style={{ ...inp, flex: 1 }} />
+            <label style={{
+              background: uploadingImage ? '#2a2a2a' : 'rgba(110,201,176,0.15)',
+              border: '0.5px solid rgba(110,201,176,0.4)',
+              color: uploadingImage ? '#888' : '#6ec9b0',
+              borderRadius: 4, padding: '9px 14px', fontSize: 12, cursor: uploadingImage ? 'wait' : 'pointer',
+              whiteSpace: 'nowrap' as const, fontWeight: 600,
+            }}>
+              {uploadingImage ? '⟳ Détourage…' : '📷 Upload + détourer'}
+              <input type="file" accept="image/*" disabled={uploadingImage} onChange={e => { const f = e.target.files?.[0]; if (f) handleUploadBottlePhoto(f) }} style={{ display: 'none' }} />
+            </label>
+          </div>
+          <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.35)', marginTop: 6 }}>
+            Upload une photo de bouteille (n'importe quel fond) — détourage auto + cadrage carré 800×800 fond blanc.
+          </div>
           {form.image_url && (
-            <img src={form.image_url} alt="" style={{ height: 60, marginTop: 8, borderRadius: 4, objectFit: 'contain' as const, background: '#100d0a', padding: 4 }} onError={e => (e.currentTarget.style.display = 'none')} />
+            <img src={form.image_url} alt="" style={{ height: 120, marginTop: 10, borderRadius: 4, objectFit: 'contain' as const, background: '#fff', padding: 4 }} onError={e => (e.currentTarget.style.display = 'none')} />
           )}
         </div>
 

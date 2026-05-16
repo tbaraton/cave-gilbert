@@ -8,6 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { findBottleImage } from '@/lib/find-bottle-image'
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -114,6 +115,9 @@ Règles strictes :
       return NextResponse.json({ error: `JSON Mistral invalide : ${e.message}`, raw: content }, { status: 500 })
     }
 
+    // Recherche d'une image de bouteille en parallèle (best-effort, ne fait pas planter l'insert)
+    const imageUrl = await findBottleImage({ nom, domaine: domaine_nom, appellation: appellation_nom, millesime })
+
     const { data: product, error: errProd } = await supabaseAdmin
       .from('products')
       .insert({
@@ -123,6 +127,7 @@ Règles strictes :
         categorie: ['rouge', 'blanc', 'rosé', 'champagne', 'effervescent'].includes(couleur) ? 'vin' : couleur === 'spiritueux' ? 'spiritueux' : 'vin',
         prix_vente_ttc: parseFloat(prix_vente_ttc),
         contenance: contenance || '75cl',
+        image_url: imageUrl,
         cepages: aiData.cepages || [],
         alcool: aiData.alcool || null,
         description_courte: aiData.description_courte,
