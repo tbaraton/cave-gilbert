@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@supabase/supabase-js'
+import { useCart } from './CartContext'
 
 // ============================================================
 // Cave de Gilbert — Boutique / Catalogue client
@@ -234,64 +235,9 @@ export default function BoutiquePage() {
               </button>
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 20 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))', gap: 18 }}>
               {produits.map(p => (
-                <a key={p.id} href={`/boutique/${p.slug}`} style={{ textDecoration: 'none', color: 'inherit', height: '100%' }}>
-                  <div style={{
-                    background: '#f5f1ea', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: 6,
-                    overflow: 'hidden', transition: 'border-color 0.2s, transform 0.2s',
-                    display: 'flex', flexDirection: 'column' as const, height: '100%',
-                  }}
-                    onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(201,169,110,0.3)'; e.currentTarget.style.transform = 'translateY(-2px)' }}
-                    onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(0,0,0,0.08)'; e.currentTarget.style.transform = 'translateY(0)' }}
-                  >
-                    {/* Image / Placeholder — hauteur fixe pour rectangles uniformes */}
-                    <div style={{ height: 260, background: '#fbfaf6', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' as const, flexShrink: 0 }}>
-                      {p.image_url ? (
-                        <img src={p.image_url} alt={p.nom} style={{ height: '90%', width: '90%', objectFit: 'contain' as const }} />
-                      ) : (
-                        <div style={{ fontSize: 64, opacity: 0.15, color: COULEUR_ACCENT[p.couleur] || '#8a6a3e' }}>🍷</div>
-                      )}
-                      {/* Badge stock */}
-                      {p.stock_statut === 'alerte' && (
-                        <div style={{ position: 'absolute' as const, top: 10, right: 10, fontSize: 9, color: '#8a6a3e', background: 'rgba(201,176,110,0.1)', border: '0.5px solid rgba(201,176,110,0.3)', padding: '3px 7px', borderRadius: 2, letterSpacing: 1 }}>
-                          DERNIÈRES BOUTEILLES
-                        </div>
-                      )}
-                      {p.bio && (
-                        <div style={{ position: 'absolute' as const, top: 10, left: 10, fontSize: 9, color: '#2a8a2a', background: 'rgba(110,201,110,0.1)', border: '0.5px solid rgba(110,201,110,0.3)', padding: '3px 7px', borderRadius: 2 }}>
-                          BIO
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Infos — flex pour pousser le prix en bas, hauteur uniforme */}
-                    <div style={{ padding: '16px', display: 'flex', flexDirection: 'column' as const, flex: 1 }}>
-                      <div style={{ fontSize: 9, letterSpacing: 2, color: COULEUR_ACCENT[p.couleur] || '#8a6a3e', textTransform: 'uppercase' as const, marginBottom: 6 }}>
-                        {p.appellation || p.region || ''}
-                      </div>
-                      <div style={{
-                        fontFamily: 'Georgia, serif', fontSize: 15, color: '#0a0a0a', lineHeight: 1.3, marginBottom: 4,
-                        display: '-webkit-box' as const, WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const,
-                        overflow: 'hidden' as const, minHeight: '2.6em',
-                      }}>
-                        {p.nom}
-                      </div>
-                      <div style={{ fontSize: 11, color: 'rgba(0,0,0,0.45)', marginBottom: 12 }}>
-                        {p.domaine}{p.millesime ? ` · ${p.millesime}` : ''}
-                      </div>
-
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto' as const }}>
-                        <span style={{ fontFamily: 'Georgia, serif', fontSize: 20, color: '#8a6a3e' }}>
-                          {p.prix_vente_ttc?.toFixed(2)}€
-                        </span>
-                        <span style={{ fontSize: 10, color: '#8a6a3e', background: 'rgba(201,169,110,0.08)', border: '0.5px solid rgba(201,169,110,0.2)', padding: '5px 10px', borderRadius: 2, letterSpacing: 1 }}>
-                          Voir →
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </a>
+                <ProductCard key={p.id} product={p} />
               ))}
             </div>
           )}
@@ -305,4 +251,141 @@ export default function BoutiquePage() {
       </footer>
     </div>
   )
+}
+
+// ============================================================
+// ProductCard — carte avec quantité + ajout au panier directs
+// ============================================================
+function ProductCard({ product: p }: { product: any }) {
+  const [qty, setQty] = useState(1)
+  const [added, setAdded] = useState(false)
+  const { addItem, updateQuantite, items, openCart } = useCart()
+  const accent = COULEUR_ACCENT[p.couleur] || '#8a6a3e'
+  const disponible = p.stock_total > 0
+
+  const handleAdd = () => {
+    if (!disponible) return
+    // Ajout via cart context (1 par 1 puis ajustement) pour respecter la limite de stock
+    const existing = items.find((i: any) => i.id === p.id)
+    if (existing) {
+      updateQuantite(p.id, Math.min(existing.quantite + qty, p.stock_total))
+    } else {
+      addItem({
+        id: p.id, nom: p.nom, millesime: p.millesime, couleur: p.couleur,
+        prix_unitaire_ttc: p.prix_vente_ttc, stock_total: p.stock_total,
+        image_url: p.image_url, slug: p.slug,
+      })
+      if (qty > 1) {
+        // Ajuster à la quantité demandée
+        setTimeout(() => updateQuantite(p.id, Math.min(qty, p.stock_total)), 50)
+      }
+    }
+    setAdded(true)
+    setTimeout(() => setAdded(false), 1800)
+    openCart()
+  }
+
+  return (
+    <div style={{
+      background: '#ffffff', border: '0.5px solid rgba(0,0,0,0.1)', borderRadius: 6,
+      overflow: 'hidden', display: 'flex', flexDirection: 'column' as const, height: '100%',
+      transition: 'border-color 0.2s, box-shadow 0.2s',
+    }}
+      onMouseEnter={e => { e.currentTarget.style.borderColor = accent; e.currentTarget.style.boxShadow = '0 6px 18px rgba(0,0,0,0.06)' }}
+      onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(0,0,0,0.1)'; e.currentTarget.style.boxShadow = 'none' }}
+    >
+      {/* Header coloré : appellation/région */}
+      <a href={`/boutique/${p.slug}`} style={{ textDecoration: 'none' }}>
+        <div style={{
+          background: accent, color: '#fff', padding: '10px 18px', textAlign: 'center' as const,
+          fontSize: 13, fontWeight: 600, letterSpacing: 0.5,
+        }}>
+          {p.appellation || p.region || COULEUR_LABEL_LONG[p.couleur] || p.couleur}
+        </div>
+      </a>
+
+      {/* Corps : bouteille à gauche + infos à droite */}
+      <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr', gap: 14, padding: '18px', flex: 1 }}>
+        <a href={`/boutique/${p.slug}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {p.image_url ? (
+            <img src={p.image_url} alt={p.nom} style={{ maxHeight: 240, maxWidth: '100%', objectFit: 'contain' as const }} />
+          ) : (
+            <div style={{ fontSize: 64, opacity: 0.15, color: accent }}>🍷</div>
+          )}
+        </a>
+
+        <div style={{ display: 'flex', flexDirection: 'column' as const, minWidth: 0 }}>
+          <a href={`/boutique/${p.slug}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+            <div style={{
+              fontFamily: 'Georgia, serif', fontSize: 16, color: '#0a0a0a', lineHeight: 1.3, marginBottom: 4,
+              display: '-webkit-box' as const, WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, overflow: 'hidden' as const,
+            }}>
+              {p.nom}
+            </div>
+            <div style={{ fontSize: 11, color: 'rgba(0,0,0,0.5)', marginBottom: 8 }}>
+              {p.domaine || ''}
+              {p.millesime ? ` · ${p.millesime}` : ''}
+              {p.alcool ? ` · ${p.alcool}% vol` : ''}
+            </div>
+            {p.description_courte && (
+              <p style={{
+                fontSize: 12, color: 'rgba(0,0,0,0.7)', lineHeight: 1.5, marginBottom: 10,
+                display: '-webkit-box' as const, WebkitLineClamp: 4, WebkitBoxOrient: 'vertical' as const, overflow: 'hidden' as const,
+              }}>
+                {p.description_courte}
+              </p>
+            )}
+          </a>
+          {/* Badges */}
+          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' as const, marginTop: 'auto' as const }}>
+            {p.bio && (
+              <span style={{ fontSize: 9, color: '#2a8a2a', background: 'rgba(110,201,110,0.1)', border: '0.5px solid rgba(110,201,110,0.3)', padding: '3px 7px', borderRadius: 2, letterSpacing: 0.5, fontWeight: 600 }}>🌿 BIO</span>
+            )}
+            {p.stock_statut === 'limite' && (
+              <span style={{ fontSize: 9, color: '#8a6a3e', background: 'rgba(201,176,110,0.1)', border: '0.5px solid rgba(201,176,110,0.3)', padding: '3px 7px', borderRadius: 2, letterSpacing: 0.5, fontWeight: 600 }}>⚡ DERNIÈRES BOUTEILLES</span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Footer : prix + quantité + bouton ajouter */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '12px 18px', borderTop: '0.5px solid rgba(0,0,0,0.08)', background: '#fbfaf6',
+        gap: 12,
+      }}>
+        <div>
+          <div style={{ fontFamily: 'Georgia, serif', fontSize: 22, color: accent, lineHeight: 1 }}>
+            {p.prix_vente_ttc?.toFixed(2)}€
+          </div>
+          <div style={{ fontSize: 10, color: 'rgba(0,0,0,0.4)', marginTop: 2 }}>TTC · {p.stock_total} dispo</div>
+        </div>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {disponible && (
+            <div style={{ display: 'flex', alignItems: 'center', border: '0.5px solid rgba(0,0,0,0.15)', borderRadius: 3, overflow: 'hidden' }}>
+              <button onClick={() => setQty(q => Math.max(1, q - 1))} style={{ background: 'transparent', border: 'none', color: 'rgba(0,0,0,0.6)', width: 28, height: 36, cursor: 'pointer', fontSize: 16 }}>−</button>
+              <span style={{ width: 24, textAlign: 'center' as const, fontSize: 13 }}>{qty}</span>
+              <button onClick={() => setQty(q => Math.min(p.stock_total, q + 1))} style={{ background: 'transparent', border: 'none', color: 'rgba(0,0,0,0.6)', width: 28, height: 36, cursor: 'pointer', fontSize: 16 }}>+</button>
+            </div>
+          )}
+          <button
+            onClick={handleAdd}
+            disabled={!disponible}
+            style={{
+              background: !disponible ? '#ccc' : added ? '#2a8a2a' : accent,
+              color: '#fff', border: 'none', padding: '9px 18px', fontSize: 12, letterSpacing: 1,
+              textTransform: 'uppercase' as const, cursor: disponible ? 'pointer' : 'not-allowed',
+              fontWeight: 600, borderRadius: 3, transition: 'background 0.2s', whiteSpace: 'nowrap' as const,
+            }}>
+            {!disponible ? 'Rupture' : added ? '✓ Ajouté' : 'Ajouter'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const COULEUR_LABEL_LONG: Record<string, string> = {
+  rouge: 'Vin Rouge', blanc: 'Vin Blanc', rosé: 'Vin Rosé',
+  champagne: 'Champagne', effervescent: 'Effervescent', spiritueux: 'Spiritueux', autre: 'Autre',
 }
