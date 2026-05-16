@@ -38,7 +38,12 @@ export default function ProductPageClient({ product, similaires }: { product: an
   const [addedToCart, setAddedToCart] = useState(false)
 
   const accent = COULEUR_ACCENT[product.couleur] || '#c9a96e'
-  const disponible = product.stock_statut !== 'rupture'
+  // Stock affiché = stock entrepôt (le stock expédiable depuis l'entrepôt vers le client)
+  const stockEntrepot = product._stockByEntity?.entrepot ?? product.stock_total ?? 0
+  const stockCaveGilbert = product._stockByEntity?.cave_gilbert ?? 0
+  const stockPetiteCave = product._stockByEntity?.petite_cave ?? 0
+  const disponible = stockEntrepot > 0
+  const stockStatut = stockEntrepot === 0 ? 'rupture' : stockEntrepot < 5 ? 'alerte' : 'ok'
 
   const handleAddToCart = () => {
     // Ici : intégration panier (localStorage ou API)
@@ -305,9 +310,9 @@ export default function ProductPageClient({ product, similaires }: { product: an
               <span style={{ fontSize: 16, color: 'rgba(232,224,213,0.4)', marginLeft: 4 }}>€</span>
               <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.3)', marginTop: 2 }}>
                 Prix TTC · 75 cl
-                {product.stock_total > 0 && (
-                  <span style={{ marginLeft: 12, color: product.stock_statut === 'alerte' ? '#c9b06e' : '#6ec96e' }}>
-                    ● {product.stock_statut === 'alerte' ? 'Dernières bouteilles' : 'En stock'}
+                {stockEntrepot > 0 && (
+                  <span style={{ marginLeft: 12, color: stockStatut === 'alerte' ? '#c9b06e' : '#6ec96e' }}>
+                    ● {stockStatut === 'alerte' ? `Plus que ${stockEntrepot} en stock` : 'En stock'}
                   </span>
                 )}
               </div>
@@ -342,6 +347,25 @@ export default function ProductPageClient({ product, similaires }: { product: an
               color: 'rgba(232,224,213,0.5)', borderRadius: 3, padding: '14px 16px', cursor: 'pointer', fontSize: 16,
             }}>♡</button>
           </div>
+
+          {/* Retrait en cave */}
+          {(stockCaveGilbert > 0 || stockPetiteCave > 0) && (
+            <div style={{ marginTop: 14, padding: '12px 14px', background: 'rgba(110,201,176,0.05)', border: '0.5px solid rgba(110,201,176,0.2)', borderRadius: 3 }}>
+              <div style={{ fontSize: 10, letterSpacing: 1.5, color: 'rgba(110,201,176,0.7)', textTransform: 'uppercase' as const, marginBottom: 6 }}>⚡ Retrait sous 2 h disponible</div>
+              <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 4 }}>
+                {stockCaveGilbert > 0 && (
+                  <div style={{ fontSize: 12, color: '#e8e0d5' }}>
+                    <span style={{ color: '#6ec9b0' }}>●</span> Cave de Gilbert · Marcy-l'Étoile <span style={{ color: 'rgba(232,224,213,0.4)', marginLeft: 6 }}>{stockCaveGilbert} bouteille{stockCaveGilbert > 1 ? 's' : ''}</span>
+                  </div>
+                )}
+                {stockPetiteCave > 0 && (
+                  <div style={{ fontSize: 12, color: '#e8e0d5' }}>
+                    <span style={{ color: '#6ec9b0' }}>●</span> La Petite Cave · L'Arbresle <span style={{ color: 'rgba(232,224,213,0.4)', marginLeft: 6 }}>{stockPetiteCave} bouteille{stockPetiteCave > 1 ? 's' : ''}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Livraison */}
           <div style={{ marginTop: 16, fontSize: 11, color: 'rgba(232,224,213,0.3)', display: 'flex', gap: 20 }}>

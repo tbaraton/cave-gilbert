@@ -2449,7 +2449,7 @@ function AdminPage() {
         { data: stock },
         { data: sitesData },
       ] = await Promise.all([
-        supabase.from('products').select('id, nom, nom_cuvee, contenance, millesime, couleur, categorie, prix_vente_ttc, prix_vente_pro, prix_achat_ht, actif, bio, vegan, casher, naturel, biodynamique, ia_generated, domaine_id, slug, region_id, appellation_id, description_courte, image_url').order('nom').limit(5000),
+        supabase.from('products').select('id, nom, nom_cuvee, contenance, millesime, couleur, categorie, prix_vente_ttc, prix_vente_pro, prix_achat_ht, actif, visible_boutique, bio, vegan, casher, naturel, biodynamique, ia_generated, domaine_id, slug, region_id, appellation_id, description_courte, image_url').order('nom').limit(5000),
         supabase.from('v_stock_agrege').select('*').range(0, 9999),
         supabase.from('sites').select('*').eq('actif', true).order('nom'),
       ])
@@ -3057,6 +3057,7 @@ function AdminPage() {
                         { label: 'Prix', col: 'prix_vente_ttc' },
                         ...sitesUniques.map(s => ({ label: s, col: `stock_${s}` })),
                         { label: 'Total', col: 'stock_total' },
+                        { label: 'En ligne', col: 'visible_boutique' },
                         { label: 'Statut', col: 'actif' },
                         { label: '', col: null },
                       ].map(({ label, col }) => (
@@ -3103,6 +3104,24 @@ function AdminPage() {
                         })}
                         <td style={{ padding: '14px 16px' }}>
                           <StockDot qty={stockParSite.find((s: any) => s.product_id === p.id)?.stock_total || 0} />
+                        </td>
+                        <td style={{ padding: '14px 16px' }}>
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation()
+                              await supabase.from('products').update({ visible_boutique: !p.visible_boutique }).eq('id', p.id)
+                              loadData()
+                            }}
+                            title={p.visible_boutique ? 'Retirer de la boutique en ligne' : 'Publier sur la boutique en ligne'}
+                            style={{
+                              background: p.visible_boutique ? 'rgba(110,201,176,0.15)' : 'transparent',
+                              border: `0.5px solid ${p.visible_boutique ? 'rgba(110,201,176,0.4)' : 'rgba(255,255,255,0.12)'}`,
+                              color: p.visible_boutique ? '#6ec9b0' : 'rgba(232,224,213,0.4)',
+                              borderRadius: 4, padding: '5px 10px', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' as const,
+                            }}
+                          >
+                            {p.visible_boutique ? '🌐 En ligne' : '○ Hors ligne'}
+                          </button>
                         </td>
                         <td style={{ padding: '14px 16px' }}>
                           <Badge label={p.actif ? 'Actif' : 'Inactif'} bg={p.actif ? '#1e2a1e' : '#2a2a2a'} color={p.actif ? '#6ec96e' : '#888'} />

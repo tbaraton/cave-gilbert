@@ -14,6 +14,7 @@ export default async function ProductPage(props: any) {
     .from('products')
     .select('*')
     .eq('slug', slug)
+    .eq('visible_boutique', true)
     .limit(1)
 
   const product = products?.[0]
@@ -33,13 +34,29 @@ export default async function ProductPage(props: any) {
     .eq('product_id', product.id)
     .single()
 
+  // Stock par site pour gérer le retrait 2h sur les lieux de vente
+  const ID_MARCY = 'ee3afa96-0c45-407f-87fc-e503fbada6c4'
+  const ID_ENTREPOT = 'e12d7e47-23dc-4011-95fc-e9e975fc4307'
+  const ID_ARBRESLE = '3097e864-f452-4c2e-9af3-21e26f0330b7'
+  const { data: stocks } = await supabase
+    .from('stock')
+    .select('site_id, quantite')
+    .eq('product_id', product.id)
+    .in('site_id', [ID_MARCY, ID_ENTREPOT, ID_ARBRESLE])
+  const stockByEntity = {
+    entrepot: stocks?.find(s => s.site_id === ID_ENTREPOT)?.quantite || 0,
+    cave_gilbert: stocks?.find(s => s.site_id === ID_MARCY)?.quantite || 0,
+    petite_cave: stocks?.find(s => s.site_id === ID_ARBRESLE)?.quantite || 0,
+  }
+
   const { data: similaires } = await supabase
     .from('products')
     .select('id, nom, millesime, couleur, prix_vente_ttc, image_url, slug')
     .eq('couleur', product.couleur)
     .eq('actif', true)
+    .eq('visible_boutique', true)
     .neq('id', product.id)
     .limit(4)
 
-  return <ProductPageClient product={{ ...product, ...tastingNote }} similaires={similaires || []} />
+  return <ProductPageClient product={{ ...product, ...tastingNote, _stockByEntity: stockByEntity }} similaires={similaires || []} />
 }

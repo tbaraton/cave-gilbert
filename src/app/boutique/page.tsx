@@ -40,17 +40,17 @@ export default function BoutiquePage() {
   useEffect(() => {
     const load = async () => {
       setLoading(true)
+      const ID_ENTREPOT = 'e12d7e47-23dc-4011-95fc-e9e975fc4307'
+
+      // 1) Catalogue de base (filtré sur les produits actifs)
       let query = supabase
         .from('v_catalogue_complet')
         .select('id, nom, millesime, couleur, prix_vente_ttc, image_url, slug, domaine, appellation, region, stock_total, stock_statut, bio, ia_generated, description_courte, aromes, accords')
         .eq('actif', true)
-
       if (couleur) query = query.eq('couleur', couleur)
       if (bioOnly) query = query.eq('bio', true)
-      if (stockOnly) query = query.gt('stock_total', 0)
       if (prixMax) query = query.lte('prix_vente_ttc', prixMax)
       if (search) query = query.ilike('nom', `%${search}%`)
-
       switch (sortBy) {
         case 'prix_asc':       query = query.order('prix_vente_ttc', { ascending: true }); break
         case 'prix_desc':      query = query.order('prix_vente_ttc', { ascending: false }); break
@@ -58,9 +58,34 @@ export default function BoutiquePage() {
         case 'nom_asc':        query = query.order('nom', { ascending: true }); break
         default:               query = query.order('mis_en_avant', { ascending: false }).order('nom')
       }
+      const { data: catalog } = await query.limit(500)
+      const ids = (catalog || []).map((p: any) => p.id)
+      if (ids.length === 0) { setProduits([]); setLoading(false); return }
 
-      const { data } = await query.limit(200)
-      setProduits(data || [])
+      // 2) Filtre boutique : on garde uniquement les produits avec visible_boutique=true
+      const { data: visibles } = await supabase
+        .from('products')
+        .select('id')
+        .in('id', ids)
+        .eq('visible_boutique', true)
+      const visibleIds = new Set((visibles || []).map((v: any) => v.id))
+      let filtered = (catalog || []).filter((p: any) => visibleIds.has(p.id))
+
+      // 3) Le stock affiché en boutique = stock entrepôt (stock disponible à la vente en ligne)
+      const { data: stockEntrepot } = await supabase
+        .from('stock')
+        .select('product_id, quantite')
+        .eq('site_id', ID_ENTREPOT)
+        .in('product_id', Array.from(visibleIds))
+      const stockMap = new Map<string, number>((stockEntrepot || []).map((s: any) => [s.product_id, s.quantite]))
+      filtered = filtered.map((p: any) => {
+        const qte = stockMap.get(p.id) || 0
+        return { ...p, stock_total: qte, stock_statut: qte === 0 ? 'rupture' : qte < 5 ? 'limite' : 'ok' }
+      })
+
+      if (stockOnly) filtered = filtered.filter((p: any) => p.stock_total > 0)
+
+      setProduits(filtered)
       setLoading(false)
     }
     load()
