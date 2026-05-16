@@ -19,6 +19,52 @@ const COULEUR_ACCENT: Record<string, string> = {
   spiritueux: '#6e8b6e', autre: '#888',
 }
 
+// Mapping mot-clé → emoji pour les accords mets-vins
+const ACCORD_ICONS: Array<[RegExp, string]> = [
+  [/foie gras/i, '🦆'],
+  [/viande rouge|b[oœ]uf|agneau|gibier|magret|c[oô]te\s+de\s+b[oœ]uf|entrec[ôo]te|tournedos/i, '🥩'],
+  [/volaille|poulet|canard|dinde|caille|pintade/i, '🍗'],
+  [/poisson|saumon|thon|loup|bar\b|cabillaud|truite|maquereau/i, '🐟'],
+  [/crustac|fruits?\s+de\s+mer|hu[iî]tre|crevet|langoust|homard|moule/i, '🦐'],
+  [/sushi|maki|asiat|thai|wok/i, '🍣'],
+  [/fromage|brie|camembert|comt[ée]|roquefort|ch[èe]vre|beaufort|munster|gruy[èe]re|parmesan/i, '🧀'],
+  [/charcuterie|jambon|saucisson|terrine|p[âa]t[ée]|rillette/i, '🥓'],
+  [/p[âa]tes|risotto|spaghetti|lasagne|gnocchi/i, '🍝'],
+  [/pizza/i, '🍕'],
+  [/burger|hamburger/i, '🍔'],
+  [/l[ée]gume|salade|asperge|champignon|aubergine|courgette/i, '🥗'],
+  [/curry|tajine|couscous|[ée]pic|relev/i, '🌶'],
+  [/dessert|chocolat|tarte|g[âa]teau|cr[èe]me|panna\s+cotta|mousse/i, '🍰'],
+  [/fruit|baie|p[êe]che|abricot|figue|fraise|framboise/i, '🍑'],
+  [/ap[ée]ritif|tapas|toast|gougère|petit\s+four/i, '🍸'],
+  [/oeuf|œuf|omelette/i, '🍳'],
+  [/pain|baguette|sandwich/i, '🥖'],
+  [/grill[ée]?|barbecue|bbq|brais[ée]/i, '🔥'],
+  [/truffe/i, '🍄'],
+]
+
+function iconForAccord(text: string): string {
+  for (const [pattern, icon] of ACCORD_ICONS) if (pattern.test(text)) return icon
+  return '🍽'
+}
+
+// Extrait jusqu'à 5 accords courts depuis un texte rédigé (fallback si pas d'array)
+function extractAccordChips(text: string): string[] {
+  const found = new Set<string>()
+  const PRIORITAIRES = [
+    'Foie gras', 'Viande rouge', 'Volaille', 'Poisson', 'Crustacés', 'Fromage affiné',
+    'Charcuterie', 'Pâtes', 'Risotto', 'Gibier', 'Agneau', 'Bœuf', 'Canard', 'Magret',
+    'Saumon', 'Légumes grillés', 'Tajine', 'Curry', 'Dessert chocolaté', 'Fruits rouges',
+    'Apéritif', 'Sushi', 'Fromage de chèvre',
+  ]
+  for (const label of PRIORITAIRES) {
+    const stem = label.split(/\s+/)[0]
+    if (new RegExp(stem, 'i').test(text)) found.add(label)
+    if (found.size >= 5) break
+  }
+  return Array.from(found)
+}
+
 function ProfilBar({ label, value }: { label: string; value: number | null }) {
   if (!value) return null
   return (
@@ -253,24 +299,36 @@ export default function ProductPageClient({ product, similaires }: { product: an
           {/* Tab : Service & accords mets */}
           {activeTab === 'service' && (
             <div>
-              {/* Accords mets-vins en premier (texte rédigé, prominent) */}
+              {/* Accords mets-vins en premier (texte rédigé + chips visuelles) */}
               {(product.accords_mets || product.accords?.length > 0) && (
                 <div style={{ marginBottom: 28 }}>
                   <div style={{ fontSize: 9, letterSpacing: 2, color: accent, textTransform: 'uppercase' as const, marginBottom: 12, fontWeight: 600 }}>🍽 Accords mets & vins</div>
-                  {product.accords_mets ? (
-                    <p style={{ fontSize: 14, color: '#1a1a1a', lineHeight: 1.8, fontWeight: 300 }}>
+                  {product.accords_mets && (
+                    <p style={{ fontSize: 14, color: '#1a1a1a', lineHeight: 1.8, fontWeight: 300, marginBottom: 16 }}>
                       {product.accords_mets}
                     </p>
-                  ) : (
-                    <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 8 }}>
-                      {product.accords.map((a: string, i: number) => (
-                        <span key={a}>
-                          {i > 0 && <span style={{ color: 'rgba(0,0,0,0.3)', marginRight: 8 }}>·</span>}
-                          <span style={{ fontSize: 13, color: 'rgba(0,0,0,0.75)' }}>{a}</span>
-                        </span>
-                      ))}
-                    </div>
                   )}
+                  {(() => {
+                    const sources: string[] = product.accords?.length > 0
+                      ? product.accords
+                      : extractAccordChips(product.accords_mets || '')
+                    if (sources.length === 0) return null
+                    return (
+                      <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 8 }}>
+                        {sources.map((label: string) => (
+                          <span key={label} style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 6,
+                            background: `${accent}10`, border: `0.5px solid ${accent}30`,
+                            borderRadius: 999, padding: '6px 12px 6px 10px',
+                            fontSize: 12, color: '#1a1a1a',
+                          }}>
+                            <span style={{ fontSize: 16, lineHeight: 1 }}>{iconForAccord(label)}</span>
+                            {label}
+                          </span>
+                        ))}
+                      </div>
+                    )
+                  })()}
                 </div>
               )}
 
