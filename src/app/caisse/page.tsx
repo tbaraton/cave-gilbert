@@ -540,6 +540,36 @@ function HistoriqueAchatsClient({ client, onClose, onAddToCart, onRetourDone }: 
 
   const handleTransformerPiece = async (piece: any, type: 'commande' | 'bl' | 'facture') => {
     const prefix = type === 'commande' ? 'CMD' : type === 'bl' ? 'BL' : 'FAC'
+    const numero = prefix + '-' + new Date().getFullYear() + String(new Date().getMonth()+1).padStart(2,'0') + '-' + String(Math.floor(Math.random()*9999)).padStart(4,'0')
+    const labels: Record<string,string> = { commande: 'commande', bl: 'bon de livraison', facture: 'facture' }
+    if (!confirm('Transformer ' + piece.numero + ' en ' + labels[type] + ' — ' + numero + ' ?')) return
+    const { data: lignes } = await supabase.from('vente_lignes').select('*').eq('vente_id', piece.id)
+    const { data: nouv } = await supabase.from('ventes').insert({
+      numero, user_id: null, customer_id: client.id, site_id: piece.site_id || session.site_id,
+      type_doc: type, statut: 'validee', statut_paiement: 'non_regle',
+      total_ht: parseFloat(piece.total_ttc) / 1.20, total_ttc: parseFloat(piece.total_ttc),
+      notes: 'Issu de ' + (piece.type_doc === 'devis' ? 'devis' : piece.type_doc) + ' ' + piece.numero,
+    }).select('id').single()
+    if (nouv && lignes) {
+      await supabase.from('vente_lignes').insert(lignes.map((l: any) => ({ vente_id: nouv.id, product_id: l.product_id, nom_produit: l.nom_produit, millesime: l.millesime, quantite: l.quantite, prix_unitaire_ttc: l.prix_unitaire_ttc, remise_pct: l.remise_pct, total_ttc: l.total_ttc })))
+      if (type === 'bl' || type === 'facture') {
+        for (const l of lignes) {
+          if (l.product_id && !String(l.product_id).startsWith('divers-')) {
+            await supabase.rpc('move_stock', { p_product_id: l.product_id, p_site_id: piece.site_id || session.site_id, p_raison: 'vente', p_quantite: l.quantite, p_note: piece.numero + ' -> ' + numero, p_order_id: null, p_transfer_id: null })
+          }
+        }
+      }
+      if (piece.type_doc === 'devis' || piece.type_doc === 'commande') {
+        await supabase.from('ventes').update({ statut: 'annulee' }).eq('id', piece.id)
+      }
+    }
+    setActionMsg('✓ ' + piece.numero + ' transformé en ' + labels[type] + ' — ' + numero)
+    setSelectedPiece(null)
+    const { data: fresh } = await supabase.from('ventes').select('id, numero, created_at, type_doc, statut, statut_paiement, total_ttc, notes, site_id').eq('customer_id', client.id).order('created_at', { ascending: false }).limit(100)
+    setPieces(fresh || [])
+    setTimeout(() => setActionMsg(''), 3000)
+  } type: 'commande' | 'bl' | 'facture') => {
+    const prefix = type === 'commande' ? 'CMD' : type === 'bl' ? 'BL' : 'FAC'
     const numero = `${prefix}-${new Date().getFullYear()}${String(new Date().getMonth()+1).padStart(2,'0')}-${String(Math.floor(Math.random()*9999)).padStart(4,'0')}`
     const labels: Record<string,string> = { commande: 'commande', bl: 'bon de livraison', facture: 'facture' }
     if (!confirm(`Transformer ${piece.numero} en ${labels[type]} — ${numero} ?`)) return
