@@ -539,10 +539,6 @@ function HistoriqueAchatsClient({ client, onClose, onAddToCart, onRetourDone }: 
   }
 
   const handleTransformerPiece = async (piece: any,
-    const typeLabel: Record<string,string> = { ticket: 'TICKET', devis: 'DEVIS', commande: 'COMMANDE', bl: 'BON DE LIVRAISON', facture: 'FACTURE', avoir: 'AVOIR' }
-    const clientNomStr = client.est_societe ? client.raison_sociale : `${client.prenom || ''} ${client.nom || ''}`.trim()
-    const lignesHtml = lignes.map(l => `<tr><td>${l.nom_produit}${l.millesime ? ' ' + l.millesime : ''}</td><td style="text-align:center">${l.quantite}</td><td style="text-align:right">${parseFloat(l.prix_unitaire_ttc).toFixed(2)} EUR</td>${l.remise_pct > 0 ? `<td style="text-align:right">${l.remise_pct}%</td>` : '<td></td>'}<td style="text-align:right"><b>${parseFloat(l.total_ttc).toFixed(2)} EUR</b></td></tr>`).join('')
-    const sourceRef = piece.notes && piece.notes.startsWith('Issu') ? `<div style="font-size:11px;color:#6e9ec9;margin-bottom:4px">Ref: ${piece.notes}</div>` : ''
     const corpsDoc = piece.notes && !piece.notes.startsWith('Issu')
       ? `<div style="margin:16px 0;padding:12px;background:#f9f6f0;border-left:3px solid #c9a96e;font-style:italic;color:#555">${piece.notes}<br/><b>Total : ${parseFloat(piece.total_ttc).toFixed(2)} EUR TTC</b></div>`
       : lignes.length > 0
