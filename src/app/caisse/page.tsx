@@ -449,6 +449,7 @@ function HistoriqueAchatsClient({ client, onClose, onAddToCart, onRetourDone }: 
   const [loading, setLoading] = useState(true)
   const [onglet, setOnglet] = useState<'pieces' | 'locations'>('pieces')
   const [selectedPiece, setSelectedPiece] = useState<any>(null)
+  const [lignesSelectedPiece, setLignesSelectedPiece] = useState<any[]>([])
   const [actionMsg, setActionMsg] = useState('')
   const [retourResa, setRetourResa] = useState<any>(null)
 
@@ -568,7 +569,117 @@ function HistoriqueAchatsClient({ client, onClose, onAddToCart, onRetourDone }: 
             </div>
             <button onClick={() => setSelectedPiece(null)} style={{ background: 'transparent', border: 'none', color: 'rgba(232,224,213,0.4)', fontSize: 18, cursor: 'pointer' }}>✕</button>
           </div>
-          <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', marginBottom: 8 }}>TRANSFORMER EN :</div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+            <button onClick={() => {
+              const typeLabel: Record<string,string> = { ticket: 'TICKET', devis: 'DEVIS', commande: 'COMMANDE', bl: 'BON DE LIVRAISON', facture: 'FACTURE', avoir: 'AVOIR' }
+              const clientNomStr = client.est_societe ? client.raison_sociale : `${client.prenom || ''} ${client.nom || ''}`.trim()
+              const lignesHtml = lignesSelectedPiece.map(l => `<tr><td>${l.nom_produit}${l.millesime ? ' ' + l.millesime : ''}</td><td style="text-align:center">${l.quantite}</td><td style="text-align:right">${parseFloat(l.prix_unitaire_ttc).toFixed(2)} €</td>${l.remise_pct > 0 ? `<td style="text-align:right">${l.remise_pct}%</td>` : '<td></td>'}<td style="text-align:right"><b>${parseFloat(l.total_ttc).toFixed(2)} €</b></td></tr>`).join('')
+              const html = `<html><head><style>
+                body{font-family:Arial,sans-serif;font-size:12px;max-width:210mm;margin:0 auto;padding:16mm;color:#222}
+                .header{display:flex;justify-content:space-between;margin-bottom:28px}
+                .logo{font-family:Georgia,serif;font-size:22px;color:#8B6914;letter-spacing:2px}
+                .type{font-size:26px;font-weight:bold;color:#8B6914;margin:20px 0 8px}
+                .numero{font-size:14px;color:#666;margin-bottom:20px}
+                .ref{font-size:11px;color:#6e9ec9;margin-bottom:4px}
+                table{width:100%;border-collapse:collapse;margin:16px 0}
+                th{background:#f5f0e8;padding:8px;text-align:left;border-bottom:2px solid #c9a96e;font-size:11px;letter-spacing:1px;text-transform:uppercase}
+                td{padding:8px;border-bottom:1px solid #eee;font-size:13px}
+                .total-bloc{text-align:right;margin-top:16px;padding-top:12px;border-top:1px solid #ddd}
+                .total-ligne{display:flex;justify-content:flex-end;gap:40px;margin:4px 0;font-size:13px;color:#666}
+                .total-ttc{display:flex;justify-content:flex-end;gap:40px;margin:10px 0;font-size:20px;font-weight:bold;color:#8B6914;font-family:Georgia,serif}
+                .footer{margin-top:40px;font-size:10px;color:#999;border-top:1px solid #eee;padding-top:10px;text-align:center}
+                .note{margin:16px 0;padding:12px;background:#f9f6f0;border-left:3px solid #c9a96e;font-style:italic;color:#555}
+                @media print{body{padding:0}}
+              </style></head><body>
+              <div class="header">
+                <div>
+                  <div class="logo">Cave de Gilbert</div>
+                  <div style="font-size:11px;color:#888;margin-top:4px">Marcy-l'Étoile</div>
+                </div>
+                <div style="text-align:right">
+                  <div style="font-size:14px;font-weight:600">${clientNomStr}</div>
+                  <div style="font-size:12px;color:#666">${client.email || ''}</div>
+                  <div style="font-size:12px;color:#666">${client.telephone || ''}</div>
+                  ${client.adresse ? `<div style="font-size:11px;color:#888;margin-top:4px">${client.adresse}<br/>${client.code_postal || ''} ${client.ville || ''}</div>` : ''}
+                </div>
+              </div>
+              <div class="type">${typeLabel[selectedPiece.type_doc] || selectedPiece.type_doc.toUpperCase()}</div>
+              <div class="numero">N° ${selectedPiece.numero} &nbsp;·&nbsp; ${new Date(selectedPiece.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}</div>
+              ${selectedPiece.notes && selectedPiece.notes.startsWith('Issu') ? `<div class="ref">↳ ${selectedPiece.notes}</div>` : ''}
+              ${selectedPiece.notes && !selectedPiece.notes.startsWith('Issu') ? `<div class="note">${selectedPiece.notes}<br/><b>Total : ${parseFloat(selectedPiece.total_ttc).toFixed(2)} € TTC</b></div>` : lignesSelectedPiece.length > 0 ? `
+              <table>
+                <thead><tr><th>Désignation</th><th style="text-align:center">Qté</th><th style="text-align:right">P.U. TTC</th><th style="text-align:right">Remise</th><th style="text-align:right">Total TTC</th></tr></thead>
+                <tbody>${lignesHtml}</tbody>
+              </table>
+              <div class="total-bloc">
+                <div class="total-ligne"><span>Montant HT</span><span>${(parseFloat(selectedPiece.total_ttc)/1.20).toFixed(2)} €</span></div>
+                <div class="total-ligne"><span>TVA 20%</span><span>${(parseFloat(selectedPiece.total_ttc) - parseFloat(selectedPiece.total_ttc)/1.20).toFixed(2)} €</span></div>
+                <div class="total-ttc"><span>TOTAL TTC</span><span>${parseFloat(selectedPiece.total_ttc).toFixed(2)} €</span></div>
+              </div>` : ''}
+              <div class="footer">Cave de Gilbert &nbsp;·&nbsp; Document généré le ${new Date().toLocaleDateString('fr-FR')}</div>
+              </body></html>`
+              const win = window.open('', '_blank')
+              if (win) { win.document.write(html); win.document.close(); win.print() }
+            }} style={{ flex: 1, background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.15)', borderRadius: 8, color: 'rgba(232,224,213,0.7)', padding: '10px', fontSize: 13, cursor: 'pointer' }}>
+              🖨 Imprimer / PDF
+            </button>
+          </div>
+          {selectedPiece.type_doc !== 'facture' && selectedPiece.type_doc !== 'avoir' && <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+            <button onClick={() => {
+              const typeLabel: Record<string,string> = { ticket: 'TICKET', devis: 'DEVIS', commande: 'COMMANDE', bl: 'BON DE LIVRAISON', facture: 'FACTURE', avoir: 'AVOIR' }
+              const clientNomStr = client.est_societe ? client.raison_sociale : `${client.prenom || ''} ${client.nom || ''}`.trim()
+              const lignesHtml = lignesSelectedPiece.map(l => `<tr><td>${l.nom_produit}${l.millesime ? ' ' + l.millesime : ''}</td><td style="text-align:center">${l.quantite}</td><td style="text-align:right">${parseFloat(l.prix_unitaire_ttc).toFixed(2)} €</td>${l.remise_pct > 0 ? `<td style="text-align:right">${l.remise_pct}%</td>` : '<td></td>'}<td style="text-align:right"><b>${parseFloat(l.total_ttc).toFixed(2)} €</b></td></tr>`).join('')
+              const html = `<html><head><style>
+                body{font-family:Arial,sans-serif;font-size:12px;max-width:210mm;margin:0 auto;padding:16mm;color:#222}
+                .header{display:flex;justify-content:space-between;margin-bottom:28px}
+                .logo{font-family:Georgia,serif;font-size:22px;color:#8B6914;letter-spacing:2px}
+                .type{font-size:26px;font-weight:bold;color:#8B6914;margin:20px 0 8px}
+                .numero{font-size:14px;color:#666;margin-bottom:20px}
+                .ref{font-size:11px;color:#6e9ec9;margin-bottom:4px}
+                table{width:100%;border-collapse:collapse;margin:16px 0}
+                th{background:#f5f0e8;padding:8px;text-align:left;border-bottom:2px solid #c9a96e;font-size:11px;letter-spacing:1px;text-transform:uppercase}
+                td{padding:8px;border-bottom:1px solid #eee;font-size:13px}
+                .total-bloc{text-align:right;margin-top:16px;padding-top:12px;border-top:1px solid #ddd}
+                .total-ligne{display:flex;justify-content:flex-end;gap:40px;margin:4px 0;font-size:13px;color:#666}
+                .total-ttc{display:flex;justify-content:flex-end;gap:40px;margin:10px 0;font-size:20px;font-weight:bold;color:#8B6914;font-family:Georgia,serif}
+                .footer{margin-top:40px;font-size:10px;color:#999;border-top:1px solid #eee;padding-top:10px;text-align:center}
+                .note{margin:16px 0;padding:12px;background:#f9f6f0;border-left:3px solid #c9a96e;font-style:italic;color:#555}
+                @media print{body{padding:0}}
+              </style></head><body>
+              <div class="header">
+                <div>
+                  <div class="logo">Cave de Gilbert</div>
+                  <div style="font-size:11px;color:#888;margin-top:4px">Marcy-l'Étoile</div>
+                </div>
+                <div style="text-align:right">
+                  <div style="font-size:14px;font-weight:600">${clientNomStr}</div>
+                  <div style="font-size:12px;color:#666">${client.email || ''}</div>
+                  <div style="font-size:12px;color:#666">${client.telephone || ''}</div>
+                  ${client.adresse ? `<div style="font-size:11px;color:#888;margin-top:4px">${client.adresse}<br/>${client.code_postal || ''} ${client.ville || ''}</div>` : ''}
+                </div>
+              </div>
+              <div class="type">${typeLabel[selectedPiece.type_doc] || selectedPiece.type_doc.toUpperCase()}</div>
+              <div class="numero">N° ${selectedPiece.numero} &nbsp;·&nbsp; ${new Date(selectedPiece.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}</div>
+              ${selectedPiece.notes && selectedPiece.notes.startsWith('Issu') ? `<div class="ref">↳ ${selectedPiece.notes}</div>` : ''}
+              ${selectedPiece.notes && !selectedPiece.notes.startsWith('Issu') ? `<div class="note">${selectedPiece.notes}<br/><b>Total : ${parseFloat(selectedPiece.total_ttc).toFixed(2)} € TTC</b></div>` : lignesSelectedPiece.length > 0 ? `
+              <table>
+                <thead><tr><th>Désignation</th><th style="text-align:center">Qté</th><th style="text-align:right">P.U. TTC</th><th style="text-align:right">Remise</th><th style="text-align:right">Total TTC</th></tr></thead>
+                <tbody>${lignesHtml}</tbody>
+              </table>
+              <div class="total-bloc">
+                <div class="total-ligne"><span>Montant HT</span><span>${(parseFloat(selectedPiece.total_ttc)/1.20).toFixed(2)} €</span></div>
+                <div class="total-ligne"><span>TVA 20%</span><span>${(parseFloat(selectedPiece.total_ttc) - parseFloat(selectedPiece.total_ttc)/1.20).toFixed(2)} €</span></div>
+                <div class="total-ttc"><span>TOTAL TTC</span><span>${parseFloat(selectedPiece.total_ttc).toFixed(2)} €</span></div>
+              </div>` : ''}
+              <div class="footer">Cave de Gilbert &nbsp;·&nbsp; Document généré le ${new Date().toLocaleDateString('fr-FR')}</div>
+              </body></html>`
+              const win = window.open('', '_blank')
+              if (win) { win.document.write(html); win.document.close(); win.print() }
+            }} style={{ flex: 1, background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.15)', borderRadius: 8, color: 'rgba(232,224,213,0.7)', padding: '10px', fontSize: 13, cursor: 'pointer' }}>
+              🖨 Imprimer / PDF
+            </button>
+          </div>
+          {selectedPiece.type_doc !== 'facture' && selectedPiece.type_doc !== 'avoir' && <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', marginBottom: 8 }}>TRANSFORMER EN :</div>}}
           <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
             {selectedPiece.type_doc !== 'commande' && selectedPiece.type_doc !== 'bl' && selectedPiece.type_doc !== 'facture' && (
               <button onClick={() => handleTransformerPiece(selectedPiece, 'commande')} style={{ background: 'rgba(201,169,110,0.08)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 8, color: '#c9b06e', padding: '10px 14px', fontSize: 13, cursor: 'pointer', textAlign: 'left' as const }}>📦 Commande (réservation stock)</button>
@@ -595,7 +706,7 @@ function HistoriqueAchatsClient({ client, onClose, onAddToCart, onRetourDone }: 
             const typeIcon: Record<string, string> = { ticket: '🧾', devis: '📄', commande: '📦', bl: '🚚', facture: '💼', avoir: '↩' }
             const sourceDevis = v.notes && v.notes.match(/Issu du devis (DEV-[\w-]+)/)
             return (
-              <div key={v.id} onClick={() => !estTransforme && v.statut !== 'annulee' && setSelectedPiece(v)} style={{ padding: '12px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.04)', opacity: estTransforme ? 0.45 : 1, background: estTransforme ? 'rgba(255,255,255,0.01)' : 'transparent', cursor: estTransforme || v.statut === 'annulee' ? 'default' : 'pointer' }}
+              <div key={v.id} onClick={async () => { if (estTransforme || v.statut === 'annulee') return; setSelectedPiece(v); const { data: l } = await supabase.from('vente_lignes').select('*').eq('vente_id', v.id); setLignesSelectedPiece(l || []) }} style={{ padding: '12px 16px', borderBottom: '0.5px solid rgba(255,255,255,0.04)', opacity: estTransforme ? 0.45 : 1, background: estTransforme ? 'rgba(255,255,255,0.01)' : 'transparent', cursor: estTransforme || v.statut === 'annulee' ? 'default' : 'pointer' }}
                 onMouseEnter={e => { if (!estTransforme && v.statut !== 'annulee') (e.currentTarget as HTMLDivElement).style.background = 'rgba(201,169,110,0.05)' }}
                 onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = estTransforme ? 'rgba(255,255,255,0.01)' : 'transparent' }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
