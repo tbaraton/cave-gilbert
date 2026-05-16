@@ -3030,8 +3030,9 @@ ${sep}<div class="center" style="font-size:9px;color:#444;line-height:1.7;margin
         <div style={{padding:'10px 16px',borderBottom:'0.5px solid rgba(255,255,255,0.07)'}}>
           <div style={{display:'flex',gap:6}}>
             {DOCS.map(d=>(
-              <button key={d} onClick={()=>setTypeDoc(d)} style={{flex:1,background:typeDoc===d?'rgba(201,169,110,0.15)':'rgba(255,255,255,0.04)',border:`1px solid ${typeDoc===d?'#c9a96e':'rgba(255,255,255,0.08)'}`,color:typeDoc===d?'#c9a96e':'rgba(232,224,213,0.5)',borderRadius:6,padding:'8px 4px',fontSize:11,cursor:'pointer'}}>
-                {d==='ticket'?'🧾':d==='devis'?'📄':d==='commande'?'📦':d==='bl'?'🚚':'💼'} {d.toUpperCase()}
+              <button key={d} onClick={()=>setTypeDoc(d)} style={{flex:1,background:typeDoc===d?'rgba(201,169,110,0.15)':'rgba(255,255,255,0.04)',border:`1px solid ${typeDoc===d?'#c9a96e':'rgba(255,255,255,0.08)'}`,color:typeDoc===d?'#c9a96e':'rgba(232,224,213,0.5)',borderRadius:6,padding:'8px 4px',fontSize:11,cursor:'pointer',display:'flex',flexDirection:'column' as const,alignItems:'center',gap:3,lineHeight:1.1}}>
+                <span style={{fontSize:16}}>{d==='ticket'?'🧾':d==='devis'?'📄':d==='commande'?'📦':d==='bl'?'🚚':'💼'}</span>
+                <span>{d.toUpperCase()}</span>
               </button>
             ))}
           </div>
