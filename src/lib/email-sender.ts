@@ -46,10 +46,28 @@ export function buildSubject(typeDoc: string, numero: string, siteNom: string) {
   return `${lib} ${numero} — ${entite}`
 }
 
+export function buildEmailBody(opts: { typeDoc: string; numero: string; clientNom?: string; siteNom: string }) {
+  const e = pickEntity(opts.siteNom)
+  const lib = (LIBELLES[(opts.typeDoc as DocType)] || 'document').toLowerCase()
+  const hello = opts.clientNom ? `Bonjour ${opts.clientNom},` : 'Bonjour,'
+  return `<div style="font-family:Georgia,serif;max-width:600px;margin:0 auto;color:#222;line-height:1.6;padding:20px">
+<p>${hello}</p>
+<p>Veuillez trouver ci-joint votre ${lib} ${opts.numero}.</p>
+<p style="color:#666;font-size:13px;margin-top:24px">Cordialement,<br>${e.fromName}</p>
+</div>`
+}
+
+export function buildPdfFilename(typeDoc: string, numero: string) {
+  const lib = LIBELLES[(typeDoc as DocType)] || 'Document'
+  return `${lib.replace(/\s+/g, '-')}-${numero}.pdf`
+}
+
 export async function envoyerDocument(params: {
   to: string
   subject: string
-  html: string
+  pdfHtml: string
+  pdfFilename?: string
+  emailBody?: string
   siteNom: string
   usage?: 'client' | 'commande' | 'comptable'
 }) {
@@ -57,7 +75,15 @@ export async function envoyerDocument(params: {
   const res = await fetch('/api/envoyer-document', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from, to: params.to, subject: params.subject, html: params.html, replyTo }),
+    body: JSON.stringify({
+      from,
+      to: params.to,
+      subject: params.subject,
+      html: params.emailBody,
+      pdfHtml: params.pdfHtml,
+      pdfFilename: params.pdfFilename,
+      replyTo,
+    }),
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data?.error || 'Erreur envoi email')

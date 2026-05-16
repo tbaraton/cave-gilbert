@@ -5,7 +5,8 @@ import { ModuleLocation } from './caisse-location'
 import { ModuleRetourLocation } from './retour-location'
 import { ModuleLivraisonLocation } from './livraison-location'
 import { createClient } from '@supabase/supabase-js'
-import { envoyerDocument, buildSubject } from '@/lib/email-sender'
+import { envoyerDocument, buildSubject, buildEmailBody, buildPdfFilename } from '@/lib/email-sender'
+import { genererFactureCaisseHtml } from '@/lib/pdf-templates'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -1257,18 +1258,18 @@ ${detail.type_doc === 'devis' ? `
                     if (!dest) { alert('Adresse email manquante'); return }
                     if (!detail) return
                     const siteLabel = siteLabels[detail.site_id] || ''
-                    let html: string
-                    if (detail.type_doc === 'ticket') {
-                      const siteInfo = getSiteInfo(siteLabel)
-                      const dd = new Date(detail.created_at)
-                      const ls = (lignesDetail || []).map((l: any) => ({ qte: l.quantite, nom: l.nom_produit, millesime: l.millesime, totalTTC: parseFloat(l.total_ttc) }))
-                      const ps = (paiementsDetail || []).map((p: any) => ({ label: p.mode, montant: parseFloat(p.montant) }))
-                      html = genererHTMLTicket({ numero: detail.numero, dateStr: dd.toLocaleDateString('fr-FR'), heureStr: dd.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }), vendeur: detail.user?.prenom, lignes: ls, totalTTC: parseFloat(detail.total_ttc), paiements: ps, siteInfo, notes: detail.notes || undefined })
-                    } else {
-                      html = genererFactureCaisse(detail, lignesDetail, paiementsDetail, siteLabel)
-                    }
+                    const siteInfo = getSiteInfo(siteLabel)
+                    const pdfHtml = genererFactureCaisseHtml(detail, lignesDetail, paiementsDetail, siteInfo)
+                    const clientNom = detail.customer ? (detail.customer.est_societe ? detail.customer.raison_sociale : `${detail.customer.prenom || ''} ${detail.customer.nom || ''}`.trim()) : undefined
                     try {
-                      await envoyerDocument({ to: dest, subject: buildSubject(detail.type_doc, detail.numero, siteLabel), html, siteNom: siteLabel })
+                      await envoyerDocument({
+                        to: dest,
+                        subject: buildSubject(detail.type_doc, detail.numero, siteLabel),
+                        pdfHtml,
+                        pdfFilename: buildPdfFilename(detail.type_doc, detail.numero),
+                        emailBody: buildEmailBody({ typeDoc: detail.type_doc, numero: detail.numero, clientNom, siteNom: siteLabel }),
+                        siteNom: siteLabel,
+                      })
                       alert(`Document ${detail.numero} envoyé à ${dest}`)
                       setShowEmail(false)
                     } catch (e: any) {
@@ -2441,18 +2442,24 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
                   total_ht: totalNet / 1.20, total_ttc: totalNet,
                 })
                 const siteInfo = getSiteInfo(session.site_nom || '')
-                const lignesHtml = lignes.map(l => `<tr><td style="padding:6px 8px;border-bottom:1px solid #eee">${l.qte}× ${l.nom_modifie || l.nom}${l.millesime ? ' ' + l.millesime : ''}</td><td style="padding:6px 8px;border-bottom:1px solid #eee;text-align:right">${l.total.toFixed(2)}€</td></tr>`).join('')
-                const clientNom = client ? (client.est_societe ? client.raison_sociale : `${client.prenom} ${client.nom}`) : 'Client'
-                const html = `<div style="font-family:Georgia,serif;max-width:600px;margin:0 auto;color:#222">
-<h2 style="color:#8a6a3e">Devis ${numero}</h2>
-<p>Bonjour ${clientNom},</p>
-<p>Veuillez trouver ci-dessous le récapitulatif de votre devis. Devis valable 2 semaines.</p>
-<table style="width:100%;border-collapse:collapse;margin:16px 0">${lignesHtml}
-<tr><td style="padding:10px 8px;font-weight:bold">Total TTC</td><td style="padding:10px 8px;font-weight:bold;text-align:right">${totalNet.toFixed(2)}€</td></tr></table>
-<p style="color:#666;font-size:13px">${siteInfo.nom} — ${siteInfo.adresse}, ${siteInfo.ville}<br>${siteInfo.tel} · ${siteInfo.email}<br>SIRET ${siteInfo.siret}</p>
-</div>`
+                const detail = {
+                  numero, type_doc: 'devis', created_at: new Date().toISOString(),
+                  total_ttc: totalNet,
+                  customer: client ? { est_societe: client.est_societe, raison_sociale: client.raison_sociale, prenom: client.prenom, nom: client.nom, email: client.email, telephone: client.telephone } : null,
+                  user: { prenom: vendeur?.prenom },
+                }
+                const lignesPdf = lignes.map(l => ({ quantite: l.qte, nom_produit: l.nom_modifie || l.nom, millesime: l.millesime, prix_unitaire_ttc: l.prix_unit, total_ttc: l.total, remise_pct: l.remise_pct }))
+                const pdfHtml = genererFactureCaisseHtml(detail, lignesPdf, [], siteInfo)
+                const clientNom = client ? (client.est_societe ? client.raison_sociale : `${client.prenom} ${client.nom}`) : undefined
                 try {
-                  await envoyerDocument({ to: dest, subject: buildSubject('devis', numero, session.site_nom || ''), html, siteNom: session.site_nom || '' })
+                  await envoyerDocument({
+                    to: dest,
+                    subject: buildSubject('devis', numero, session.site_nom || ''),
+                    pdfHtml,
+                    pdfFilename: buildPdfFilename('devis', numero),
+                    emailBody: buildEmailBody({ typeDoc: 'devis', numero, clientNom, siteNom: session.site_nom || '' }),
+                    siteNom: session.site_nom || '',
+                  })
                   setShowDevisEmail(false)
                   alert(`Devis ${numero} envoyé à ${dest}`)
                   resetVente()
@@ -2593,12 +2600,26 @@ function CaissePrincipale({ user, session, onFermer }: { user: User; session: Se
                       if (!dest) { alert('Adresse email manquante'); return }
                       if (!derniereVente) { setShowEmailVente(false); return }
                       const siteInfo = getSiteInfo(session.site_nom || '')
-                      const d = new Date()
-                      const lignesMap = (derniereVente.lignes || []).map((l: any) => ({ qte: l.qte, nom: l.nom_modifie || l.nom, millesime: l.millesime, totalTTC: l.total }))
-                      const paiementsMap = (derniereVente.paiements || []).map((p: any) => ({ label: p.label || p.mode, montant: p.montant }))
-                      const html = genererHTMLTicket({ numero: derniereVente.numero, dateStr: d.toLocaleDateString('fr-FR'), heureStr: d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }), vendeur: vendeur?.prenom, lignes: lignesMap, totalTTC: derniereVente.total, paiements: paiementsMap, siteInfo, notes: noteGlobaleActive && noteGlobale ? noteGlobale : undefined })
+                      const detail = {
+                        numero: derniereVente.numero, type_doc: 'ticket', created_at: new Date().toISOString(),
+                        total_ttc: derniereVente.total,
+                        notes: noteGlobaleActive && noteGlobale ? noteGlobale : undefined,
+                        customer: client ? { est_societe: client.est_societe, raison_sociale: client.raison_sociale, prenom: client.prenom, nom: client.nom, email: client.email, telephone: client.telephone } : null,
+                        user: { prenom: vendeur?.prenom },
+                      }
+                      const lignesPdf = (derniereVente.lignes || []).map((l: any) => ({ quantite: l.qte, nom_produit: l.nom_modifie || l.nom, millesime: l.millesime, prix_unitaire_ttc: l.prix_unit, total_ttc: l.total, remise_pct: l.remise_pct }))
+                      const paiementsPdf = (derniereVente.paiements || []).map((p: any) => ({ mode: p.mode || p.label, montant: p.montant }))
+                      const pdfHtml = genererFactureCaisseHtml(detail, lignesPdf, paiementsPdf, siteInfo)
+                      const clientNom = client ? (client.est_societe ? client.raison_sociale : `${client.prenom} ${client.nom}`) : undefined
                       try {
-                        await envoyerDocument({ to: dest, subject: buildSubject('ticket', derniereVente.numero, session.site_nom || ''), html, siteNom: session.site_nom || '' })
+                        await envoyerDocument({
+                          to: dest,
+                          subject: buildSubject('ticket', derniereVente.numero, session.site_nom || ''),
+                          pdfHtml,
+                          pdfFilename: buildPdfFilename('ticket', derniereVente.numero),
+                          emailBody: buildEmailBody({ typeDoc: 'ticket', numero: derniereVente.numero, clientNom, siteNom: session.site_nom || '' }),
+                          siteNom: session.site_nom || '',
+                        })
                         alert(`Ticket envoyé à ${dest}`)
                         setShowEmailVente(false)
                       } catch (e: any) {
@@ -3138,7 +3159,7 @@ ${sep}<div class="center" style="font-size:9px;color:#444;line-height:1.7;margin
         </div>
       </div>
       {alertesClient&&(<div style={{position:'fixed' as const,inset:0,background:'rgba(0,0,0,0.85)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:200}}><div style={{background:'#18130e',border:'0.5px solid rgba(201,169,110,0.3)',borderRadius:12,padding:'28px',maxWidth:460,width:'90%'}}><div style={{fontFamily:'Georgia, serif',fontSize:20,color:'#f0e8d8',marginBottom:16}}>⚠ Alertes — {alertesClient.client.est_societe?alertesClient.client.raison_sociale:`${alertesClient.client.prenom} ${alertesClient.client.nom}`}</div>{alertesClient.bons?.length>0&&<div style={{marginBottom:12}}><div style={{fontSize:12,color:'#c9a96e',marginBottom:8}}>🎟 BONS D'ACHAT</div>{alertesClient.bons.map((b:any)=><div key={b.id} style={{background:'rgba(201,169,110,0.1)',borderRadius:6,padding:'10px',marginBottom:6,color:'#c9a96e',fontFamily:'Georgia, serif',fontSize:16}}>{b.montant}€ — {b.code}</div>)}</div>}{alertesClient.demandes?.length>0&&<div style={{marginBottom:12}}><div style={{fontSize:12,color:'#6e9ec9',marginBottom:8}}>📋 DEMANDES</div>{alertesClient.demandes.map((d:any)=><div key={d.id} style={{background:'rgba(110,158,201,0.08)',borderRadius:6,padding:'10px',marginBottom:6,fontSize:14}}>{d.titre}</div>)}</div>}{alertesClient.factures?.length>0&&<div style={{marginBottom:12}}><div style={{fontSize:12,color:'#c96e6e',marginBottom:8}}>💳 FACTURES NON RÉGLÉES</div>{alertesClient.factures.map((f:any)=><div key={f.id} style={{background:'rgba(201,110,110,0.08)',borderRadius:6,padding:'10px',marginBottom:6,fontSize:14,color:'#c96e6e'}}>{f.numero} — {parseFloat(f.total_ttc).toFixed(2)}€</div>)}</div>}<div style={{display:'flex',gap:10,marginTop:20}}><button onClick={()=>setAlertesClient(null)} style={{flex:1,background:'transparent',border:'0.5px solid rgba(255,255,255,0.15)',color:'rgba(232,224,213,0.5)',borderRadius:8,padding:'12px',fontSize:13,cursor:'pointer'}}>← Retour</button><button onClick={()=>{setClient(alertesClient.client);setAlertesClient(null);setShowClientPanel(false)}} style={{flex:2,background:'#c9a96e',color:'#0d0a08',border:'none',borderRadius:8,padding:'12px',fontSize:14,cursor:'pointer',fontWeight:600}}>Continuer →</button></div></div></div>)}
-      {venteOk&&derniereVente&&(<div style={{position:'fixed' as const,inset:0,background:'rgba(0,0,0,0.88)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:999,fontFamily:"'DM Sans', system-ui, sans-serif"}}><div style={{background:'#18130e',border:'0.5px solid rgba(201,169,110,0.3)',borderRadius:16,padding:'36px 40px',maxWidth:420,width:'90%'}}><div style={{textAlign:'center' as const,marginBottom:28}}><div style={{fontSize:56,marginBottom:8}}>✓</div><div style={{fontFamily:'Georgia, serif',fontSize:22,color:'#6ec96e'}}>Vente enregistrée !</div><div style={{fontSize:14,color:'rgba(232,224,213,0.5)',marginTop:4}}>{derniereVente.numero} — {fmt(derniereVente.total)}</div></div><div style={{display:'flex',flexDirection:'column' as const,gap:10}}><button onClick={()=>imprimerTicket(derniereVente)} style={{width:'100%',background:'rgba(255,255,255,0.06)',border:'0.5px solid rgba(255,255,255,0.12)',borderRadius:10,color:'#e8e0d5',padding:'14px',fontSize:15,cursor:'pointer'}}>🖨 Imprimer le ticket</button>{bonCadeauCree&&<button onClick={()=>imprimerBonCadeau(bonCadeauCree.code,bonCadeauCree.montant)} style={{width:'100%',background:'rgba(201,110,201,0.08)',border:'0.5px solid rgba(201,110,201,0.3)',borderRadius:10,color:'#c96ec9',padding:'14px',fontSize:15,cursor:'pointer'}}>🎁 Imprimer le bon cadeau</button>}{!showEmailVente?(<button onClick={()=>setShowEmailVente(true)} style={{width:'100%',background:'rgba(255,255,255,0.06)',border:'0.5px solid rgba(255,255,255,0.12)',borderRadius:10,color:'#e8e0d5',padding:'14px',fontSize:15,cursor:'pointer'}}>📧 Envoyer par email</button>):(<div style={{display:'flex',gap:8}}><input type="email" value={emailVente} onChange={e=>setEmailVente(e.target.value)} placeholder={client?.email||'email@client.fr'} style={{flex:1,background:'rgba(255,255,255,0.06)',border:'0.5px solid rgba(201,169,110,0.3)',borderRadius:8,color:'#f0e8d8',fontSize:14,padding:'12px'}}/><button onClick={async()=>{const dest=(emailVente||client?.email||'').trim();if(!dest){alert('Adresse email manquante');return}if(!derniereVente){setShowEmailVente(false);return}const siteInfo=getSiteInfo(session.site_nom||'');const d=new Date();const lignesMap=(derniereVente.lignes||[]).map((l:any)=>({qte:l.qte,nom:l.nom_modifie||l.nom,millesime:l.millesime,totalTTC:l.total}));const paiementsMap=(derniereVente.paiements||[]).map((p:any)=>({label:p.label||p.mode,montant:p.montant}));const html=genererHTMLTicket({numero:derniereVente.numero,dateStr:d.toLocaleDateString('fr-FR'),heureStr:d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}),vendeur:vendeur?.prenom,lignes:lignesMap,totalTTC:derniereVente.total,paiements:paiementsMap,siteInfo,notes:noteGlobaleActive&&noteGlobale?noteGlobale:undefined});try{await envoyerDocument({to:dest,subject:buildSubject('ticket',derniereVente.numero,session.site_nom||''),html,siteNom:session.site_nom||''});alert(`Ticket envoyé à ${dest}`);setShowEmailVente(false)}catch(e:any){alert(`Erreur d'envoi : ${e.message}`)}}} style={{background:'#c9a96e',border:'none',borderRadius:8,color:'#0d0a08',padding:'12px 16px',fontSize:14,cursor:'pointer',fontWeight:700}}>→</button><button onClick={()=>setShowEmailVente(false)} style={{background:'transparent',border:'0.5px solid rgba(255,255,255,0.1)',borderRadius:8,color:'rgba(232,224,213,0.4)',padding:'12px',cursor:'pointer'}}>✕</button></div>)}<button onClick={()=>{setVenteOk(false);setDerniereVente(null);resetVente()}} style={{width:'100%',background:'#c9a96e',border:'none',borderRadius:10,color:'#0d0a08',padding:'14px',fontSize:15,cursor:'pointer',fontWeight:700}}>✓ Fin de la vente</button></div></div></div>)}
+      {venteOk&&derniereVente&&(<div style={{position:'fixed' as const,inset:0,background:'rgba(0,0,0,0.88)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:999,fontFamily:"'DM Sans', system-ui, sans-serif"}}><div style={{background:'#18130e',border:'0.5px solid rgba(201,169,110,0.3)',borderRadius:16,padding:'36px 40px',maxWidth:420,width:'90%'}}><div style={{textAlign:'center' as const,marginBottom:28}}><div style={{fontSize:56,marginBottom:8}}>✓</div><div style={{fontFamily:'Georgia, serif',fontSize:22,color:'#6ec96e'}}>Vente enregistrée !</div><div style={{fontSize:14,color:'rgba(232,224,213,0.5)',marginTop:4}}>{derniereVente.numero} — {fmt(derniereVente.total)}</div></div><div style={{display:'flex',flexDirection:'column' as const,gap:10}}><button onClick={()=>imprimerTicket(derniereVente)} style={{width:'100%',background:'rgba(255,255,255,0.06)',border:'0.5px solid rgba(255,255,255,0.12)',borderRadius:10,color:'#e8e0d5',padding:'14px',fontSize:15,cursor:'pointer'}}>🖨 Imprimer le ticket</button>{bonCadeauCree&&<button onClick={()=>imprimerBonCadeau(bonCadeauCree.code,bonCadeauCree.montant)} style={{width:'100%',background:'rgba(201,110,201,0.08)',border:'0.5px solid rgba(201,110,201,0.3)',borderRadius:10,color:'#c96ec9',padding:'14px',fontSize:15,cursor:'pointer'}}>🎁 Imprimer le bon cadeau</button>}{!showEmailVente?(<button onClick={()=>setShowEmailVente(true)} style={{width:'100%',background:'rgba(255,255,255,0.06)',border:'0.5px solid rgba(255,255,255,0.12)',borderRadius:10,color:'#e8e0d5',padding:'14px',fontSize:15,cursor:'pointer'}}>📧 Envoyer par email</button>):(<div style={{display:'flex',gap:8}}><input type="email" value={emailVente} onChange={e=>setEmailVente(e.target.value)} placeholder={client?.email||'email@client.fr'} style={{flex:1,background:'rgba(255,255,255,0.06)',border:'0.5px solid rgba(201,169,110,0.3)',borderRadius:8,color:'#f0e8d8',fontSize:14,padding:'12px'}}/><button onClick={async()=>{const dest=(emailVente||client?.email||'').trim();if(!dest){alert('Adresse email manquante');return}if(!derniereVente){setShowEmailVente(false);return}const siteInfo=getSiteInfo(session.site_nom||'');const detail={numero:derniereVente.numero,type_doc:'ticket',created_at:new Date().toISOString(),total_ttc:derniereVente.total,notes:undefined,customer:client?{est_societe:client.est_societe,raison_sociale:client.raison_sociale,prenom:client.prenom,nom:client.nom,email:client.email,telephone:client.telephone}:null,user:{prenom:vendeur?.prenom}};const lignesPdf=(derniereVente.lignes||[]).map((l:any)=>({quantite:l.qte,nom_produit:l.nom_modifie||l.nom,millesime:l.millesime,prix_unitaire_ttc:l.prix_unit,total_ttc:l.total,remise_pct:l.remise_pct}));const paiementsPdf=(derniereVente.paiements||[]).map((p:any)=>({mode:p.mode||p.label,montant:p.montant}));const pdfHtml=genererFactureCaisseHtml(detail,lignesPdf,paiementsPdf,siteInfo);const clientNom=client?(client.est_societe?client.raison_sociale:`${client.prenom} ${client.nom}`):undefined;try{await envoyerDocument({to:dest,subject:buildSubject('ticket',derniereVente.numero,session.site_nom||''),pdfHtml,pdfFilename:buildPdfFilename('ticket',derniereVente.numero),emailBody:buildEmailBody({typeDoc:'ticket',numero:derniereVente.numero,clientNom,siteNom:session.site_nom||''}),siteNom:session.site_nom||''});alert(`Ticket envoyé à ${dest}`);setShowEmailVente(false)}catch(e:any){alert(`Erreur d'envoi : ${e.message}`)}}} style={{background:'#c9a96e',border:'none',borderRadius:8,color:'#0d0a08',padding:'12px 16px',fontSize:14,cursor:'pointer',fontWeight:700}}>→</button><button onClick={()=>setShowEmailVente(false)} style={{background:'transparent',border:'0.5px solid rgba(255,255,255,0.1)',borderRadius:8,color:'rgba(232,224,213,0.4)',padding:'12px',cursor:'pointer'}}>✕</button></div>)}<button onClick={()=>{setVenteOk(false);setDerniereVente(null);resetVente()}} style={{width:'100%',background:'#c9a96e',border:'none',borderRadius:10,color:'#0d0a08',padding:'14px',fontSize:15,cursor:'pointer',fontWeight:700}}>✓ Fin de la vente</button></div></div></div>)}
       {showFermeture&&(<div style={{position:'fixed' as const,inset:0,background:'rgba(0,0,0,0.9)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:999}}><div style={{background:'#18130e',border:'0.5px solid rgba(201,169,110,0.3)',borderRadius:12,padding:'32px',maxWidth:420,width:'90%'}}><div style={{fontFamily:'Georgia, serif',fontSize:20,color:'#f0e8d8',marginBottom:20}}>Fermeture de caisse</div><div style={{fontSize:12,color:'rgba(232,224,213,0.4)',marginBottom:8}}>ESPÈCES EN CAISSE</div><input type="number" step="0.01" placeholder="0.00" value={espacesFermeture} onChange={e=>setEspacesFermeture(e.target.value)} style={{width:'100%',background:'rgba(255,255,255,0.06)',border:'0.5px solid rgba(201,169,110,0.3)',borderRadius:8,color:'#f0e8d8',fontSize:20,padding:'14px',boxSizing:'border-box' as const,textAlign:'center' as const,marginBottom:20}}/><div style={{display:'flex',gap:10}}><button onClick={()=>setShowFermeture(false)} style={{flex:1,background:'transparent',border:'0.5px solid rgba(255,255,255,0.15)',color:'rgba(232,224,213,0.5)',borderRadius:8,padding:'14px',fontSize:14,cursor:'pointer'}}>Annuler</button><button onClick={async()=>{await supabase.from('caisse_sessions').update({statut:'fermee',ferme_le:new Date().toISOString(),especes_fermeture:parseFloat(espacesFermeture)||0}).eq('id',session.id);onFermer()}} style={{flex:2,background:'#c96e6e',color:'#fff',border:'none',borderRadius:8,padding:'14px',fontSize:14,cursor:'pointer',fontWeight:700}}>Fermer la caisse</button></div></div></div>)}
       {showBonCadeau&&<ModalCreerBonCadeau session={session} onClose={()=>setShowBonCadeau(false)} onCreer={handleBonCadeauCree}/>}
       {showCatalogue&&<ModalCatalogue session={session} client={client} onAjouter={items=>{items.forEach(({produit:p,qte})=>{const prix=(client?.tarif_pro?p.prix_vente_pro:p.prix_vente_ttc)||p.prix_vente_ttc;const rp=client?.remise_pct||0;const ex=lignes.find(l=>l.product_id===p.id);if(ex)setLignes(prev=>prev.map(l=>l.product_id===p.id?{...l,qte:l.qte+qte,total:(l.qte+qte)*l.prix_unit*(1-l.remise_pct/100)}:l));else setLignes(prev=>[...prev,{id:Math.random().toString(36).slice(2),product_id:p.id,nom:p.nom,millesime:p.millesime,qte,prix_unit:prix,remise_pct:rp,total:prix*qte*(1-rp/100),domaine_nom:p.domaine_nom||''}])})}} onClose={()=>setShowCatalogue(false)}/>}

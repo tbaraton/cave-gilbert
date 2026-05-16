@@ -1,4 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { htmlToPdf } from '@/lib/html-to-pdf'
+
+export const runtime = 'nodejs'
+export const maxDuration = 60
 
 const ALLOWED_FROM = [
   'info@cavedegilbert.fr',
@@ -13,11 +17,15 @@ function extractAddress(from: string) {
   return (m ? m[1] : from).trim().toLowerCase()
 }
 
+function safeFilename(name: string) {
+  return name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120)
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const { from, to, subject, html, replyTo } = await req.json()
-    if (!from || !to || !subject || !html) {
-      return NextResponse.json({ error: 'Paramètres manquants (from, to, subject, html requis)' }, { status: 400 })
+    const { from, to, subject, html, pdfHtml, pdfFilename, replyTo } = await req.json()
+    if (!from || !to || !subject || (!html && !pdfHtml)) {
+      return NextResponse.json({ error: 'Paramètres manquants (from, to, subject, html ou pdfHtml requis)' }, { status: 400 })
     }
 
     const addr = extractAddress(from)
@@ -30,6 +38,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'RESEND_API_KEY non configurée' }, { status: 500 })
     }
 
+    let attachments: { filename: string; content: string }[] | undefined
+    if (pdfHtml) {
+      const pdfBuffer = await htmlToPdf(pdfHtml)
+      const filename = safeFilename(pdfFilename || `${subject}.pdf`)
+      attachments = [{ filename: filename.endsWith('.pdf') ? filename : `${filename}.pdf`, content: pdfBuffer.toString('base64') }]
+    }
+
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
@@ -37,8 +52,9 @@ export async function POST(req: NextRequest) {
         from,
         to: Array.isArray(to) ? to : [to],
         subject,
-        html,
+        html: html || '<p>Voir le document en pièce jointe.</p>',
         ...(replyTo ? { reply_to: replyTo } : {}),
+        ...(attachments ? { attachments } : {}),
       }),
     })
 
