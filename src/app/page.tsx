@@ -13,15 +13,18 @@ export const dynamic = 'force-dynamic'
 export default async function Home() {
   // Chargement des slides actives du carrousel d'accueil
   const nowIso = new Date().toISOString()
-  const { data: rawSlides } = await supabase
+  const { data: rawSlides, error: slidesErr } = await supabase
     .from('boutique_carousel_slides')
-    .select('id, titre, sous_titre, description, image_url, couleur_bg, couleur_texte, position_texte, slug, cta_label, cta_url_custom, date_debut, date_fin')
+    .select('id, titre, sous_titre, description, image_url, couleur_bg, couleur_texte, position_texte, slug, cta_label, cta_url_custom, date_debut, date_fin, actif')
     .eq('actif', true)
     .order('ordre')
   // Filtre programmation (date_debut / date_fin) côté JS — Supabase n'a pas de NULL-safe OR simple
   const slides = (rawSlides || []).filter((s: any) =>
     (!s.date_debut || s.date_debut <= nowIso) && (!s.date_fin || s.date_fin >= nowIso)
   )
+  // Logs Vercel pour debug
+  if (slidesErr) console.error('[home] slides fetch error', slidesErr)
+  console.log('[home] slides chargées :', { total: rawSlides?.length || 0, après_filtre: slides.length, ids: slides.map((s: any) => s.id) })
 
   return (
     <main style={{ background: '#0d0a08', minHeight: '100vh', fontFamily: "'DM Sans', system-ui, sans-serif" }}>
@@ -50,6 +53,13 @@ export default async function Home() {
           }}>Acheter en ligne</a>
         </nav>
       </header>
+
+      {/* Bandeau debug (visible uniquement si erreur SQL OU 0 slide alors qu'il y en a en BDD) */}
+      {(slidesErr || (rawSlides && rawSlides.length > 0 && slides.length === 0)) && (
+        <div style={{ background: '#3a1818', color: '#fff', padding: '12px 24px', fontSize: 12, fontFamily: 'monospace' }}>
+          ⚠ Carrousel debug : {slidesErr ? `Erreur SQL : ${slidesErr.message}` : `${rawSlides?.length || 0} slide(s) actives en BDD mais 0 visible (vérifie date_debut/date_fin)`}
+        </div>
+      )}
 
       {/* ── CARROUSEL HERO ───────────────────────────────────── */}
       {slides.length > 0 ? (
