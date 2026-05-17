@@ -160,7 +160,7 @@ function ModalAjoutProduit({ sites, onClose, onSaved }: {
     if (!preview) return
     try {
       // Activer le produit et l'enregistrer
-      const { error } = await supabase
+      const { error } = await supabaseDb
         .from('products')
         .update({ actif: true })
         .eq('id', preview.product?.id)
@@ -2372,7 +2372,7 @@ function VueTransferts({ sites, onNew, refreshKey }: { sites: any[]; onNew: () =
 
   const load = async () => {
     setLoading(true)
-    const { data } = await supabase
+    const { data } = await supabaseDb
       .from('stock_transfers')
       .select('*, source:sites!site_source_id(id, nom), dest:sites!site_destination_id(id, nom)')
       .order('created_at', { ascending: false })
@@ -2760,7 +2760,7 @@ function AdminPage() {
       const debutMois = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
       const finMois = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString()
 
-      const { data: ventesData } = await supabase
+      const { data: ventesData } = await supabaseDb
         .from('ventes')
         .select('total_ttc, site_id')
         .eq('statut', 'validee')
@@ -2777,7 +2777,7 @@ function AdminPage() {
       const caTotal = Object.values(caParSite).reduce((a, b) => a + b, 0)
 
       // Valeur stock = stock_total × prix_achat_ht par produit
-      const { data: stockValeur } = await supabase
+      const { data: stockValeur } = await supabaseDb
         .from('v_stock_agrege')
         .select('product_id, stock_total')
         .range(0, 9999)
