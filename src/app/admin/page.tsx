@@ -2606,7 +2606,10 @@ function AdminPage() {
 
     ;(async () => {
       try {
-        const { data: { user: authUser } } = await supabase.auth.getUser()
+        // getSession() = lecture cookie locale (rapide, sans appel réseau).
+        // getUser() = validation côté serveur (peut hanger ou échouer silencieusement).
+        const { data: { session } } = await supabase.auth.getSession()
+        const authUser = session?.user
         if (!authUser) { setAuthDiag({ reason: 'no_session' }); setAuthReady(true); return }
         console.log('[admin] auth user trouvé', { id: authUser.id, email: authUser.email })
 

@@ -23,7 +23,8 @@ export default function EboutiqueLayout({ children }: { children: React.ReactNod
     const safety = setTimeout(() => setAuthReady(true), 5000)
     ;(async () => {
       try {
-        const { data: { user: authUser } } = await supabase.auth.getUser()
+        const { data: { session } } = await supabase.auth.getSession()
+        const authUser = session?.user
         if (!authUser) return
         const { data: profile } = await supabase
           .from('users').select('*').eq('auth_user_id', authUser.id).maybeSingle()
