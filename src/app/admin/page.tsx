@@ -2612,17 +2612,16 @@ function AdminPage() {
           : []
         console.log('[admin] cookies sb-* visibles :', sbCookies)
 
-        // 1) Tente getSession() en premier (lecture locale, pas d'appel réseau)
-        const { data: sessData, error: sessErr } = await supabase.auth.getSession()
-        console.log('[admin] getSession result', { session: sessData?.session ? 'present' : 'null', error: sessErr })
-        let authUser = sessData?.session?.user
-
-        // 2) Si pas de session locale mais des cookies présents : try getUser() (force refresh)
-        if (!authUser && sbCookies.length > 0) {
-          console.log('[admin] pas de session locale mais cookies présents → try getUser()')
-          const { data: userData, error: userErr } = await supabase.auth.getUser()
-          console.log('[admin] getUser fallback result', { user: userData?.user ? 'found' : 'null', error: userErr })
-          authUser = userData?.user || undefined
+        // Bypass complet du client Supabase JS (lock bloqué) : on demande au serveur
+        // qui a accès aux cookies et peut valider le JWT sans le souci du lock.
+        let authUser: { id: string; email?: string } | undefined
+        try {
+          const res = await fetch('/api/auth-me', { cache: 'no-store', credentials: 'same-origin' })
+          const json = await res.json()
+          console.log('[admin] /api/auth-me result', json)
+          if (json?.user) authUser = json.user
+        } catch (e) {
+          console.error('[admin] /api/auth-me fetch error', e)
         }
 
         if (!authUser) {
