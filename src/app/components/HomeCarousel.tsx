@@ -49,7 +49,10 @@ export function HomeCarousel({ slides, autoPlayMs = 6000 }: { slides: Slide[]; a
               position: 'absolute', inset: 0,
               backgroundColor: s.couleur_bg || '#1a1a1a',
               backgroundImage: s.image_url ? `url(${s.image_url})` : 'none',
-              backgroundSize: 'cover', backgroundPosition: 'center',
+              // contain = image entière toujours visible (pas de crop). Du fond
+              // coloré apparaît sur les côtés si le ratio ne correspond pas.
+              backgroundSize: 'contain', backgroundPosition: 'center',
+              backgroundRepeat: 'no-repeat',
               opacity: i === idx ? 1 : 0,
               transition: 'opacity 0.7s ease',
               pointerEvents: i === idx ? 'auto' : 'none',
