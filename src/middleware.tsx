@@ -35,10 +35,9 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // Si déjà connecté et qu'on va sur /login, rediriger vers /admin
-  if (path === '/login' && user) {
-    return NextResponse.redirect(new URL('/admin', request.url))
-  }
+  // Pas d'auto-redirect /login → /admin : un client boutique connecté doit pouvoir
+  // accéder au formulaire /login pour basculer sur un compte admin (Supabase = 1 seule
+  // session par navigateur, donc /login remplace la session active).
 
   return response
 }

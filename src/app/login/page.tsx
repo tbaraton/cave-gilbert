@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useState } from 'react'
+import { Suspense, useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { createBrowserClient } from '@supabase/ssr'
 
@@ -17,6 +17,16 @@ function LoginForm() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [existingSessionEmail, setExistingSessionEmail] = useState<string | null>(null)
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user?.email) setExistingSessionEmail(user.email)
+      } catch {}
+    })()
+  }, [])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -37,6 +47,19 @@ function LoginForm() {
         <div style={{ fontFamily: 'Georgia, serif', fontSize: 22, color: '#c9a96e', letterSpacing: 3, fontWeight: 300 }}>Cave de Gilbert</div>
         <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.4)', marginTop: 6, letterSpacing: 1 }}>Administration</div>
       </div>
+
+      {existingSessionEmail && (
+        <div style={{ background: 'rgba(201,169,110,0.1)', border: '0.5px solid rgba(201,169,110,0.3)', borderRadius: 8, padding: 14, marginBottom: 16, fontSize: 12, color: 'rgba(232,224,213,0.75)', lineHeight: 1.5 }}>
+          Session active : <strong style={{ color: '#c9a96e' }}>{existingSessionEmail}</strong>
+          <div style={{ marginTop: 8, fontSize: 11, color: 'rgba(232,224,213,0.5)' }}>
+            Se reconnecter remplacera cette session (un seul compte connecté à la fois).
+          </div>
+          <button type="button" onClick={async () => { await supabase.auth.signOut(); setExistingSessionEmail(null) }}
+            style={{ marginTop: 10, background: 'transparent', border: '0.5px solid rgba(232,224,213,0.2)', color: 'rgba(232,224,213,0.7)', borderRadius: 4, padding: '6px 12px', fontSize: 11, cursor: 'pointer' }}>
+            Se déconnecter d'abord
+          </button>
+        </div>
+      )}
 
       {error && (
         <div style={{ background: 'rgba(201,110,110,0.15)', border: '0.5px solid rgba(201,110,110,0.4)', borderRadius: 8, padding: 12, marginBottom: 16, fontSize: 13, color: '#c96e6e', textAlign: 'center' as const }}>
