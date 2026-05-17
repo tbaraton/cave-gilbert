@@ -95,22 +95,30 @@ function BoutiquePageInner() {
       const ID_ARBRESLE = '3097e864-f452-4c2e-9af3-21e26f0330b7'
 
       // 0) Si filtre opération, résoudre la slide et récupérer la liste de product_ids
+      // (isolé : si les tables n'existent pas, on ignore le filtre et on montre tout)
       let operationProductIds: string[] | null = null
       if (operationSlug) {
-        const { data: slide } = await supabase
-          .from('boutique_carousel_slides')
-          .select('id, titre, sous_titre')
-          .eq('slug', operationSlug)
-          .maybeSingle()
-        if (slide) {
-          setOperationInfo({ titre: slide.titre, sous_titre: slide.sous_titre })
-          const { data: assocs } = await supabase
-            .from('carousel_slide_products')
-            .select('product_id')
-            .eq('slide_id', slide.id)
-          operationProductIds = (assocs || []).map((a: any) => a.product_id)
-          if (operationProductIds.length === 0) { setProduits([]); return }
-        } else {
+        try {
+          const { data: slide, error: eSlide } = await supabase
+            .from('boutique_carousel_slides')
+            .select('id, titre, sous_titre')
+            .eq('slug', operationSlug)
+            .maybeSingle()
+          if (eSlide) console.warn('[boutique] slide fetch error', eSlide)
+          if (slide) {
+            setOperationInfo({ titre: slide.titre, sous_titre: slide.sous_titre })
+            const { data: assocs, error: eAssocs } = await supabase
+              .from('carousel_slide_products')
+              .select('product_id')
+              .eq('slide_id', slide.id)
+            if (eAssocs) console.warn('[boutique] slide products fetch error', eAssocs)
+            operationProductIds = (assocs || []).map((a: any) => a.product_id)
+            if (operationProductIds.length === 0) { setProduits([]); return }
+          } else {
+            setOperationInfo(null)
+          }
+        } catch (opErr) {
+          console.warn('[boutique] operation fetch exception (ignoring filter)', opErr)
           setOperationInfo(null)
         }
       } else {
@@ -162,24 +170,30 @@ function BoutiquePageInner() {
         stockByProd.set(s.product_id, cur)
       }
 
-      // 2b) Fetch les badges/macarons attribués à ces produits
-      const [{ data: pb }, { data: bs }] = await Promise.all([
-        supabase.from('product_badges').select('product_id, badge_id').in('product_id', ids),
-        supabase.from('boutique_badges').select('id, nom, description, mode, image_url, icone, texte_macaron, couleur_bg, couleur_fg, couleur_border, ordre').eq('actif', true).order('ordre'),
-      ])
-      const badgesById = new Map((bs || []).map((b: any) => [b.id, b]))
+      // 2b) Fetch les badges/macarons attribués à ces produits — isolé pour ne JAMAIS
+      // casser le catalogue (table absente, RLS active, etc. → continue sans badges)
       const badgesByProduct = new Map<string, any[]>()
-      for (const link of (pb || [])) {
-        const badge = badgesById.get(link.badge_id)
-        if (!badge) continue
-        const arr = badgesByProduct.get(link.product_id) || []
-        arr.push(badge)
-        badgesByProduct.set(link.product_id, arr)
-      }
-      // Tri par ordre
-      for (const [k, arr] of badgesByProduct) {
-        arr.sort((a, b) => (a.ordre || 0) - (b.ordre || 0))
-        badgesByProduct.set(k, arr)
+      try {
+        const [{ data: pb, error: ePb }, { data: bs, error: eBs }] = await Promise.all([
+          supabase.from('product_badges').select('product_id, badge_id').in('product_id', ids),
+          supabase.from('boutique_badges').select('id, nom, description, mode, image_url, icone, texte_macaron, couleur_bg, couleur_fg, couleur_border, ordre').eq('actif', true).order('ordre'),
+        ])
+        if (ePb) console.warn('[boutique] product_badges error (continuing without badges)', ePb)
+        if (eBs) console.warn('[boutique] boutique_badges error (continuing without badges)', eBs)
+        const badgesById = new Map((bs || []).map((b: any) => [b.id, b]))
+        for (const link of (pb || [])) {
+          const badge = badgesById.get(link.badge_id)
+          if (!badge) continue
+          const arr = badgesByProduct.get(link.product_id) || []
+          arr.push(badge)
+          badgesByProduct.set(link.product_id, arr)
+        }
+        for (const [k, arr] of badgesByProduct) {
+          arr.sort((a, b) => (a.ordre || 0) - (b.ordre || 0))
+          badgesByProduct.set(k, arr)
+        }
+      } catch (badgeErr) {
+        console.warn('[boutique] fetch badges exception (continuing without badges)', badgeErr)
       }
 
       // 3) Aplatir les joins et enrichir avec le stock + badges
