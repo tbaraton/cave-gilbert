@@ -2863,6 +2863,42 @@ function AdminPage() {
     borderRadius: 4, color: '#e8e0d5', fontSize: 13, padding: '9px 12px',
   } as const
 
+  // Splash écran de chargement initial avant l'auth
+  if (!authReady) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#0d0a08', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(232,224,213,0.5)', fontFamily: "'DM Sans', system-ui, sans-serif" }}>
+        ⟳ Chargement…
+      </div>
+    )
+  }
+
+  // Auth terminée mais pas de profil admin trouvé (ex: session boutique customer qui a écrasé l'admin)
+  if (!currentUser) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#0d0a08', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column' as const, gap: 16, color: '#e8e0d5', fontFamily: "'DM Sans', system-ui, sans-serif", padding: 40, textAlign: 'center' as const }}>
+        <div style={{ fontFamily: 'Georgia, serif', fontSize: 22, color: '#c9a96e', marginBottom: 4 }}>Accès administration</div>
+        <div style={{ fontSize: 13, color: 'rgba(232,224,213,0.55)', maxWidth: 440, lineHeight: 1.6 }}>
+          Tu n'es pas connecté avec un compte administrateur. Ta session actuelle est probablement celle d'un client de la boutique (Supabase n'autorise qu'une seule session par navigateur).
+        </div>
+        <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+          <button onClick={async () => { await supabase.auth.signOut(); window.location.href = '/login' }} style={{
+            background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4,
+            padding: '11px 22px', fontSize: 12, letterSpacing: 1, textTransform: 'uppercase' as const,
+            cursor: 'pointer', fontWeight: 700,
+          }}>Se déconnecter et se reconnecter</button>
+          <a href="/" style={{
+            background: 'transparent', color: 'rgba(232,224,213,0.6)', border: '0.5px solid rgba(255,255,255,0.15)', borderRadius: 4,
+            padding: '11px 22px', fontSize: 12, letterSpacing: 1, textTransform: 'uppercase' as const,
+            textDecoration: 'none',
+          }}>← Retour à l'accueil</a>
+        </div>
+        <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.35)', marginTop: 12 }}>
+          Astuce : utilise une fenêtre privée pour tester la boutique sans écraser ta session admin.
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#0d0a08', fontFamily: "'DM Sans', system-ui, sans-serif", color: '#e8e0d5' }}>
 
