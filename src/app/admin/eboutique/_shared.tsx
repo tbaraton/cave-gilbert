@@ -230,12 +230,15 @@ function BadgeEditor({ badge, onCancel, onSave }: { badge: any; onCancel: () => 
     if (!file) return
     setUploading(true)
     try {
-      const ext = file.name.split('.').pop() || 'png'
-      const filename = `badges/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
-      const { error: upErr } = await supabase.storage.from('product-images').upload(filename, file, { upsert: false, contentType: file.type })
-      if (upErr) { alert(`Upload : ${upErr.message}`); return }
-      const { data } = supabase.storage.from('product-images').getPublicUrl(filename)
-      setB({ ...b, image_url: data.publicUrl })
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('folder', 'badges')
+      const res = await fetch('/api/upload-asset', { method: 'POST', body: fd })
+      const json = await res.json()
+      if (!res.ok) { alert(`Upload : ${json.error || res.statusText}`); return }
+      setB({ ...b, image_url: json.url })
+    } catch (e: any) {
+      alert(`Upload exception : ${e?.message || String(e)}`)
     } finally { setUploading(false) }
   }
 
@@ -458,12 +461,15 @@ function SlideEditor({ slide, onCancel, onSave }: { slide: any; onCancel: () => 
     if (!file) return
     setUploading(true)
     try {
-      const ext = file.name.split('.').pop() || 'jpg'
-      const filename = `carousel/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
-      const { error: upErr } = await supabase.storage.from('product-images').upload(filename, file, { upsert: false, contentType: file.type })
-      if (upErr) { alert(`Upload : ${upErr.message}`); return }
-      const { data } = supabase.storage.from('product-images').getPublicUrl(filename)
-      setS({ ...s, image_url: data.publicUrl })
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('folder', 'carousel')
+      const res = await fetch('/api/upload-asset', { method: 'POST', body: fd })
+      const json = await res.json()
+      if (!res.ok) { alert(`Upload : ${json.error || res.statusText}`); return }
+      setS({ ...s, image_url: json.url })
+    } catch (e: any) {
+      alert(`Upload exception : ${e?.message || String(e)}`)
     } finally { setUploading(false) }
   }
 
