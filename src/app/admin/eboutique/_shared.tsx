@@ -53,29 +53,40 @@ export function BadgesTab() {
   useEffect(() => { load() }, [load])
 
   const handleSave = async (badge: any) => {
-    const isNew = !badge.id
-    const payload: any = {
-      nom: badge.nom?.trim(),
-      slug: (badge.slug?.trim() || slugify(badge.nom)).toLowerCase(),
-      mode: badge.mode || 'genere',
-      image_url: badge.mode === 'image' ? (badge.image_url || null) : null,
-      icone: badge.mode === 'genere' ? (badge.icone || null) : null,
-      texte_macaron: badge.mode === 'genere' ? (badge.texte_macaron?.trim() || null) : null,
-      couleur_bg: badge.couleur_bg || '#8a6a3e',
-      couleur_fg: badge.couleur_fg || '#ffffff',
-      couleur_border: badge.couleur_border || null,
-      description: badge.description?.trim() || '',
-      ordre: badge.ordre ?? 0,
-      actif: badge.actif ?? true,
-      updated_at: new Date().toISOString(),
+    try {
+      const isNew = !badge.id
+      const payload: any = {
+        nom: badge.nom?.trim(),
+        slug: (badge.slug?.trim() || slugify(badge.nom || '')).toLowerCase(),
+        mode: badge.mode || 'genere',
+        image_url: badge.mode === 'image' ? (badge.image_url || null) : null,
+        icone: badge.mode === 'genere' ? (badge.icone || null) : null,
+        texte_macaron: badge.mode === 'genere' ? (badge.texte_macaron?.trim() || null) : null,
+        couleur_bg: badge.couleur_bg || '#8a6a3e',
+        couleur_fg: badge.couleur_fg || '#ffffff',
+        couleur_border: badge.couleur_border || null,
+        description: badge.description?.trim() || '',
+        ordre: badge.ordre ?? 0,
+        actif: badge.actif ?? true,
+        updated_at: new Date().toISOString(),
+      }
+      if (!payload.nom) { alert('Le nom est obligatoire'); return }
+      if (!payload.description) { alert('La description (tooltip) est obligatoire'); return }
+      if (!payload.slug) { alert('Le slug ne peut pas être vide'); return }
+      console.log('[badges] save payload', payload)
+      const res = isNew
+        ? await supabase.from('boutique_badges').insert(payload).select().single()
+        : await supabase.from('boutique_badges').update(payload).eq('id', badge.id).select().single()
+      console.log('[badges] save result', res)
+      if (res.error) {
+        alert(`Erreur Supabase : ${res.error.message}\n\nCode : ${res.error.code || '?'}\nHint : ${res.error.hint || '(aucun)'}`)
+        return
+      }
+      setEditing(null); setShowCreate(false); load()
+    } catch (e: any) {
+      console.error('[badges] save exception', e)
+      alert(`Exception JS : ${e?.message || String(e)}\n\nRegarde la console (F12) pour la stack complète.`)
     }
-    if (!payload.nom) { alert('Le nom est obligatoire'); return }
-    if (!payload.description) { alert('La description (tooltip) est obligatoire'); return }
-    const res = isNew
-      ? await supabase.from('boutique_badges').insert(payload).select().single()
-      : await supabase.from('boutique_badges').update(payload).eq('id', badge.id).select().single()
-    if (res.error) { alert(`Erreur : ${res.error.message}`); return }
-    setEditing(null); setShowCreate(false); load()
   }
 
   const handleDelete = async (id: string) => {
@@ -340,30 +351,41 @@ export function CarrouselTab() {
   useEffect(() => { load() }, [load])
 
   const handleSave = async (slide: any) => {
-    const isNew = !slide.id
-    const payload: any = {
-      titre: slide.titre?.trim(),
-      sous_titre: slide.sous_titre?.trim() || null,
-      description: slide.description?.trim() || null,
-      image_url: slide.image_url || null,
-      couleur_bg: slide.couleur_bg || null,
-      couleur_texte: slide.couleur_texte || '#ffffff',
-      position_texte: slide.position_texte || 'gauche',
-      slug: (slide.slug?.trim() || slugify(slide.titre)).toLowerCase(),
-      cta_label: slide.cta_label?.trim() || 'Découvrir',
-      cta_url_custom: slide.cta_url_custom?.trim() || null,
-      ordre: slide.ordre ?? 0,
-      actif: slide.actif ?? true,
-      date_debut: slide.date_debut || null,
-      date_fin: slide.date_fin || null,
-      updated_at: new Date().toISOString(),
+    try {
+      const isNew = !slide.id
+      const payload: any = {
+        titre: slide.titre?.trim(),
+        sous_titre: slide.sous_titre?.trim() || null,
+        description: slide.description?.trim() || null,
+        image_url: slide.image_url || null,
+        couleur_bg: slide.couleur_bg || null,
+        couleur_texte: slide.couleur_texte || '#ffffff',
+        position_texte: slide.position_texte || 'gauche',
+        slug: (slide.slug?.trim() || slugify(slide.titre || '')).toLowerCase(),
+        cta_label: slide.cta_label?.trim() || 'Découvrir',
+        cta_url_custom: slide.cta_url_custom?.trim() || null,
+        ordre: slide.ordre ?? 0,
+        actif: slide.actif ?? true,
+        date_debut: slide.date_debut || null,
+        date_fin: slide.date_fin || null,
+        updated_at: new Date().toISOString(),
+      }
+      if (!payload.titre) { alert('Le titre est obligatoire'); return }
+      if (!payload.slug) { alert('Le slug ne peut pas être vide (titre uniquement en caractères spéciaux ?)'); return }
+      console.log('[carrousel] save payload', payload)
+      const res = isNew
+        ? await supabase.from('boutique_carousel_slides').insert(payload).select().single()
+        : await supabase.from('boutique_carousel_slides').update(payload).eq('id', slide.id).select().single()
+      console.log('[carrousel] save result', res)
+      if (res.error) {
+        alert(`Erreur Supabase : ${res.error.message}\n\nCode : ${res.error.code || '?'}\nHint : ${res.error.hint || '(aucun)'}`)
+        return
+      }
+      setEditing(null); setShowCreate(false); load()
+    } catch (e: any) {
+      console.error('[carrousel] save exception', e)
+      alert(`Exception JS : ${e?.message || String(e)}\n\nRegarde la console (F12) pour la stack complète.`)
     }
-    if (!payload.titre) { alert('Le titre est obligatoire'); return }
-    const res = isNew
-      ? await supabase.from('boutique_carousel_slides').insert(payload).select().single()
-      : await supabase.from('boutique_carousel_slides').update(payload).eq('id', slide.id).select().single()
-    if (res.error) { alert(`Erreur : ${res.error.message}`); return }
-    setEditing(null); setShowCreate(false); load()
   }
 
   const handleDelete = async (id: string) => {
@@ -598,7 +620,14 @@ function SlidePreview({ slide }: { slide: any }) {
 // Utils + styles (exportés pour les pages)
 // ============================================================
 export function slugify(s: string) {
-  return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+  // ̀-ͯ = combining diacritical marks (échappés pour ne pas
+  // dépendre de l'encodage du fichier source)
+  return (s || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
 }
 
 export function Field({ label, children }: { label: string; children: React.ReactNode }) {
