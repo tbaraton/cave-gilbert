@@ -126,23 +126,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [refreshProfile])
 
   const signOut = async () => {
-    // 1) Reset l'UI immédiatement pour que l'utilisateur voie l'effet
     setUser(null)
     setIsPro(false)
-    // 2) Demande à Supabase de signOut avec un timeout (sinon ça peut hanger)
     try {
       await Promise.race([
         supabase.auth.signOut(),
         new Promise((_, reject) => setTimeout(() => reject(new Error('signOut timeout 3s')), 3000)),
       ])
     } catch (e) {
-      console.warn('[boutique] signOut timeout/erreur, force clear localStorage', e)
+      console.warn('[boutique] signOut timeout/erreur, force clear', e)
     }
-    // 3) Fallback : vider les clés Supabase du localStorage pour garantir la déconnexion
+    if (typeof window === 'undefined') return
+    // localStorage
     try {
-      if (typeof window !== 'undefined') {
-        const keys = Object.keys(window.localStorage)
-        for (const k of keys) if (k.startsWith('sb-')) window.localStorage.removeItem(k)
+      const keys = Object.keys(window.localStorage)
+      for (const k of keys) if (k.startsWith('sb-')) window.localStorage.removeItem(k)
+    } catch {}
+    // sessionStorage
+    try {
+      const keys = Object.keys(window.sessionStorage)
+      for (const k of keys) if (k.startsWith('sb-')) window.sessionStorage.removeItem(k)
+    } catch {}
+    // cookies (critique pour le middleware Next.js)
+    try {
+      const cookies = document.cookie.split(';')
+      for (const c of cookies) {
+        const name = c.split('=')[0].trim()
+        if (name.startsWith('sb-')) {
+          document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`
+          document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=${window.location.hostname}`
+          document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=.${window.location.hostname}`
+        }
       }
     } catch {}
   }

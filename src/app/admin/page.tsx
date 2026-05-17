@@ -13,8 +13,9 @@ const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
-// Déconnexion robuste : ne hange jamais (timeout 3s) et force-clear le localStorage
-// si Supabase ne répond pas (session corrompue, perte réseau, etc.)
+// Déconnexion robuste : ne hange jamais (timeout 3s) et force-clear
+// localStorage + cookies pour garantir que le middleware ET le client React
+// voient bien "pas de session" (sinon mismatch → loop "pas connecté" sur /admin)
 async function hardSignOut() {
   try {
     await Promise.race([
@@ -22,12 +23,30 @@ async function hardSignOut() {
       new Promise((_, reject) => setTimeout(() => reject(new Error('signOut timeout 3s')), 3000)),
     ])
   } catch (e) {
-    console.warn('[admin] signOut timeout/erreur, force clear localStorage', e)
+    console.warn('[admin] signOut timeout/erreur, force clear localStorage+cookies', e)
   }
+  if (typeof window === 'undefined') return
+  // localStorage : clés Supabase
   try {
-    if (typeof window !== 'undefined') {
-      const keys = Object.keys(window.localStorage)
-      for (const k of keys) if (k.startsWith('sb-')) window.localStorage.removeItem(k)
+    const keys = Object.keys(window.localStorage)
+    for (const k of keys) if (k.startsWith('sb-')) window.localStorage.removeItem(k)
+  } catch {}
+  // sessionStorage : idem
+  try {
+    const keys = Object.keys(window.sessionStorage)
+    for (const k of keys) if (k.startsWith('sb-')) window.sessionStorage.removeItem(k)
+  } catch {}
+  // cookies : critique pour que le middleware Next.js voie aussi "pas de session"
+  try {
+    const cookies = document.cookie.split(';')
+    for (const c of cookies) {
+      const name = c.split('=')[0].trim()
+      if (name.startsWith('sb-')) {
+        // tente plusieurs combinaisons path/domain pour couvrir tous les cas
+        document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`
+        document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=${window.location.hostname}`
+        document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=.${window.location.hostname}`
+      }
     }
   } catch {}
 }
