@@ -2857,7 +2857,6 @@ function AdminPage() {
   const navLinksAll = [
     { label: 'Clients',       href: '/admin/clients',       icon: '◎',  groupe: 'gestion', perm: 'acces_clients' },
     { label: 'Validations pro', href: '/admin/validations-pro', icon: '🔑', groupe: 'gestion', perm: 'acces_clients' },
-    { label: 'E-boutique',    href: '/admin/eboutique',     icon: '🛍️', groupe: 'gestion', perm: 'acces_produits' },
     { label: 'Fournisseurs',  href: '/admin/fournisseurs',  icon: '◈',  groupe: 'gestion', perm: 'acces_fournisseurs' },
     { label: 'Commandes',     href: '/admin/commandes',     icon: '◻',  groupe: 'gestion', perm: 'acces_commandes' },
     { label: 'Inventaire',    href: '/admin/inventaire',    icon: '◉',  groupe: 'gestion', perm: 'acces_inventaire' },
@@ -2871,6 +2870,8 @@ function AdminPage() {
     { label: 'Planning',      href: '/admin/rh/planning',   icon: '📅', groupe: 'rh',      perm: 'acces_planning' },
     { label: 'Documents',     href: '/admin/rh/documents',  icon: '📂', groupe: 'rh',      perm: 'acces_documents' },
     { label: 'Utilisateurs',  href: '/admin/rh/utilisateurs', icon: '👤', groupe: 'rh',    perm: 'acces_utilisateurs' },
+    { label: 'Badges & macarons', href: '/admin/eboutique/badges',    icon: '🏷️', groupe: 'eboutique', perm: 'acces_produits' },
+    { label: 'Carrousel d\'accueil', href: '/admin/eboutique/carrousel', icon: '🎞️', groupe: 'eboutique', perm: 'acces_produits' },
   ]
   const navLinks = navLinksAll.filter(n => can(n.perm))
 
@@ -2974,6 +2975,7 @@ function AdminPage() {
             </div>
           ))}
           <NavGroup title="Gestion" items={navLinks.filter(l => l.groupe === 'gestion')} />
+          <NavGroup title="E-boutique" items={navLinks.filter(l => l.groupe === 'eboutique')} />
           <NavGroup title="Outils" items={navLinks.filter(l => l.groupe === 'outils')} />
           <NavGroup title="Ressources Humaines" items={navLinks.filter(l => l.groupe === 'rh')} />
         </nav>
