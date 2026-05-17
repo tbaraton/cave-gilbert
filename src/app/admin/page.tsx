@@ -2,15 +2,25 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
+import { createClient } from '@supabase/supabase-js'
 
 // ============================================================
 // CAVE DE GILBERT — Interface Admin connectée à Supabase
 // src/app/admin/page.tsx
 // ============================================================
 
+// Deux clients :
+//  - supabase : cookie-aware (auth, signOut)
+//  - supabaseDb : sans gestion de session = pas de lock = queries DB qui hangent jamais.
+//    Le projet n'utilisant pas RLS, les queries passent avec la simple clé anon.
 const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
+const supabaseDb = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  { auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false } }
 )
 
 // Déconnexion robuste : ne hange jamais (timeout 3s) et force-clear
@@ -489,14 +499,14 @@ function ModalEditProduit({ produit, regions: regionsProp, appellations: appella
       let regs = regionsProp || []
       let apps = appellationsProp || []
       if (regs.length === 0) {
-        const { data } = await supabase.from('regions').select('id, nom').order('nom')
+        const { data } = await supabaseDb.from('regions').select('id, nom').order('nom')
         regs = data || []; setRegions(regs)
       }
       if (apps.length === 0) {
-        const { data } = await supabase.from('appellations').select('id, nom, region_id, type').order('nom')
+        const { data } = await supabaseDb.from('appellations').select('id, nom, region_id, type').order('nom')
         apps = data || []; setAppellations(apps)
       }
-      const { data: doms } = await supabase.from('domaines').select('id, nom').order('nom')
+      const { data: doms } = await supabaseDb.from('domaines').select('id, nom').order('nom')
       setDomaines(doms || [])
       const appNom = apps.find((a: any) => a.id === produit.appellation_id)?.nom || ''
       setForm(f => ({ ...f, appellation_nom: appNom }))
@@ -555,7 +565,7 @@ function ModalEditProduit({ produit, regions: regionsProp, appellations: appella
       if (!res.ok) { setError(data.error || 'Échec génération IA'); return }
       if (data.updated === 0) { setIaMsg('Tous les champs sont déjà renseignés.'); return }
       // Recharger les champs depuis la DB pour refléter les nouvelles valeurs
-      const { data: fresh } = await supabase.from('products').select('*').eq('id', produit.id).single()
+      const { data: fresh } = await supabaseDb.from('products').select('*').eq('id', produit.id).single()
       if (fresh) {
         setForm(f => ({
           ...f,
@@ -661,7 +671,7 @@ function ModalEditProduit({ produit, regions: regionsProp, appellations: appella
     if (!form.prix_vente_ttc) { setError('Le prix TTC est obligatoire'); return }
     setSaving(true)
     setError('')
-    const { error: err } = await supabase.from('products').update({
+    const { error: err } = await supabaseDb.from('products').update({
       nom: nomFinal,
       nom_cuvee: form.nom_cuvee || null,
       contenance: form.contenance || '75cl',
@@ -695,7 +705,7 @@ function ModalEditProduit({ produit, regions: regionsProp, appellations: appella
     if (err) { setError(err.message); setSaving(false); return }
     // Mettre à jour product_suppliers si domaine sélectionné
     if (form.domaine_id) {
-      await supabase.from('product_suppliers').upsert({
+      await supabaseDb.from('product_suppliers').upsert({
         product_id: produit.id,
         domaine_id: form.domaine_id,
         prix_achat_ht: form.prix_achat_ht ? parseFloat(form.prix_achat_ht) : null,
@@ -992,12 +1002,12 @@ function ModalNouveauProduitAdmin({ regions: regionsProp, appellations: appellat
 
   useEffect(() => {
     if (!regionsProp || regionsProp.length === 0) {
-      supabase.from('regions').select('id, nom').order('nom').then(({ data }) => setRegions(data || []))
+      supabaseDb.from('regions').select('id, nom').order('nom').then(({ data }) => setRegions(data || []))
     }
     if (!appellationsProp || appellationsProp.length === 0) {
-      supabase.from('appellations').select('id, nom, region_id, type').order('nom').then(({ data }) => setAppellations(data || []))
+      supabaseDb.from('appellations').select('id, nom, region_id, type').order('nom').then(({ data }) => setAppellations(data || []))
     }
-    supabase.from('domaines').select('id, nom').order('nom').then(({ data }) => setDomaines(data || []))
+    supabaseDb.from('domaines').select('id, nom').order('nom').then(({ data }) => setDomaines(data || []))
   }, [])
 
   const [form, setForm] = useState({
@@ -1061,7 +1071,7 @@ function ModalNouveauProduitAdmin({ regions: regionsProp, appellations: appellat
       .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
       + '-' + Math.random().toString(36).substring(2, 7)
-    const { data: newProduct, error: err } = await supabase.from('products').insert({
+    const { data: newProduct, error: err } = await supabaseDb.from('products').insert({
       nom: nomFinal,
       slug,
       nom_cuvee: form.nom_cuvee || null,
@@ -1083,7 +1093,7 @@ function ModalNouveauProduitAdmin({ regions: regionsProp, appellations: appellat
     if (err) { setError(err.message); setSaving(false); return }
     // Associer au fournisseur dans product_suppliers
     if (form.domaine_id && newProduct?.id) {
-      await supabase.from('product_suppliers').upsert({
+      await supabaseDb.from('product_suppliers').upsert({
         product_id: newProduct.id,
         domaine_id: form.domaine_id,
         prix_achat_ht: form.prix_achat_ht ? parseFloat(form.prix_achat_ht) : null,
@@ -1291,7 +1301,7 @@ function ModalDupliquer({ produit, onClose, onSaved }: {
       .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
       + '-' + Math.random().toString(36).substring(2, 7)
 
-    const { data: newProd, error: err } = await supabase.from('products').insert({
+    const { data: newProd, error: err } = await supabaseDb.from('products').insert({
       nom: newNom,
       slug,
       nom_cuvee: produit.nom_cuvee || null,
@@ -1318,10 +1328,10 @@ function ModalDupliquer({ produit, onClose, onSaved }: {
 
     // Dupliquer aussi l'association fournisseur
     if (produit.domaine_id && newProd?.id) {
-      const { data: ps } = await supabase.from('product_suppliers')
+      const { data: ps } = await supabaseDb.from('product_suppliers')
         .select('*').eq('product_id', produit.id).eq('fournisseur_principal', true).maybeSingle()
       if (ps) {
-        await supabase.from('product_suppliers').insert({
+        await supabaseDb.from('product_suppliers').insert({
           product_id: newProd.id,
           domaine_id: ps.domaine_id,
           prix_achat_ht: ps.prix_achat_ht,
@@ -1347,7 +1357,7 @@ function ModalDupliquer({ produit, onClose, onSaved }: {
       .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
       + '-' + Math.random().toString(36).substring(2, 7)
-    const { data: newProd, error: err } = await supabase.from('products').insert({
+    const { data: newProd, error: err } = await supabaseDb.from('products').insert({
       nom: newNom, slug,
       nom_cuvee: produit.nom_cuvee || null,
       contenance: produit.contenance || '75cl',
@@ -1367,10 +1377,10 @@ function ModalDupliquer({ produit, onClose, onSaved }: {
     }).select('id').single()
     if (err) { setError(err.message); setSaving(false); return }
     if (produit.domaine_id && newProd?.id) {
-      const { data: ps } = await supabase.from('product_suppliers')
+      const { data: ps } = await supabaseDb.from('product_suppliers')
         .select('*').eq('product_id', produit.id).eq('fournisseur_principal', true).maybeSingle()
       if (ps) {
-        await supabase.from('product_suppliers').insert({
+        await supabaseDb.from('product_suppliers').insert({
           product_id: newProd.id, domaine_id: ps.domaine_id,
           prix_achat_ht: ps.prix_achat_ht, conditionnement: ps.conditionnement,
           fournisseur_principal: true,
@@ -1378,7 +1388,7 @@ function ModalDupliquer({ produit, onClose, onSaved }: {
       }
     }
     // Archiver original - jamais supprime, historique conserve
-    await supabase.from('products').update({ actif: false }).eq('id', produit.id)
+    await supabaseDb.from('products').update({ actif: false }).eq('id', produit.id)
     setSaving(false)
     onSaved()
     onClose()
@@ -1558,10 +1568,10 @@ function ModalNouveauTransfert({ sites, onCreated, onClose, transfertExistant = 
   const loadCatalogue = async () => {
     setLoadingProduits(true)
     const [{ data: prods }, { data: stock }, { data: regs }, { data: doms }] = await Promise.all([
-      supabase.from('products').select('id, nom, millesime, couleur, prix_achat_ht, prix_vente_ttc, domaine_id, region_id').eq('actif', true).order('nom').limit(5000),
-      supabase.from('v_stock_agrege').select('product_id, stock_marcy, stock_entrepot, stock_arbresle, stock_total').range(0, 9999),
-      supabase.from('regions').select('id, nom').order('nom'),
-      supabase.from('domaines').select('id, nom').order('nom'),
+      supabaseDb.from('products').select('id, nom, millesime, couleur, prix_achat_ht, prix_vente_ttc, domaine_id, region_id').eq('actif', true).order('nom').limit(5000),
+      supabaseDb.from('v_stock_agrege').select('product_id, stock_marcy, stock_entrepot, stock_arbresle, stock_total').range(0, 9999),
+      supabaseDb.from('regions').select('id, nom').order('nom'),
+      supabaseDb.from('domaines').select('id, nom').order('nom'),
     ])
     setProduits(prods || [])
     setStockAgrege(stock || [])
@@ -1637,7 +1647,7 @@ function ModalNouveauTransfert({ sites, onCreated, onClose, transfertExistant = 
     let transferId = transfertExistant?.id
 
     if (!modeAjout) {
-      const { data: transfer, error: errT } = await supabase.from('stock_transfers').insert({
+      const { data: transfer, error: errT } = await supabaseDb.from('stock_transfers').insert({
         numero: genNumero('TRF'), site_source_id: siteSourceId, site_destination_id: siteDestId,
         statut: 'demande', notes: notes || null,
       }).select('id').single()
@@ -1653,7 +1663,7 @@ function ModalNouveauTransfert({ sites, onCreated, onClose, transfertExistant = 
     })
 
     for (let i = 0; i < lignes.length; i += 200)
-      await supabase.from('stock_transfer_lignes').insert(lignes.slice(i, i + 200))
+      await supabaseDb.from('stock_transfer_lignes').insert(lignes.slice(i, i + 200))
 
     setSaving(false); onCreated()
   }
@@ -1945,7 +1955,7 @@ function VueDetailTransfert({ transfert, sites, onBack, onRefresh }: {
 
   const load = async () => {
     setLoading(true)
-    const { data: lig } = await supabase.from('stock_transfer_lignes')
+    const { data: lig } = await supabaseDb.from('stock_transfer_lignes')
       .select('*, product:products(id, nom, millesime, couleur)')
       .eq('transfer_id', transfert.id)
     setLignes(lig || [])
@@ -1958,11 +1968,11 @@ function VueDetailTransfert({ transfert, sites, onBack, onRefresh }: {
     setQteExpediees(initExp)
     setQteRecues(initRec)
     if (transfert.facture_intersociete_id) {
-      const { data: f } = await supabase.from('factures_intersocietes').select('*').eq('id', transfert.facture_intersociete_id).single()
+      const { data: f } = await supabaseDb.from('factures_intersocietes').select('*').eq('id', transfert.facture_intersociete_id).single()
       setFacture(f)
     }
     if (transfert.avoir_id) {
-      const { data: a } = await supabase.from('factures_intersocietes').select('*').eq('id', transfert.avoir_id).single()
+      const { data: a } = await supabaseDb.from('factures_intersocietes').select('*').eq('id', transfert.avoir_id).single()
       setAvoir(a)
     }
     setLoading(false)
@@ -1977,7 +1987,7 @@ function VueDetailTransfert({ transfert, sites, onBack, onRefresh }: {
       // Mettre à jour les quantités expédiées
       for (const l of lignes) {
         const qte = qteExpediees[l.id] ?? l.quantite_demandee
-        await supabase.from('stock_transfer_lignes').update({
+        await supabaseDb.from('stock_transfer_lignes').update({
           quantite_expediee: qte,
           prix_transfert_ht: isInterSociete ? l.prix_transfert_ht : null,
         }).eq('id', l.id)
@@ -1987,7 +1997,7 @@ function VueDetailTransfert({ transfert, sites, onBack, onRefresh }: {
       for (const l of lignes) {
         const qte = qteExpediees[l.id] ?? l.quantite_demandee
         if (qte > 0) {
-          const { error: errMove } = await supabase.rpc('move_stock', {
+          const { error: errMove } = await supabaseDb.rpc('move_stock', {
             p_product_id: l.product_id, p_site_id: transfert.site_source_id,
             p_raison: 'transfert_out', p_quantite: qte,
             p_note: `Transfert ${transfert.numero} — expédition`, p_order_id: null, p_transfer_id: transfert.id,
@@ -2003,7 +2013,7 @@ function VueDetailTransfert({ transfert, sites, onBack, onRefresh }: {
           const qte = qteExpediees[l.id] ?? l.quantite_demandee
           return acc + (parseFloat(l.prix_transfert_ht || 0)) * qte
         }, 0)
-        const { data: fac, error: errF } = await supabase.from('factures_intersocietes').insert({
+        const { data: fac, error: errF } = await supabaseDb.from('factures_intersocietes').insert({
           numero: genNumero('FIC'), transfer_id: transfert.id,
           site_emetteur_id: transfert.site_source_id,
           site_destinataire_id: transfert.site_destination_id,
@@ -2016,7 +2026,7 @@ function VueDetailTransfert({ transfert, sites, onBack, onRefresh }: {
         factureId = fac?.id
       }
 
-      await supabase.from('stock_transfers').update({
+      await supabaseDb.from('stock_transfers').update({
         statut: 'expedie',
         expedie_at: new Date().toISOString(),
         facture_intersociete_id: factureId,
@@ -2036,16 +2046,16 @@ function VueDetailTransfert({ transfert, sites, onBack, onRefresh }: {
       // Mettre à jour les quantités reçues
       for (const l of lignes) {
         const qte = qteRecues[l.id] ?? l.quantite_expediee
-        await supabase.from('stock_transfer_lignes').update({ quantite_recue: qte }).eq('id', l.id)
+        await supabaseDb.from('stock_transfer_lignes').update({ quantite_recue: qte }).eq('id', l.id)
       }
 
       // Incrémenter le stock destination avec les quantités réellement reçues
       for (const l of lignes) {
         const qte = qteRecues[l.id] ?? l.quantite_expediee
         if (qte > 0) {
-          const { data: stockDest } = await supabase.from('stock').select('quantite')
+          const { data: stockDest } = await supabaseDb.from('stock').select('quantite')
             .eq('product_id', l.product_id).eq('site_id', transfert.site_destination_id).maybeSingle()
-          await supabase.from('stock').upsert({
+          await supabaseDb.from('stock').upsert({
             product_id: l.product_id, site_id: transfert.site_destination_id,
             quantite: (stockDest?.quantite || 0) + qte,
             updated_at: new Date().toISOString(),
@@ -2069,7 +2079,7 @@ function VueDetailTransfert({ transfert, sites, onBack, onRefresh }: {
         if (Math.abs(ecartHT) > 0.001) {
           const isAvoir = ecartHT < 0 // Reçu moins → avoir
           const montantHT = Math.abs(ecartHT)
-          const { data: doc, error: errA } = await supabase.from('factures_intersocietes').insert({
+          const { data: doc, error: errA } = await supabaseDb.from('factures_intersocietes').insert({
             numero: genNumero(isAvoir ? 'AV' : 'FIC'),
             transfer_id: transfert.id,
             site_emetteur_id: isAvoir ? transfert.site_destination_id : transfert.site_source_id,
@@ -2084,7 +2094,7 @@ function VueDetailTransfert({ transfert, sites, onBack, onRefresh }: {
         }
       }
 
-      await supabase.from('stock_transfers').update({
+      await supabaseDb.from('stock_transfers').update({
         statut: 'recu',
         recu_at: new Date().toISOString(),
         avoir_id: avoirId,
@@ -2391,7 +2401,7 @@ function VueTransferts({ sites, onNew, refreshKey }: { sites: any[]; onNew: () =
       sites={sites}
       onBack={() => { setDetail(null); load() }}
       onRefresh={async () => {
-        const { data } = await supabase.from('stock_transfers').select('*, source:sites!site_source_id(id, nom), dest:sites!site_destination_id(id, nom)').eq('id', detail.id).single()
+        const { data } = await supabaseDb.from('stock_transfers').select('*, source:sites!site_source_id(id, nom), dest:sites!site_destination_id(id, nom)').eq('id', detail.id).single()
         setDetail(data)
         load()
       }}
@@ -2734,13 +2744,13 @@ function AdminPage() {
         { data: stock },
         { data: sitesData },
       ] = await Promise.all([
-        supabase.from('products').select('id, nom, nom_cuvee, contenance, millesime, couleur, categorie, prix_vente_ttc, prix_vente_pro, prix_achat_ht, actif, visible_boutique, bio, vegan, casher, naturel, biodynamique, ia_generated, domaine_id, slug, region_id, appellation_id, description_courte, description_longue, notes_degustation, accords_mets, cepages, alcool, temperature_service_min, temperature_service_max, garde_potentiel_annees, meta_title, meta_description, image_url').order('nom').limit(5000),
-        supabase.from('v_stock_agrege').select('*').range(0, 9999),
-        supabase.from('sites').select('*').eq('actif', true).order('nom'),
+        supabaseDb.from('products').select('id, nom, nom_cuvee, contenance, millesime, couleur, categorie, prix_vente_ttc, prix_vente_pro, prix_achat_ht, actif, visible_boutique, bio, vegan, casher, naturel, biodynamique, ia_generated, domaine_id, slug, region_id, appellation_id, description_courte, description_longue, notes_degustation, accords_mets, cepages, alcool, temperature_service_min, temperature_service_max, garde_potentiel_annees, meta_title, meta_description, image_url').order('nom').limit(5000),
+        supabaseDb.from('v_stock_agrege').select('*').range(0, 9999),
+        supabaseDb.from('sites').select('*').eq('actif', true).order('nom'),
       ])
 
       // Charger domaines pour affichage
-      const { data: domainesData } = await supabase.from('domaines').select('id, nom')
+      const { data: domainesData } = await supabaseDb.from('domaines').select('id, nom')
       const domaineMap = Object.fromEntries((domainesData || []).map((d: any) => [d.id, d.nom]))
       const prodsWithDomaine = (prods || []).map((p: any) => ({ ...p, domaine_nom: domaineMap[p.domaine_id] || '' }))
       setProduits(prodsWithDomaine)
@@ -2820,8 +2830,8 @@ function AdminPage() {
     // Charger régions et appellations séparément (ne bloque pas le reste)
     try {
       const [{ data: regs }, { data: apps }] = await Promise.all([
-        supabase.from('regions').select('id, nom').order('nom'),
-        supabase.from('appellations').select('id, nom, region_id, type').order('nom'),
+        supabaseDb.from('regions').select('id, nom').order('nom'),
+        supabaseDb.from('appellations').select('id, nom, region_id, type').order('nom'),
       ])
       setRegions(regs || [])
       setAppellations(apps || [])
@@ -3173,10 +3183,10 @@ function AdminPage() {
                               const btn = e.currentTarget
                               btn.disabled = true
                               btn.textContent = '⟳'
-                              const { data: existing } = await supabase.from('order_needs').select('id').eq('product_id', a.product_id).eq('statut', 'en_attente').maybeSingle()
+                              const { data: existing } = await supabaseDb.from('order_needs').select('id').eq('product_id', a.product_id).eq('statut', 'en_attente').maybeSingle()
                               if (existing) { btn.textContent = '✓ Déjà ajouté'; btn.style.color = '#6ec96e'; return }
-                              const { data: ps } = await supabase.from('product_suppliers').select('domaine_id, prix_achat_ht, conditionnement').eq('product_id', a.product_id).eq('fournisseur_principal', true).maybeSingle()
-                              await supabase.from('order_needs').insert({ product_id: a.product_id, domaine_id: ps?.domaine_id || null, quantite: ps?.conditionnement || 6, prix_achat_ht: ps?.prix_achat_ht || 0, statut: 'en_attente' })
+                              const { data: ps } = await supabaseDb.from('product_suppliers').select('domaine_id, prix_achat_ht, conditionnement').eq('product_id', a.product_id).eq('fournisseur_principal', true).maybeSingle()
+                              await supabaseDb.from('order_needs').insert({ product_id: a.product_id, domaine_id: ps?.domaine_id || null, quantite: ps?.conditionnement || 6, prix_achat_ht: ps?.prix_achat_ht || 0, statut: 'en_attente' })
                               btn.textContent = '✓ Ajouté'
                               btn.style.color = '#6ec96e'
                               btn.style.borderColor = 'rgba(110,201,110,0.3)'
@@ -3452,7 +3462,7 @@ function AdminPage() {
                           <button
                             onClick={async (e) => {
                               e.stopPropagation()
-                              await supabase.from('products').update({ visible_boutique: !p.visible_boutique }).eq('id', p.id)
+                              await supabaseDb.from('products').update({ visible_boutique: !p.visible_boutique }).eq('id', p.id)
                               loadData()
                             }}
                             title={p.visible_boutique ? 'Retirer de la boutique en ligne' : 'Publier sur la boutique en ligne'}
@@ -3473,7 +3483,7 @@ function AdminPage() {
                           <div style={{ display: 'flex', gap: 6 }}>
                             <button onClick={async (e) => {
                               e.stopPropagation()
-                              await supabase.from('products').update({ actif: !p.actif }).eq('id', p.id)
+                              await supabaseDb.from('products').update({ actif: !p.actif }).eq('id', p.id)
                               loadData()
                             }} style={{ background: 'transparent', border: '0.5px solid rgba(255,255,255,0.1)', color: 'rgba(232,224,213,0.4)', borderRadius: 3, padding: '5px 10px', fontSize: 10, cursor: 'pointer' }}>
                               {p.actif ? 'Désactiver' : 'Activer'}

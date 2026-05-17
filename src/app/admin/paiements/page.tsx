@@ -1,14 +1,16 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { createBrowserClient } from '@supabase/ssr'
+import { createClient } from '@supabase/supabase-js'
 import { genererFactureCaisseHtml } from '@/lib/pdf-templates'
 import { envoyerDocument, buildPdfFilename } from '@/lib/email-sender'
 import { getSiteInfo } from '@/lib/site-info'
 
-const supabase = createBrowserClient(
+// Client sans gestion de session → pas de lock browser qui hangue
+const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  { auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false } }
 )
 
 type Onglet = 'fournisseurs' | 'clients'

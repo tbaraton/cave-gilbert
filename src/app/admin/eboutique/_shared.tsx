@@ -6,12 +6,15 @@
 // ============================================================
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { createBrowserClient } from '@supabase/ssr'
+import { createClient } from '@supabase/supabase-js'
 import { Macaron } from '@/app/components/Macaron'
 
-export const supabase = createBrowserClient(
+// Client sans gestion de session → pas de lock browser qui hangue.
+// Le projet n'utilise pas RLS sur les tables métier donc la clé anon suffit.
+export const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  { auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false } }
 )
 
 // ============================================================
