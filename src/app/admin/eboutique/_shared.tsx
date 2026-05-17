@@ -477,7 +477,7 @@ function SlideEditor({ slide, onCancel, onSave }: { slide: any; onCancel: () => 
         <Field label="Titre *"><input type="text" value={s.titre || ''} onChange={e => setS({ ...s, titre: e.target.value })} style={input} placeholder="Ex : Opération rosé" /></Field>
         <Field label="Sous-titre (accroche)"><input type="text" value={s.sous_titre || ''} onChange={e => setS({ ...s, sous_titre: e.target.value })} style={input} placeholder="Jusqu'à -30% sur 100 références" /></Field>
         <Field label="Description (optionnel)"><textarea value={s.description || ''} onChange={e => setS({ ...s, description: e.target.value })} style={{ ...input, minHeight: 60, resize: 'vertical' as const }} /></Field>
-        <Field label="Image de fond (paysage 1920×600 recommandé)">
+        <Field label="Image de fond — paysage très allongé, idéalement 2400×520 px (ratio ~4.6:1)">
           <input type="file" accept="image/*" onChange={handleUploadImage} style={{ ...input, padding: 8 }} disabled={uploading} />
           {uploading && <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.5)', marginTop: 6 }}>⟳ Upload…</div>}
           {s.image_url && <div style={{ marginTop: 6, fontSize: 10, color: 'rgba(232,224,213,0.4)', wordBreak: 'break-all' as const }}>{s.image_url}</div>}
