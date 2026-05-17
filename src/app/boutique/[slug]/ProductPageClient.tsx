@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useAuth } from '../AuthContext'
+import { MacaronStack, type BadgeData } from '@/app/components/Macaron'
 
 // ============================================================
 // Fiche produit — Cave de Gilbert
@@ -149,7 +150,13 @@ export default function ProductPageClient({ product, similaires }: { product: an
           </div>
 
           {/* Image / Bouteille placeholder */}
-          <div style={{ background: '#fbfaf6', borderRadius: 8, padding: '60px 40px', textAlign: 'center' as const, marginBottom: 24, border: '0.5px solid rgba(0,0,0,0.06)', minHeight: 420, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fbfaf6', borderRadius: 8, padding: '60px 40px', textAlign: 'center' as const, marginBottom: 24, border: '0.5px solid rgba(0,0,0,0.06)', minHeight: 420, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' as const }}>
+            {/* Macarons empilés à gauche */}
+            {product.badges && product.badges.length > 0 && (
+              <div style={{ position: 'absolute' as const, left: 16, top: 24, zIndex: 2 }}>
+                <MacaronStack badges={product.badges as BadgeData[]} size={70} gap={10} />
+              </div>
+            )}
             {product.image_url ? (
               <img src={product.image_url} alt={product.nom} style={{ maxHeight: 380, maxWidth: '100%', objectFit: 'contain' }} />
             ) : (

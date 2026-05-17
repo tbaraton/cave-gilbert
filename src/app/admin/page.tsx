@@ -2857,6 +2857,7 @@ function AdminPage() {
   const navLinksAll = [
     { label: 'Clients',       href: '/admin/clients',       icon: '◎',  groupe: 'gestion', perm: 'acces_clients' },
     { label: 'Validations pro', href: '/admin/validations-pro', icon: '🔑', groupe: 'gestion', perm: 'acces_clients' },
+    { label: 'E-boutique',    href: '/admin/eboutique',     icon: '🛍️', groupe: 'gestion', perm: 'acces_produits' },
     { label: 'Fournisseurs',  href: '/admin/fournisseurs',  icon: '◈',  groupe: 'gestion', perm: 'acces_fournisseurs' },
     { label: 'Commandes',     href: '/admin/commandes',     icon: '◻',  groupe: 'gestion', perm: 'acces_commandes' },
     { label: 'Inventaire',    href: '/admin/inventaire',    icon: '◉',  groupe: 'gestion', perm: 'acces_inventaire' },

@@ -1,9 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
 import { useCart } from './CartContext'
 import { useAuth } from './AuthContext'
+import { MacaronStack, type BadgeData } from '@/app/components/Macaron'
 
 // ============================================================
 // Cave de Gilbert — Boutique / Catalogue client
@@ -30,6 +32,17 @@ const COULEUR_ACCENT: Record<string, string> = {
 }
 
 export default function BoutiquePage() {
+  return (
+    <Suspense fallback={<div style={{ background: '#ffffff', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8a6a3e' }}>⟳</div>}>
+      <BoutiquePageInner />
+    </Suspense>
+  )
+}
+
+function BoutiquePageInner() {
+  const searchParams = useSearchParams()
+  const operationSlug = searchParams.get('operation') || ''
+  const [operationInfo, setOperationInfo] = useState<{ titre: string; sous_titre?: string } | null>(null)
   const [produits, setProduits] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -81,12 +94,36 @@ export default function BoutiquePage() {
       const ID_ENTREPOT = 'e12d7e47-23dc-4011-95fc-e9e975fc4307'
       const ID_ARBRESLE = '3097e864-f452-4c2e-9af3-21e26f0330b7'
 
+      // 0) Si filtre opération, résoudre la slide et récupérer la liste de product_ids
+      let operationProductIds: string[] | null = null
+      if (operationSlug) {
+        const { data: slide } = await supabase
+          .from('boutique_carousel_slides')
+          .select('id, titre, sous_titre')
+          .eq('slug', operationSlug)
+          .maybeSingle()
+        if (slide) {
+          setOperationInfo({ titre: slide.titre, sous_titre: slide.sous_titre })
+          const { data: assocs } = await supabase
+            .from('carousel_slide_products')
+            .select('product_id')
+            .eq('slide_id', slide.id)
+          operationProductIds = (assocs || []).map((a: any) => a.product_id)
+          if (operationProductIds.length === 0) { setProduits([]); return }
+        } else {
+          setOperationInfo(null)
+        }
+      } else {
+        setOperationInfo(null)
+      }
+
       // 1) Catalogue direct sur products (sans passer par la vue qui filtre trop)
       let query = supabase
         .from('products')
         .select('id, nom, millesime, couleur, prix_vente_ttc, prix_vente_pro, image_url, slug, bio, ia_generated, description_courte, mis_en_avant, domaine:domaines(nom), appellation:appellations(nom), region:regions(nom), tasting_notes(aromes, accords)')
         .eq('actif', true)
         .eq('visible_boutique', true)
+      if (operationProductIds) query = query.in('id', operationProductIds)
       if (couleur) query = query.eq('couleur', couleur)
       if (regionId) query = query.eq('region_id', regionId)
       if (appellationId) query = query.eq('appellation_id', appellationId)
@@ -125,7 +162,27 @@ export default function BoutiquePage() {
         stockByProd.set(s.product_id, cur)
       }
 
-      // 3) Aplatir les joins et enrichir avec le stock
+      // 2b) Fetch les badges/macarons attribués à ces produits
+      const [{ data: pb }, { data: bs }] = await Promise.all([
+        supabase.from('product_badges').select('product_id, badge_id').in('product_id', ids),
+        supabase.from('boutique_badges').select('id, nom, description, mode, image_url, icone, texte_macaron, couleur_bg, couleur_fg, couleur_border, ordre').eq('actif', true).order('ordre'),
+      ])
+      const badgesById = new Map((bs || []).map((b: any) => [b.id, b]))
+      const badgesByProduct = new Map<string, any[]>()
+      for (const link of (pb || [])) {
+        const badge = badgesById.get(link.badge_id)
+        if (!badge) continue
+        const arr = badgesByProduct.get(link.product_id) || []
+        arr.push(badge)
+        badgesByProduct.set(link.product_id, arr)
+      }
+      // Tri par ordre
+      for (const [k, arr] of badgesByProduct) {
+        arr.sort((a, b) => (a.ordre || 0) - (b.ordre || 0))
+        badgesByProduct.set(k, arr)
+      }
+
+      // 3) Aplatir les joins et enrichir avec le stock + badges
       let filtered = (catalog || []).map((p: any) => {
         const s = stockByProd.get(p.id) || { entrepot: 0, marcy: 0, arbresle: 0 }
         const total = s.entrepot + s.marcy + s.arbresle
@@ -141,6 +198,7 @@ export default function BoutiquePage() {
           stock_entrepot: s.entrepot,
           stock_retrait: s.marcy + s.arbresle,
           stock_statut: total === 0 ? 'rupture' : total < 5 ? 'limite' : 'ok',
+          badges: badgesByProduct.get(p.id) || [],
         }
       })
 
@@ -157,7 +215,7 @@ export default function BoutiquePage() {
       }
     }
     load()
-  }, [couleur, bioOnly, veganOnly, naturelOnly, biodynamiqueOnly, casherOnly, stockOnly, prixMax, search, sortBy, regionId, appellationId])
+  }, [couleur, bioOnly, veganOnly, naturelOnly, biodynamiqueOnly, casherOnly, stockOnly, prixMax, search, sortBy, regionId, appellationId, operationSlug])
 
   return (
     <div style={{ background: '#ffffff', minHeight: '100vh', fontFamily: "'DM Sans', system-ui, sans-serif", color: '#1a1a1a' }}>
@@ -293,12 +351,33 @@ export default function BoutiquePage() {
           {/* En-tête résultats */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28 }}>
             <div>
-              <h1 style={{ fontFamily: 'Georgia, serif', fontSize: 24, fontWeight: 300, color: '#0a0a0a', marginBottom: 4 }}>
-                {couleur ? COULEURS.find(c => c.value === couleur)?.label || 'Vins' : 'Notre cave'}
-              </h1>
-              <p style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>
-                {loading ? '...' : `${produits.length} référence${produits.length > 1 ? 's' : ''}`}
-              </p>
+              {operationInfo ? (
+                <>
+                  <div style={{ fontSize: 10, letterSpacing: 2, color: '#c93838', textTransform: 'uppercase' as const, marginBottom: 6, fontWeight: 600 }}>
+                    Opération en cours
+                  </div>
+                  <h1 style={{ fontFamily: 'Georgia, serif', fontSize: 26, fontWeight: 300, color: '#0a0a0a', marginBottom: 4 }}>
+                    {operationInfo.titre}
+                  </h1>
+                  {operationInfo.sous_titre && (
+                    <p style={{ fontSize: 13, color: 'rgba(0,0,0,0.65)', marginBottom: 4 }}>{operationInfo.sous_titre}</p>
+                  )}
+                  <p style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>
+                    {loading ? '...' : `${produits.length} référence${produits.length > 1 ? 's' : ''}`}
+                    {' · '}
+                    <a href="/boutique" style={{ color: '#8a6a3e', textDecoration: 'underline' }}>retour au catalogue complet</a>
+                  </p>
+                </>
+              ) : (
+                <>
+                  <h1 style={{ fontFamily: 'Georgia, serif', fontSize: 24, fontWeight: 300, color: '#0a0a0a', marginBottom: 4 }}>
+                    {couleur ? COULEURS.find(c => c.value === couleur)?.label || 'Vins' : 'Notre cave'}
+                  </h1>
+                  <p style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>
+                    {loading ? '...' : `${produits.length} référence${produits.length > 1 ? 's' : ''}`}
+                  </p>
+                </>
+              )}
             </div>
           </div>
 
@@ -386,7 +465,13 @@ function ProductCard({ product: p }: { product: any }) {
     >
       {/* Corps : bouteille à gauche + infos à droite */}
       <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: 14, padding: '18px', flex: 1 }}>
-        <a href={`/boutique/${p.slug}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <a href={`/boutique/${p.slug}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' as const }}>
+          {/* Macarons empilés à gauche de la photo */}
+          {p.badges && p.badges.length > 0 && (
+            <div style={{ position: 'absolute' as const, left: -6, top: 8, zIndex: 2 }}>
+              <MacaronStack badges={p.badges as BadgeData[]} size={42} gap={6} />
+            </div>
+          )}
           {p.image_url ? (
             <img src={p.image_url} alt={p.nom} style={{ maxHeight: 240, maxWidth: '100%', objectFit: 'contain' as const }} />
           ) : (

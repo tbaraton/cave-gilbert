@@ -60,5 +60,22 @@ export default async function ProductPage(props: any) {
 
   const similaires = (similairesRaw || []).map((s: any) => ({ ...s, domaine: s.domaine?.nom || null }))
 
-  return <ProductPageClient product={{ ...product, ...tastingNote, _stockByEntity: stockByEntity }} similaires={similaires} />
+  // Macarons/badges attribués à ce produit
+  const { data: badgeLinks } = await supabase
+    .from('product_badges')
+    .select('badge_id')
+    .eq('product_id', product.id)
+  const badgeIds = (badgeLinks || []).map((l: any) => l.badge_id)
+  let badges: any[] = []
+  if (badgeIds.length > 0) {
+    const { data: bs } = await supabase
+      .from('boutique_badges')
+      .select('id, nom, description, mode, image_url, icone, texte_macaron, couleur_bg, couleur_fg, couleur_border, ordre')
+      .in('id', badgeIds)
+      .eq('actif', true)
+      .order('ordre')
+    badges = bs || []
+  }
+
+  return <ProductPageClient product={{ ...product, ...tastingNote, _stockByEntity: stockByEntity, badges }} similaires={similaires} />
 }
