@@ -71,9 +71,12 @@ export default function BoutiquePage() {
     ? appellations.filter((a: any) => a.region_id === regionId)
     : appellations
 
+  const [loadErr, setLoadErr] = useState('')
+
   useEffect(() => {
     const load = async () => {
-      setLoading(true)
+      setLoading(true); setLoadErr('')
+      try {
       const ID_MARCY = 'ee3afa96-0c45-407f-87fc-e503fbada6c4'
       const ID_ENTREPOT = 'e12d7e47-23dc-4011-95fc-e9e975fc4307'
       const ID_ARBRESLE = '3097e864-f452-4c2e-9af3-21e26f0330b7'
@@ -102,16 +105,17 @@ export default function BoutiquePage() {
         default:               query = query.order('mis_en_avant', { ascending: false }).order('nom')
       }
       const { data: catalog, error: errCat } = await query.limit(500)
-      if (errCat) { console.error('[boutique] catalog error', errCat); setProduits([]); setLoading(false); return }
+      if (errCat) { console.error('[boutique] catalog error', errCat); setLoadErr(`Catalog : ${errCat.message}`); setProduits([]); return }
       const ids = (catalog || []).map((p: any) => p.id)
-      if (ids.length === 0) { setProduits([]); setLoading(false); return }
+      if (ids.length === 0) { setProduits([]); return }
 
       // 2) Fetch stock des 3 sites (entrepôt = livraison, Marcy/Arbresle = retrait 2h)
-      const { data: allStock } = await supabase
+      const { data: allStock, error: errStock } = await supabase
         .from('stock')
         .select('product_id, site_id, quantite')
         .in('site_id', [ID_MARCY, ID_ENTREPOT, ID_ARBRESLE])
         .in('product_id', ids)
+      if (errStock) console.warn('[boutique] stock error (continuing without stock)', errStock)
       const stockByProd = new Map<string, { entrepot: number; marcy: number; arbresle: number }>()
       for (const s of (allStock || [])) {
         const cur = stockByProd.get(s.product_id) || { entrepot: 0, marcy: 0, arbresle: 0 }
@@ -144,7 +148,13 @@ export default function BoutiquePage() {
       if (stockOnly) filtered = filtered.filter((p: any) => p.stock_total > 0)
 
       setProduits(filtered)
-      setLoading(false)
+      } catch (e: any) {
+        console.error('[boutique] load exception', e)
+        setLoadErr(`Erreur réseau : ${e?.message || String(e)}`)
+        setProduits([])
+      } finally {
+        setLoading(false)
+      }
     }
     load()
   }, [couleur, bioOnly, veganOnly, naturelOnly, biodynamiqueOnly, casherOnly, stockOnly, prixMax, search, sortBy, regionId, appellationId])
@@ -293,6 +303,11 @@ export default function BoutiquePage() {
           </div>
 
           {/* Grille */}
+          {loadErr && (
+            <div style={{ marginBottom: 16, padding: '12px 16px', background: 'rgba(201,110,110,0.08)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 4, fontSize: 12, color: '#a04444' }}>
+              {loadErr}
+            </div>
+          )}
           {loading ? (
             <div style={{ display: 'flex', justifyContent: 'center', padding: '80px 0', color: '#8a6a3e', fontSize: 24, animation: 'spin 1.5s linear infinite' }}>
               ⟳
