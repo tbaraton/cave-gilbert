@@ -2,25 +2,18 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
-import { createClient } from '@supabase/supabase-js'
+import { supabaseDb } from '@/lib/supabase-db'
 
 // ============================================================
 // CAVE DE GILBERT — Interface Admin connectée à Supabase
 // src/app/admin/page.tsx
 // ============================================================
 
-// Deux clients :
-//  - supabase : cookie-aware (auth, signOut)
-//  - supabaseDb : sans gestion de session = pas de lock = queries DB qui hangent jamais.
-//    Le projet n'utilisant pas RLS, les queries passent avec la simple clé anon.
+// supabase : cookie-aware uniquement pour l'auth (signOut). Les queries DB
+// passent par supabaseDb (importé) qui désactive le lock browser problématique.
 const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
-const supabaseDb = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  { auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false } }
 )
 
 // Déconnexion robuste : ne hange jamais (timeout 3s) et force-clear
