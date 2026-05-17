@@ -2594,34 +2594,38 @@ function AdminPage() {
 
   // Charger l'utilisateur connecté
   useEffect(() => {
+    console.log('[admin] useEffect mount T0')
     let cancelled = false
-    // Filet de sécurité : si une requête Supabase reste bloquée (RLS, réseau, etc),
-    // on libère l'UI au bout de 5s pour afficher au moins le splash "Accès administration"
+    // Filet de sécurité étendu à 12s : si quelque chose hangue, on libère l'UI
     const safetyTimer = setTimeout(() => {
       if (!cancelled) {
-        console.warn('[admin] auth check > 5s, force authReady=true')
+        console.warn('[admin] auth check > 12s, force authReady=true')
         setAuthReady(true)
       }
-    }, 5000)
+    }, 12000)
 
     ;(async () => {
       try {
-        // Cookies visibles par le client (debug)
         const sbCookies = typeof document !== 'undefined'
           ? document.cookie.split(';').map(c => c.trim().split('=')[0]).filter(n => n.startsWith('sb-'))
           : []
         console.log('[admin] cookies sb-* visibles :', sbCookies)
 
-        // Bypass complet du client Supabase JS (lock bloqué) : on demande au serveur
-        // qui a accès aux cookies et peut valider le JWT sans le souci du lock.
+        // Bypass complet du client Supabase JS (lock bloqué) : on demande au serveur.
+        // AbortController : si l'API ne répond pas en 8s, on coupe et on abandonne.
         let authUser: { id: string; email?: string } | undefined
         try {
-          const res = await fetch('/api/auth-me', { cache: 'no-store', credentials: 'same-origin' })
+          console.log('[admin] fetch /api/auth-me START')
+          const ac = new AbortController()
+          const fetchTimeout = setTimeout(() => { console.warn('[admin] fetch /api/auth-me ABORT 8s'); ac.abort() }, 8000)
+          const res = await fetch('/api/auth-me', { cache: 'no-store', credentials: 'same-origin', signal: ac.signal })
+          clearTimeout(fetchTimeout)
+          console.log('[admin] fetch /api/auth-me RESPONSE', res.status, res.statusText)
           const json = await res.json()
-          console.log('[admin] /api/auth-me result', json)
+          console.log('[admin] /api/auth-me JSON', json)
           if (json?.user) authUser = json.user
-        } catch (e) {
-          console.error('[admin] /api/auth-me fetch error', e)
+        } catch (e: any) {
+          console.error('[admin] /api/auth-me fetch error', e?.name, e?.message, e)
         }
 
         if (!authUser) {
