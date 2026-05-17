@@ -6,6 +6,7 @@ import { createClient } from '@supabase/supabase-js'
 import { useCart } from './CartContext'
 import { useAuth } from './AuthContext'
 import { MacaronStack, type BadgeData } from '@/app/components/Macaron'
+import { HomeCarousel } from '@/app/components/HomeCarousel'
 
 // ============================================================
 // Cave de Gilbert — Boutique / Catalogue client
@@ -60,16 +61,27 @@ function BoutiquePageInner() {
   const [naturelOnly, setNaturelOnly] = useState(false)
   const [biodynamiqueOnly, setBiodynamiqueOnly] = useState(false)
   const [casherOnly, setCasherOnly] = useState(false)
+  const [slides, setSlides] = useState<any[]>([])
 
-  // Chargement des régions + appellations une seule fois
+  // Chargement des régions + appellations + slides du carrousel une seule fois
   useEffect(() => {
     (async () => {
-      const [{ data: regs }, { data: apps }] = await Promise.all([
+      const nowIso = new Date().toISOString()
+      const [{ data: regs }, { data: apps }, { data: rawSlides }] = await Promise.all([
         supabase.from('regions').select('id, nom').order('nom'),
         supabase.from('appellations').select('id, nom, region_id').order('nom'),
+        supabase.from('boutique_carousel_slides')
+          .select('id, titre, sous_titre, description, image_url, couleur_bg, couleur_texte, position_texte, slug, cta_label, cta_url_custom, date_debut, date_fin')
+          .eq('actif', true)
+          .order('ordre'),
       ])
       setRegions(regs || [])
       setAppellations(apps || [])
+      // Filtre programmation date_debut/date_fin côté JS
+      const activeSlides = (rawSlides || []).filter((s: any) =>
+        (!s.date_debut || s.date_debut <= nowIso) && (!s.date_fin || s.date_fin >= nowIso)
+      )
+      setSlides(activeSlides)
     })()
   }, [])
 
@@ -361,6 +373,13 @@ function BoutiquePageInner() {
 
         {/* ── GRILLE PRODUITS ── */}
         <main style={{ flex: 1, padding: '32px 32px' }}>
+
+          {/* Carrousel hero — affiché uniquement sur le catalogue complet (pas en mode opération) */}
+          {!operationSlug && slides.length > 0 && (
+            <div style={{ marginBottom: 32, borderRadius: 8, overflow: 'hidden' }}>
+              <HomeCarousel slides={slides} />
+            </div>
+          )}
 
           {/* En-tête résultats */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28 }}>
