@@ -97,7 +97,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Upsert customer avec tous les champs enrichis
     if (data.user) {
       const now = new Date().toISOString()
-      await supabase.from('customers').upsert({
+      const { error: errCust } = await supabase.from('customers').upsert({
         civilite: d.civilite || null,
         prenom: d.prenom,
         nom: d.nom,
@@ -112,6 +112,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         cgv_acceptee_le: now,
         majorite_certifiee_le: now,
       }, { onConflict: 'email' })
+      if (errCust) {
+        console.error('[signUp] erreur upsert customer', errCust)
+        return { error: `Inscription auth OK mais création du profil échouée : ${errCust.message}. Contacte l'équipe.` }
+      }
     }
     return { needsValidation: isPro }
   }
