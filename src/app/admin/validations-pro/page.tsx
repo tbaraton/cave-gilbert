@@ -35,16 +35,25 @@ export default function ValidationsProPage() {
     })()
   }, [])
 
+  const [loadErr, setLoadErr] = useState('')
+
   const load = useCallback(async () => {
-    setLoading(true)
-    const { data } = await supabase
-      .from('customers')
-      .select('id, prenom, nom, raison_sociale, est_societe, email, telephone, adresse, code_postal, ville, notes, created_at, tarif_pro, pro_pending')
-      .eq('pro_pending', true)
-      .order('created_at', { ascending: false })
-      .limit(200)
-    setPending(data || [])
-    setLoading(false)
+    setLoading(true); setLoadErr('')
+    try {
+      const { data, error } = await supabase
+        .from('customers')
+        .select('id, prenom, nom, raison_sociale, est_societe, email, telephone, adresse, code_postal, ville, notes, created_at, tarif_pro, pro_pending')
+        .eq('pro_pending', true)
+        .order('created_at', { ascending: false })
+        .limit(200)
+      if (error) { setLoadErr(`Erreur Supabase : ${error.message}`); setPending([]); return }
+      setPending(data || [])
+    } catch (e: any) {
+      setLoadErr(`Erreur réseau : ${e?.message || String(e)}`)
+      setPending([])
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
   useEffect(() => { if (hasAccess) load() }, [hasAccess, load])
@@ -81,6 +90,8 @@ export default function ValidationsProPage() {
         </p>
 
         {actionMsg && <div style={{ marginBottom: 16, padding: '10px 14px', background: 'rgba(110,201,110,0.08)', border: '0.5px solid rgba(110,201,110,0.3)', borderRadius: 4, fontSize: 12, color: '#6ec96e' }}>{actionMsg}</div>}
+
+        {loadErr && <div style={{ marginBottom: 16, padding: '10px 14px', background: 'rgba(201,110,110,0.1)', border: '0.5px solid rgba(201,110,110,0.3)', borderRadius: 4, fontSize: 12, color: '#c96e6e' }}>{loadErr}</div>}
 
         {loading ? (
           <div style={empty}>⟳ Chargement…</div>
