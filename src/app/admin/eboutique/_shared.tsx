@@ -32,13 +32,20 @@ export function BadgesTab() {
     try {
       const [{ data: b, error: eb }, { data: p, error: ep }, { data: a, error: ea }] = await Promise.all([
         supabase.from('boutique_badges').select('*').order('ordre').order('nom'),
-        supabase.from('products').select('id, nom, millesime, slug, image_url').eq('actif', true).order('nom').limit(2000),
+        supabase.from('products').select('id, nom, millesime, slug, image_url, domaine:domaines(nom), appellation:appellations(nom), region:regions(nom)').eq('actif', true).order('nom').limit(2000),
         supabase.from('product_badges').select('product_id, badge_id'),
       ])
       if (eb) { setErr(`Badges : ${eb.message}`); return }
       if (ep) { setErr(`Produits : ${ep.message}`); return }
       if (ea) { setErr(`Associations : ${ea.message}`); return }
-      setBadges(b || []); setProducts(p || []); setAssocs(a || [])
+      // Aplatir les joins pour avoir des champs string directement utilisables
+      const flatProducts = (p || []).map((row: any) => ({
+        ...row,
+        domaine: row.domaine?.nom || null,
+        appellation: row.appellation?.nom || null,
+        region: row.region?.nom || null,
+      }))
+      setBadges(b || []); setProducts(flatProducts); setAssocs(a || [])
     } catch (e: any) { setErr(e?.message || String(e)) }
     finally { setLoading(false) }
   }, [])
@@ -94,7 +101,13 @@ export function BadgesTab() {
   const filteredProducts = useMemo(() => {
     if (!search.trim()) return products.slice(0, 50)
     const s = search.toLowerCase()
-    return products.filter(p => p.nom?.toLowerCase().includes(s) || String(p.millesime || '').includes(s)).slice(0, 50)
+    return products.filter(p =>
+      p.nom?.toLowerCase().includes(s)
+      || String(p.millesime || '').includes(s)
+      || p.domaine?.toLowerCase().includes(s)
+      || p.appellation?.toLowerCase().includes(s)
+      || p.region?.toLowerCase().includes(s)
+    ).slice(0, 50)
   }, [products, search])
 
   if (loading) return <div style={empty}>⟳ Chargement…</div>
@@ -135,7 +148,7 @@ export function BadgesTab() {
       <section style={{ ...card, marginTop: 24 }}>
         <div style={cardHeader}>
           <h2 style={cardTitle}>Attribuer les badges aux produits</h2>
-          <input type="text" placeholder="🔍 Filtrer un produit…" value={search} onChange={e => setSearch(e.target.value)}
+          <input type="text" placeholder="🔍 Cuvée, domaine, appellation, région…" value={search} onChange={e => setSearch(e.target.value)}
             style={{ ...input, width: 260, padding: '8px 12px', fontSize: 12 }} />
         </div>
         <div style={{ overflowX: 'auto' as const, padding: '0 16px 16px' }}>
@@ -158,7 +171,12 @@ export function BadgesTab() {
                 <tr key={p.id} style={{ borderBottom: '0.5px solid rgba(255,255,255,0.04)' }}>
                   <td style={{ ...td, position: 'sticky' as const, left: 0, background: '#18130e' }}>
                     <a href={`/boutique/${p.slug}`} target="_blank" style={{ color: '#e8e0d5', textDecoration: 'none', fontSize: 12 }}>
-                      {p.nom}{p.millesime ? ` (${p.millesime})` : ''}
+                      <div>{p.nom}{p.millesime ? ` (${p.millesime})` : ''}</div>
+                      {(p.domaine || p.appellation) && (
+                        <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.4)', marginTop: 2 }}>
+                          {[p.domaine, p.appellation].filter(Boolean).join(' · ')}
+                        </div>
+                      )}
                     </a>
                   </td>
                   {badges.filter(b => b.actif).map(b => {
@@ -302,13 +320,19 @@ export function CarrouselTab() {
     try {
       const [{ data: s, error: es }, { data: p, error: ep }, { data: sp, error: esp }] = await Promise.all([
         supabase.from('boutique_carousel_slides').select('*').order('ordre').order('created_at'),
-        supabase.from('products').select('id, nom, millesime, slug, image_url, couleur').eq('actif', true).order('nom').limit(2000),
+        supabase.from('products').select('id, nom, millesime, slug, image_url, couleur, domaine:domaines(nom), appellation:appellations(nom), region:regions(nom)').eq('actif', true).order('nom').limit(2000),
         supabase.from('carousel_slide_products').select('slide_id, product_id, ordre'),
       ])
       if (es) { setErr(`Slides : ${es.message}`); return }
       if (ep) { setErr(`Produits : ${ep.message}`); return }
       if (esp) { setErr(`Associations : ${esp.message}`); return }
-      setSlides(s || []); setProducts(p || []); setSlideProducts(sp || [])
+      const flatProducts = (p || []).map((row: any) => ({
+        ...row,
+        domaine: row.domaine?.nom || null,
+        appellation: row.appellation?.nom || null,
+        region: row.region?.nom || null,
+      }))
+      setSlides(s || []); setProducts(flatProducts); setSlideProducts(sp || [])
     } catch (e: any) { setErr(e?.message || String(e)) }
     finally { setLoading(false) }
   }, [])
@@ -494,7 +518,13 @@ function ManageSlideProducts({ slide, allProducts, assocs, onClose }: {
   const filtered = useMemo(() => {
     if (!search.trim()) return allProducts.slice(0, 100)
     const s = search.toLowerCase()
-    return allProducts.filter(p => p.nom?.toLowerCase().includes(s) || String(p.millesime || '').includes(s)).slice(0, 100)
+    return allProducts.filter(p =>
+      p.nom?.toLowerCase().includes(s)
+      || String(p.millesime || '').includes(s)
+      || p.domaine?.toLowerCase().includes(s)
+      || p.appellation?.toLowerCase().includes(s)
+      || p.region?.toLowerCase().includes(s)
+    ).slice(0, 100)
   }, [allProducts, search])
 
   return (
@@ -505,7 +535,7 @@ function ManageSlideProducts({ slide, allProducts, assocs, onClose }: {
           Sélectionne les produits qui apparaissent quand un visiteur clique sur cette slide.
           Page de destination : <code style={{ color: '#c9a96e' }}>/boutique?operation={slide.slug}</code>
         </p>
-        <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Rechercher un produit…" style={{ ...input, marginBottom: 12 }} />
+        <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Cuvée, domaine, appellation, région…" style={{ ...input, marginBottom: 12 }} />
         <div style={{ maxHeight: 380, overflowY: 'auto' as const, background: '#0d0a08', border: '0.5px solid rgba(255,255,255,0.06)', borderRadius: 4 }}>
           {filtered.map(p => {
             const checked = selected.has(p.id)
@@ -517,7 +547,14 @@ function ManageSlideProducts({ slide, allProducts, assocs, onClose }: {
                   setSelected(next)
                 }} style={{ accentColor: '#c9a96e' }} />
                 {p.image_url && <img src={p.image_url} alt="" style={{ width: 28, height: 28, objectFit: 'contain' as const, opacity: 0.85 }} />}
-                <span style={{ fontSize: 12, color: '#e8e0d5', flex: 1 }}>{p.nom}{p.millesime ? ` (${p.millesime})` : ''}</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 12, color: '#e8e0d5' }}>{p.nom}{p.millesime ? ` (${p.millesime})` : ''}</div>
+                  {(p.domaine || p.appellation) && (
+                    <div style={{ fontSize: 10, color: 'rgba(232,224,213,0.4)', marginTop: 2 }}>
+                      {[p.domaine, p.appellation].filter(Boolean).join(' · ')}
+                    </div>
+                  )}
+                </div>
               </label>
             )
           })}
