@@ -21,14 +21,18 @@ export default function ValidationsProPage() {
   useEffect(() => {
     (async () => {
       try {
-        const { data: { user: authUser } } = await supabase.auth.getUser()
-        if (!authUser) { setAuthReady(true); return }
-        const { data: profile } = await supabase.from('users').select('*').eq('auth_user_id', authUser.id).maybeSingle()
-        if (!profile) { setAuthReady(true); return }
-        setCurrentUser(profile)
-        if (profile.role === 'admin') { setHasAccess(true); setAuthReady(true); return }
-        const { data: perms } = await supabase.from('user_permissions').select('acces_clients').eq('user_id', profile.id).maybeSingle()
-        setHasAccess(perms?.acces_clients === true)
+        // Bypass lock Supabase JS via /api/auth-me
+        const ac = new AbortController()
+        const t = setTimeout(() => ac.abort(), 8000)
+        const res = await fetch('/api/auth-me', { cache: 'no-store', credentials: 'same-origin', signal: ac.signal })
+        clearTimeout(t)
+        const json = await res.json()
+        if (!json?.user || !json?.profile) { setAuthReady(true); return }
+        setCurrentUser(json.profile)
+        if (json.profile.role === 'admin') { setHasAccess(true); setAuthReady(true); return }
+        setHasAccess(json.permissions?.acces_clients === true)
+      } catch (e) {
+        console.error('[validations-pro] auth error', e)
       } finally {
         setAuthReady(true)
       }

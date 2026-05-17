@@ -23,17 +23,21 @@ export default function EboutiqueLayout({ children }: { children: React.ReactNod
     const safety = setTimeout(() => setAuthReady(true), 5000)
     ;(async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession()
-        const authUser = session?.user
-        if (!authUser) return
-        const { data: profile } = await supabase
-          .from('users').select('*').eq('auth_user_id', authUser.id).maybeSingle()
+        // Bypass complet du client Supabase JS (lock browser bloqué) :
+        // /api/auth-me retourne user + profile + permissions côté serveur
+        const ac = new AbortController()
+        const t = setTimeout(() => ac.abort(), 8000)
+        const res = await fetch('/api/auth-me', { cache: 'no-store', credentials: 'same-origin', signal: ac.signal })
+        clearTimeout(t)
+        const json = await res.json()
+        if (!json?.user) return
+        const profile = json.profile
         if (!profile) return
         setCurrentUser(profile)
         if (profile.role === 'admin') { setHasAccess(true); return }
-        const { data: perms } = await supabase
-          .from('user_permissions').select('acces_produits').eq('user_id', profile.id).maybeSingle()
-        setHasAccess(perms?.acces_produits === true)
+        setHasAccess(json.permissions?.acces_produits === true)
+      } catch (e) {
+        console.error('[eboutique layout] auth error', e)
       } finally {
         clearTimeout(safety)
         setAuthReady(true)
