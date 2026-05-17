@@ -20,6 +20,9 @@ export function HomeCarousel({ slides, autoPlayMs = 6000 }: { slides: Slide[]; a
   const [idx, setIdx] = useState(0)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   const [paused, setPaused] = useState(false)
+  // Ratio détecté sur la première image chargée → définit la hauteur du carrousel
+  // pour que toutes les slides s'affichent sans crop ni bandes vides.
+  const [aspectRatio, setAspectRatio] = useState<string>('2400 / 520')
 
   useEffect(() => {
     if (slides.length <= 1 || paused) return
@@ -35,7 +38,7 @@ export function HomeCarousel({ slides, autoPlayMs = 6000 }: { slides: Slide[]; a
     <div
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
-      style={{ position: 'relative', width: '100%', height: 260, overflow: 'hidden', background: '#0d0a08' }}
+      style={{ position: 'relative', width: '100%', aspectRatio, overflow: 'hidden', background: '#0d0a08' }}
     >
       {/* Slides empilées : toute la slide est un lien cliquable vers /boutique?operation=<slug> */}
       {slides.map((s, i) => {
@@ -47,12 +50,6 @@ export function HomeCarousel({ slides, autoPlayMs = 6000 }: { slides: Slide[]; a
             aria-label={s.titre}
             style={{
               position: 'absolute', inset: 0,
-              backgroundColor: s.couleur_bg || '#1a1a1a',
-              backgroundImage: s.image_url ? `url(${s.image_url})` : 'none',
-              // contain = image entière toujours visible (pas de crop). Du fond
-              // coloré apparaît sur les côtés si le ratio ne correspond pas.
-              backgroundSize: 'contain', backgroundPosition: 'center',
-              backgroundRepeat: 'no-repeat',
               opacity: i === idx ? 1 : 0,
               transition: 'opacity 0.7s ease',
               pointerEvents: i === idx ? 'auto' : 'none',
@@ -60,7 +57,25 @@ export function HomeCarousel({ slides, autoPlayMs = 6000 }: { slides: Slide[]; a
               textDecoration: 'none',
               cursor: 'pointer',
             }}
-          />
+          >
+            {s.image_url ? (
+              <img
+                src={s.image_url}
+                alt={s.titre}
+                onLoad={i === 0 ? (e) => {
+                  // La 1re image définit le ratio du carrousel pour éviter
+                  // bandes vides ET crop. Les autres slides s'y conforment.
+                  const img = e.currentTarget
+                  if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+                    setAspectRatio(`${img.naturalWidth} / ${img.naturalHeight}`)
+                  }
+                } : undefined}
+                style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center', display: 'block' }}
+              />
+            ) : (
+              <div style={{ width: '100%', height: '100%', backgroundColor: s.couleur_bg || '#1a1a1a' }} />
+            )}
+          </a>
         )
       })}
 
