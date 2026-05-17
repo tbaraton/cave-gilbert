@@ -2611,9 +2611,13 @@ function AdminPage() {
           : []
         console.log('[admin] cookies sb-* visibles :', sbCookies)
 
-        // Bypass complet du client Supabase JS (lock bloqué) : on demande au serveur.
-        // AbortController : si l'API ne répond pas en 8s, on coupe et on abandonne.
+        // Bypass complet du client Supabase JS (le lock browser hangue indéfiniment) :
+        // /api/auth-me retourne user + profile + permissions + siteActifId en une seule
+        // requête côté serveur où le lock ne s'applique pas.
         let authUser: { id: string; email?: string } | undefined
+        let bootProfile: any = null
+        let bootPerms: any = null
+        let bootSiteId: string | null = null
         try {
           console.log('[admin] fetch /api/auth-me START')
           const ac = new AbortController()
@@ -2624,6 +2628,9 @@ function AdminPage() {
           const json = await res.json()
           console.log('[admin] /api/auth-me JSON', json)
           if (json?.user) authUser = json.user
+          bootProfile = json?.profile || null
+          bootPerms = json?.permissions || null
+          bootSiteId = json?.siteActifId || null
         } catch (e: any) {
           console.error('[admin] /api/auth-me fetch error', e?.name, e?.message, e)
         }
@@ -2634,30 +2641,14 @@ function AdminPage() {
         }
         console.log('[admin] auth user trouvé', { id: authUser.id, email: authUser.email })
 
-        // 1) Charger le profil utilisateur
-        const { data: profile, error: profileErr } = await supabase
-          .from('users').select('*').eq('auth_user_id', authUser.id).maybeSingle()
-        if (profileErr) console.warn('[admin] users select error', profileErr)
-        if (!profile) {
+        if (!bootProfile) {
           console.warn('[admin] aucun profil users pour auth_user_id', authUser.id)
-          setAuthDiag({ email: authUser.email || undefined, reason: 'no_profile', profileErr: profileErr?.message })
+          setAuthDiag({ email: authUser.email || undefined, reason: 'no_profile' })
           setAuthReady(true); return
         }
-        setCurrentUser(profile)
-
-        // 2) Charger les permissions (requête séparée plus fiable)
-        const { data: perms } = await supabase
-          .from('user_permissions').select('*').eq('user_id', profile.id).maybeSingle()
-        setPermissions(perms || null)
-
-        // 3) Déterminer le site actif (restriction explicite OU profil employé)
-        let siteId: string | null = perms?.site_restreint_id || null
-        if (!siteId) {
-          const { data: empProfil } = await supabase
-            .from('employe_profils').select('site_id').eq('user_id', profile.id).maybeSingle()
-          siteId = empProfil?.site_id || null
-        }
-        setSiteActifId(siteId)
+        setCurrentUser(bootProfile)
+        setPermissions(bootPerms)
+        setSiteActifId(bootSiteId)
       } catch (e) {
         console.error('[admin] auth check error', e)
       } finally {
