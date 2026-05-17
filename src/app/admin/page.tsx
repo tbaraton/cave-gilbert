@@ -2570,6 +2570,8 @@ function AdminPage() {
   const [siteActifId, setSiteActifId] = useState<string | null>(null)
   const [authReady, setAuthReady] = useState(false)
   const [showPasswordModal, setShowPasswordModal] = useState(false)
+  // Pour le splash diagnostic : email connecté + raison du blocage
+  const [authDiag, setAuthDiag] = useState<{ email?: string; reason: string; profileErr?: string }>({ reason: 'no_session' })
 
   // Charger l'utilisateur connecté
   useEffect(() => {
@@ -2586,12 +2588,18 @@ function AdminPage() {
     ;(async () => {
       try {
         const { data: { user: authUser } } = await supabase.auth.getUser()
-        if (!authUser) { setAuthReady(true); return }
+        if (!authUser) { setAuthDiag({ reason: 'no_session' }); setAuthReady(true); return }
+        console.log('[admin] auth user trouvé', { id: authUser.id, email: authUser.email })
 
         // 1) Charger le profil utilisateur
-        const { data: profile } = await supabase
+        const { data: profile, error: profileErr } = await supabase
           .from('users').select('*').eq('auth_user_id', authUser.id).maybeSingle()
-        if (!profile) { setAuthReady(true); return }
+        if (profileErr) console.warn('[admin] users select error', profileErr)
+        if (!profile) {
+          console.warn('[admin] aucun profil users pour auth_user_id', authUser.id)
+          setAuthDiag({ email: authUser.email || undefined, reason: 'no_profile', profileErr: profileErr?.message })
+          setAuthReady(true); return
+        }
         setCurrentUser(profile)
 
         // 2) Charger les permissions (requête séparée plus fiable)
@@ -2913,8 +2921,21 @@ function AdminPage() {
     return (
       <div style={{ minHeight: '100vh', background: '#0d0a08', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column' as const, gap: 16, color: '#e8e0d5', fontFamily: "'DM Sans', system-ui, sans-serif", padding: 40, textAlign: 'center' as const }}>
         <div style={{ fontFamily: 'Georgia, serif', fontSize: 22, color: '#c9a96e', marginBottom: 4 }}>Accès administration</div>
-        <div style={{ fontSize: 13, color: 'rgba(232,224,213,0.55)', maxWidth: 440, lineHeight: 1.6 }}>
-          Tu n'es pas connecté avec un compte administrateur. Ta session actuelle est probablement celle d'un client de la boutique (Supabase n'autorise qu'une seule session par navigateur).
+        {authDiag.email && (
+          <div style={{ fontSize: 12, color: 'rgba(232,224,213,0.7)', background: 'rgba(201,169,110,0.08)', border: '0.5px solid rgba(201,169,110,0.2)', padding: '10px 16px', borderRadius: 4, maxWidth: 480 }}>
+            Session active : <strong style={{ color: '#c9a96e' }}>{authDiag.email}</strong>
+          </div>
+        )}
+        <div style={{ fontSize: 13, color: 'rgba(232,224,213,0.55)', maxWidth: 480, lineHeight: 1.6 }}>
+          {authDiag.reason === 'no_session' && (
+            <>Aucune session Supabase. Connecte-toi avec un compte admin.</>
+          )}
+          {authDiag.reason === 'no_profile' && (
+            <>
+              Cet email est bien authentifié mais <strong>aucun profil <code>users</code></strong> ne lui est lié — ce n'est probablement pas un compte admin (ou ton compte admin est associé à une autre adresse email).
+              {authDiag.profileErr && <><br/><span style={{ fontSize: 11, color: '#c96e6e' }}>Erreur SQL : {authDiag.profileErr}</span></>}
+            </>
+          )}
         </div>
         <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
           <button onClick={async () => { await hardSignOut(); window.location.href = '/login' }} style={{
