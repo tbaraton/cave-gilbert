@@ -2590,7 +2590,7 @@ function AdminPage() {
   const [authReady, setAuthReady] = useState(false)
   const [showPasswordModal, setShowPasswordModal] = useState(false)
   // Pour le splash diagnostic : email connecté + raison du blocage
-  const [authDiag, setAuthDiag] = useState<{ email?: string; reason: string; profileErr?: string }>({ reason: 'no_session' })
+  const [authDiag, setAuthDiag] = useState<{ email?: string; reason: string; profileErr?: string; cookieNames?: string }>({ reason: 'no_session' })
 
   // Charger l'utilisateur connecté
   useEffect(() => {
@@ -2606,11 +2606,29 @@ function AdminPage() {
 
     ;(async () => {
       try {
-        // getSession() = lecture cookie locale (rapide, sans appel réseau).
-        // getUser() = validation côté serveur (peut hanger ou échouer silencieusement).
-        const { data: { session } } = await supabase.auth.getSession()
-        const authUser = session?.user
-        if (!authUser) { setAuthDiag({ reason: 'no_session' }); setAuthReady(true); return }
+        // Cookies visibles par le client (debug)
+        const sbCookies = typeof document !== 'undefined'
+          ? document.cookie.split(';').map(c => c.trim().split('=')[0]).filter(n => n.startsWith('sb-'))
+          : []
+        console.log('[admin] cookies sb-* visibles :', sbCookies)
+
+        // 1) Tente getSession() en premier (lecture locale, pas d'appel réseau)
+        const { data: sessData, error: sessErr } = await supabase.auth.getSession()
+        console.log('[admin] getSession result', { session: sessData?.session ? 'present' : 'null', error: sessErr })
+        let authUser = sessData?.session?.user
+
+        // 2) Si pas de session locale mais des cookies présents : try getUser() (force refresh)
+        if (!authUser && sbCookies.length > 0) {
+          console.log('[admin] pas de session locale mais cookies présents → try getUser()')
+          const { data: userData, error: userErr } = await supabase.auth.getUser()
+          console.log('[admin] getUser fallback result', { user: userData?.user ? 'found' : 'null', error: userErr })
+          authUser = userData?.user || undefined
+        }
+
+        if (!authUser) {
+          setAuthDiag({ reason: 'no_session', cookieNames: sbCookies.join(', ') || '(aucun)' })
+          setAuthReady(true); return
+        }
         console.log('[admin] auth user trouvé', { id: authUser.id, email: authUser.email })
 
         // 1) Charger le profil utilisateur
@@ -2950,7 +2968,12 @@ function AdminPage() {
         )}
         <div style={{ fontSize: 13, color: 'rgba(232,224,213,0.55)', maxWidth: 480, lineHeight: 1.6 }}>
           {authDiag.reason === 'no_session' && (
-            <>Aucune session Supabase. Connecte-toi avec un compte admin.</>
+            <>
+              Aucune session Supabase visible côté client.
+              <div style={{ fontSize: 11, color: 'rgba(232,224,213,0.4)', marginTop: 10, fontFamily: 'monospace' }}>
+                Cookies <code>sb-*</code> détectés : <strong style={{ color: '#c9a96e' }}>{authDiag.cookieNames || '(non chargé)'}</strong>
+              </div>
+            </>
           )}
           {authDiag.reason === 'no_profile' && (
             <>
