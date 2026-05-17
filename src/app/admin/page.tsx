@@ -13,6 +13,25 @@ const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
+// Déconnexion robuste : ne hange jamais (timeout 3s) et force-clear le localStorage
+// si Supabase ne répond pas (session corrompue, perte réseau, etc.)
+async function hardSignOut() {
+  try {
+    await Promise.race([
+      supabase.auth.signOut(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('signOut timeout 3s')), 3000)),
+    ])
+  } catch (e) {
+    console.warn('[admin] signOut timeout/erreur, force clear localStorage', e)
+  }
+  try {
+    if (typeof window !== 'undefined') {
+      const keys = Object.keys(window.localStorage)
+      for (const k of keys) if (k.startsWith('sb-')) window.localStorage.removeItem(k)
+    }
+  } catch {}
+}
+
 type Section = 'dashboard' | 'produits' | 'stock' | 'transferts' | 'vins' | 'bieres' | 'spiritueux' | 'epicerie' | 'sans_alcool'
 
 // ── Styles constants ─────────────────────────────────────────
@@ -2898,7 +2917,7 @@ function AdminPage() {
           Tu n'es pas connecté avec un compte administrateur. Ta session actuelle est probablement celle d'un client de la boutique (Supabase n'autorise qu'une seule session par navigateur).
         </div>
         <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
-          <button onClick={async () => { await supabase.auth.signOut(); window.location.href = '/login' }} style={{
+          <button onClick={async () => { await hardSignOut(); window.location.href = '/login' }} style={{
             background: '#c9a96e', color: '#0d0a08', border: 'none', borderRadius: 4,
             padding: '11px 22px', fontSize: 12, letterSpacing: 1, textTransform: 'uppercase' as const,
             cursor: 'pointer', fontWeight: 700,
@@ -2995,7 +3014,7 @@ function AdminPage() {
               </>
             )}
             <button onClick={async () => {
-              await supabase.auth.signOut()
+              await hardSignOut()
               window.location.href = '/login'
             }} style={{
               display: 'block', width: '100%',

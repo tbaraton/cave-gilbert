@@ -126,9 +126,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [refreshProfile])
 
   const signOut = async () => {
-    await supabase.auth.signOut()
+    // 1) Reset l'UI immédiatement pour que l'utilisateur voie l'effet
     setUser(null)
     setIsPro(false)
+    // 2) Demande à Supabase de signOut avec un timeout (sinon ça peut hanger)
+    try {
+      await Promise.race([
+        supabase.auth.signOut(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('signOut timeout 3s')), 3000)),
+      ])
+    } catch (e) {
+      console.warn('[boutique] signOut timeout/erreur, force clear localStorage', e)
+    }
+    // 3) Fallback : vider les clés Supabase du localStorage pour garantir la déconnexion
+    try {
+      if (typeof window !== 'undefined') {
+        const keys = Object.keys(window.localStorage)
+        for (const k of keys) if (k.startsWith('sb-')) window.localStorage.removeItem(k)
+      }
+    } catch {}
   }
 
   return (
