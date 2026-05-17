@@ -2554,7 +2554,17 @@ function AdminPage() {
 
   // Charger l'utilisateur connecté
   useEffect(() => {
-    (async () => {
+    let cancelled = false
+    // Filet de sécurité : si une requête Supabase reste bloquée (RLS, réseau, etc),
+    // on libère l'UI au bout de 5s pour afficher au moins le splash "Accès administration"
+    const safetyTimer = setTimeout(() => {
+      if (!cancelled) {
+        console.warn('[admin] auth check > 5s, force authReady=true')
+        setAuthReady(true)
+      }
+    }, 5000)
+
+    ;(async () => {
       try {
         const { data: { user: authUser } } = await supabase.auth.getUser()
         if (!authUser) { setAuthReady(true); return }
@@ -2578,10 +2588,15 @@ function AdminPage() {
           siteId = empProfil?.site_id || null
         }
         setSiteActifId(siteId)
+      } catch (e) {
+        console.error('[admin] auth check error', e)
       } finally {
+        clearTimeout(safetyTimer)
         setAuthReady(true)
       }
     })()
+
+    return () => { cancelled = true; clearTimeout(safetyTimer) }
   }, [])
 
   const isAdmin = currentUser?.role === 'admin'
